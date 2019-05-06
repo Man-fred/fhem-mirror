@@ -1,5 +1,5 @@
 ##############################################
-# $Id$
+# $Id: 00_CUL.pm 17559 2018-10-18 07:45:07Z rudolfkoenig $
 package main;
 
 use strict;
@@ -48,7 +48,7 @@ my @ampllist = (24, 27, 30, 33, 36, 38, 40, 42); # rAmpl(dB)
 my $sccMods = "STACKABLE_CC:TSSTACKED:STACKABLE";
 my $culNameRe = "^(CUL|TSCUL)\$";
 
-my $clientsSlowRF    = ":FS20:FHT.*:KS300:USF1000:BS:HMS:FS20V: ".
+my $clientsSlowRF    = ":FS20:FHT.*:KS300:USF1000:BS:HMS:FAZ:FS20V: ".
                        ":CUL_EM:CUL_WS:CUL_FHTTK:CUL_HOERMANN: ".
                        ":ESA2000:CUL_IR:CUL_TX:Revolt:IT:UNIRoll:SOMFY: ".
                        ":$sccMods:CUL_RFR::CUL_TCM97001:CUL_REDIRECT:";
@@ -66,7 +66,7 @@ my %matchListSlowRF = (
     "5:KS300"     => "^810d04..4027a001",
     "6:CUL_WS"    => "^K.....",
     "7:CUL_EM"    => "^E0.................\$",
-    "8:HMS"       => "^810e04......a001",
+    "8:HMS"       => "^810e04....(1|5|9).a001",
     "9:CUL_FHTTK" => "^T[A-F0-9]{8}",
     "A:CUL_RFR"   => "^[0-9A-F]{4}U.",
     "B:CUL_HOERMANN"=> "^R..........",
@@ -82,6 +82,7 @@ my %matchListSlowRF = (
     "L:CUL_REDIRECT"  => "^o+",
     "M:TSSTACKED"=>"^\\*",
     "N:STACKABLE"=>"^\\*",
+    "O:FAZ"       => "^Z[A-F0-9]+",
 );
 
 my %matchListHomeMatic = (
@@ -927,6 +928,8 @@ CUL_Parse($$$$@)
     }
     $dmsg .= "::$rssi:$name" if(defined($rssi));
 
+  } elsif($fn eq "Z" && $len >= 16) {              # FAZ 3000
+    #$fn = "h";
   } elsif($fn eq "Z" && $len >= 21) {              # Moritz/Max
     ;
   } elsif($fn eq "b" && $len >= 24) {              # Wireless M-Bus

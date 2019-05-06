@@ -6,7 +6,7 @@
 # 
 # Published under GNU GPL License
 #
-# $Id$
+# $Id: 10_IT.pm 18090 2018-12-30 07:24:59Z bjoernh $
 #
 ######################################################
 package main;
@@ -242,6 +242,16 @@ IT_Set($@)
     }
     $list = (join(" ", sort keys %it_c2b_he800) . " dim:slider,0,12.5,100")
         if( AttrVal($name, "model", "") eq "itdimmer" );
+  } elsif ($hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
+    $c = $it_c2b_he800{$a[0]};
+    if($na > 1 && $a[0] eq "dim") {  
+            $a[0] = ($a[1] eq "0" ? "off" : sprintf("dim%02d%%",$a[1]) );
+            
+            splice @a, 1, 1;
+            $na = int(@a);
+    }
+    $list = (join(" ", sort keys %it_c2b_he800) . " dim:slider,0,12.5,100")
+        if( AttrVal($name, "model", "") eq "itdimmer" );
   } else {
     $list .= "dimup:noArg dimdown:noArg on-till" if( AttrVal($name, "model", "") eq "itdimmer" );
   }
@@ -273,7 +283,7 @@ IT_Set($@)
     my $lh = $modules{IT}{defptr}{$code}{$n};
     
     #$lh->{STATE} = $cmd;
-    if ($hash->{READINGS}{protocol}{VAL} eq "HE800") {
+    if ($hash->{READINGS}{protocol}{VAL} eq "HE800" || $hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
         my $count = $hash->{"count"};
         $count = $count + 1;
         if ($count > 3) {
@@ -556,6 +566,82 @@ IT_Set($@)
         Log3 $hash,4, "msg $msg - bin1 $bin1";
         $message = "ish".uc($bin);
     }
+  } elsif ($hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
+    my $cVal;
+    my $mode;
+    my @mn;
+    my $msg;
+    my $sendVal = "00";
+	
+    my %he800MapingTable = (
+       12 => 2,
+       25 => 3,
+       37 => 4,
+       50 => 5,
+       62 => 6,
+       75 => 7,
+       87 => 8,
+       100 => 9,
+    );
+
+    (undef, $cVal) = split(" ", $v, 2);	# Not interested in the name...
+
+    my $rollingCode = $hash->{"count"};
+    if ($rollingCode > 3) {
+      $rollingCode = 0;
+    }
+	
+    if ($cVal eq "on") {
+      $sendVal = $hash->{READINGS}{"XMITon"}{VAL};
+		$sendVal = "01";
+    } elsif ($cVal eq "off") {
+      $sendVal = $hash->{READINGS}{"XMIToff"}{VAL};
+		$sendVal = "00";
+    } else {
+      Log3 $hash,5, "mode is DIM MODE: $v Model: " . AttrVal($name, "model", "");
+      # DIM Mode
+      if( AttrVal($name, "model", "") eq "itdimmer" ) {
+
+          my @itvalues = split(' ', $v);
+          if ($itvalues[1] eq "dimup") {
+            readingsSingleUpdate($hash, "state", $itvalues[1],1);
+            readingsSingleUpdate($hash, "dim", 100, 1);
+            $mode = 9;
+          } elsif ($itvalues[1] eq "dimdown") {
+            readingsSingleUpdate($hash, "state", $itvalues[1],1);
+            readingsSingleUpdate($hash, "dim", 12, 1);
+            $mode = 2;
+          } else {
+         
+              if ($itvalues[1] =~ /dim/) {
+                my $dperc = substr($itvalues[1], 3, -1);
+                #my $dperc = $itvalues[2]; 
+                my $dec = $he800MapingTable{$dperc};
+                my $bin = sprintf ("%b",$dec);
+                while (length($bin) < 4) {
+                  # suffix 0
+                  $bin = '0'.$bin;   
+                }
+                readingsSingleUpdate($hash, "dim", $dperc, 1);
+                if ($dperc == 0) { 
+                  $mode = 0;
+                } else {
+                  $mode = $dec;
+                }
+	          }
+          }
+      
+      }
+    }
+    #}
+	Log3 $hash,5, "mode is $mode";
+	my @XMIT_split = split(/_/,$hash->{XMIT});
+	my $receiverID = $XMIT_split[1];
+	my $transmitterID = $XMIT_split[0];
+				
+	my $bin = $transmitterID . "0".$receiverID.$sendVal."0".$rollingCode;
+	Log3 $hash,4, "msg $v - bin $bin";
+	$message = "isf".uc($bin);
   } else {
     my $onoffcode;
     if (defined($c)) {
@@ -725,6 +811,15 @@ IT_Define($$)
     $offcode = "N/A";
     $unitCode="N/A";
     #return "FALSE";
+  } elsif ($a[2] eq "FLAMINGO") {
+    $housecode = $a[3]."_".$a[4];
+    $hash->{READINGS}{protocol}{VAL}  = 'FLAMINGO';
+    $hash->{"count"}  = '0';
+    $oncode = "1";
+    $offcode = "0";
+    $unitCode= $a[4];
+    $hash->{READINGS}{unit}{VAL} = $unitCode;
+    #return "FALSE";
   } elsif (length($a[2]) == 26) {
     # Is Protocol V3
     return "Define $a[0]: wrong ITv3-Code format: specify a 26 digits 0/1 "
@@ -892,7 +987,7 @@ IT_Parse($$)
     Log3 $hash,4,"$ioname IT: message not supported by IT \"$msg\"!";
     return undef;
   }
-  if (length($msg) != 7 && length($msg) != 12 && length($msg) != 17 && length($msg) != 19 && length($msg) != 20) {
+  if (length($msg) != 7 && length($msg) != 12  && length($msg) != 14 && length($msg) != 17 && length($msg) != 19 && length($msg) != 20) {
     Log3 $hash,3,"$ioname IT: message \"$msg\" (" . length($msg) . ") too short!";
     return undef;
   }
@@ -952,6 +1047,13 @@ IT_Parse($$)
           $bin1 = '0'.$bin1;   
         }
         $bin = $bin1;# . $bin3;
+  } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo u.a., simple rolling code 
+        my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
+        while (length($bin1) < 32) {
+          # suffix 0
+          $bin1 = '0'.$bin1;   
+        }
+        $bin = substr($msg,2,10);
   } else { # IT
 	    if (length($msg) > 10) {
 			Log3 $hash,4,"$ioname IT: Wrong IT message received: $msg";
@@ -971,6 +1073,8 @@ IT_Parse($$)
     $msgcode=substr($bin, 0, 28);
   } elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU;
     $msgcode=substr($bin, 0, 57);
+  } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo;
+    $msgcode=substr($bin, 0, 10);
   } else {
     while (length($bin)>=2) {
       if (length($msg) == 7) {
@@ -1086,6 +1190,11 @@ IT_Parse($$)
     Log3 $hash,4,"OFF/ON/DIM    : " . $mode ; # 0=OFF 1=ON, 2=10%dim..9=80%dim (no 90%dim!)
     Log3 $hash,4,"Rolling-Code  : " . $rollingCode ; # rolling-code 0-3 (differentiate new message from repeated message)
     Log3 $hash,4,"Transmitter-ID: " . $transmitterID ; # unique transmitter-ID    [0]1..65535    (0 valid?, 65535 or lower limit?)
+  } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo
+    $onoffcode=substr($msgcode,7,1);
+    $groupBit=substr($msgcode,4,1);
+    $unitCode=substr($msgcode,5,1);
+    $housecode=substr($msgcode,0,4)."_".$unitCode;
 
   } else {
     Log3 $hash,4,"$ioname IT: Wrong IT message received: $msgcode";
@@ -1131,6 +1240,9 @@ IT_Parse($$)
     } elsif (length($msg) == 12 && (substr($msg, 1, 1)) eq 'h') { # HE800
       Log3 $hash,2,"$ioname IT: $housecode not defined (HE800)";
       return "UNDEFINED IT_HE800_$housecode IT " . "HE800 $transmittercode $unitCode" if(!$def);
+    } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo
+      Log3 $hash,2,"$ioname IT: $housecode not defined (Flamingo)";
+      return "UNDEFINED IT_FLAMINGO_$housecode IT " . "Flamingo $transmittercode $unitCode" if(!$def);
     } else {
       my $hexCode = sprintf("%x", oct("0b".$housecode));
       Log3 $hash,2,"$ioname IT: IT_V3_$hexCode ($housecode) not defined (Address: ".substr($msgcode,0,26)." Group: $groupBit Unit: $unitCode Switch code: $onoffcode)";
