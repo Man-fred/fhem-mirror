@@ -37,37 +37,32 @@ use Data::Dumper;
 # Run before module compilation
 BEGIN {
 
-    # JSON preference order
-    $ENV{PERL_JSON_BACKEND} =
-      'Cpanel::JSON::XS,JSON::XS,JSON::PP,JSON::backportPP'
-      unless ( defined( $ENV{PERL_JSON_BACKEND} ) );
-
     # Import from main::
     GP_Import(
         qw(
-          readingsSingleUpdate
-          readingsBulkUpdate
-          readingsBulkUpdateIfChanged
-          readingsBeginUpdate
-          readingsEndUpdate
-          ReadingsTimestamp
-          defs
-          modules
-          Log3
-          Debug
-          DoTrigger
-          CommandAttr
           attr
           AttrVal
-          ReadingsVal
-          Value
-          IsDisabled
+          CommandAttr
+          Debug
+          defs
           deviceEvents
-          init_done
-          gettimeofday
-          InternalTimer
-          RemoveInternalTimer
+          DoTrigger
           FW_webArgs
+          gettimeofday
+          init_done
+          InternalTimer
+          IsDisabled
+          Log3
+          modules
+          readingsBeginUpdate
+          readingsBulkUpdate
+          readingsBulkUpdateIfChanged
+          readingsEndUpdate
+          readingsSingleUpdate
+          ReadingsTimestamp
+          ReadingsVal
+          RemoveInternalTimer
+          Value
           )
     );
 }
@@ -85,6 +80,12 @@ if ($@) {
     # try to use JSON wrapper
     #   for chance of better performance
     eval {
+
+        # JSON preference order
+        local $ENV{PERL_JSON_BACKEND} =
+          'Cpanel::JSON::XS,JSON::XS,JSON::PP,JSON::backportPP'
+          unless ( defined( $ENV{PERL_JSON_BACKEND} ) );
+
         require JSON;
         import JSON qw( decode_json encode_json );
         1;
@@ -473,7 +474,7 @@ sub Set($$@) {
 
         if ( !defined( $hash->{".fhem"}{npm}{nodejsversions} ) ) {
             $list =
-"install:nodejs-v11,nodejs-v10,nodejs-v8,nodejs-v6 statusRequest:noArg";
+"install:nodejs-v12,nodejs-v10,nodejs-v8,nodejs-v6 statusRequest:noArg";
         }
         else {
             $list = "outdated:noArg";
@@ -866,6 +867,7 @@ sub ExecuteNpmCommand($) {
 
     my $cmdPrefix = '';
     my $cmdSuffix = '';
+    my $locale    = 'LC_ALL=C';
 
     if ( $cmd->{host} =~ /^(?:(.*)@)?([^:]+)(?::(\d+))?$/
         && lc($2) ne "localhost" )
@@ -879,24 +881,32 @@ sub ExecuteNpmCommand($) {
         # If key changes, user will need to intervene
         #   and cleanup known_hosts file manually for security reasons
         $cmdPrefix =
-            'KEY=$(ssh-keyscan -t ed25519 '
+            'KEY=$('
+          . $locale
+          . ' ssh-keyscan -t ed25519 '
           . $2
           . ' 2>/dev/null); '
           . 'grep -q -E "^${KEY% *}" ${HOME}/.ssh/known_hosts || echo "${KEY}" >> ${HOME}/.ssh/known_hosts; ';
         $cmdPrefix .=
-            'KEY=$(ssh-keyscan -t rsa '
+            'KEY=$('
+          . $locale
+          . ' ssh-keyscan -t rsa '
           . $2
           . ' 2>/dev/null); '
           . 'grep -q -E "^${KEY% *}" ${HOME}/.ssh/known_hosts || echo "${KEY}" >> ${HOME}/.ssh/known_hosts; ';
 
         # wrap SSH command
         $cmdPrefix .=
-          'ssh -oBatchMode=yes ' . $port . ( $1 ? "$1@" : '' ) . $2 . ' \'';
+            $locale
+          . ' ssh -oBatchMode=yes '
+          . $port
+          . ( $1 ? "$1@" : '' )
+          . $2 . ' \'';
         $cmdSuffix = '\' 2>&1';
     }
 
     my $global = '-g ';
-    my $sudo   = 'sudo -H -n ';
+    my $sudo   = 'sudo -n ';
 
     if ( $cmd->{npmglobal} eq '0' ) {
         $global = '';
@@ -905,13 +915,16 @@ sub ExecuteNpmCommand($) {
 
     $npm->{nodejsversions} =
         $cmdPrefix
-      . 'echo n | node -e "console.log(JSON.stringify(process.versions));" 2>&1'
+      . 'echo n | '
+      . $locale
+      . ' node -e "console.log(JSON.stringify(process.versions));" 2>&1'
       . $cmdSuffix;
     $npm->{npminstall} =
         $cmdPrefix
       . 'echo n | sh -c "'
       . $sudo
-      . 'NODE_ENV=${NODE_ENV:-production} npm install '
+      . $locale
+      . ' NODE_ENV=${NODE_ENV:-production} npm install '
       . $global
       . '--json --silent --unsafe-perm %PACKAGES%" 2>&1'
       . $cmdSuffix;
@@ -919,7 +932,8 @@ sub ExecuteNpmCommand($) {
         $cmdPrefix
       . 'echo n | sh -c "'
       . $sudo
-      . 'NODE_ENV=${NODE_ENV:-production} npm uninstall '
+      . $locale
+      . ' NODE_ENV=${NODE_ENV:-production} npm uninstall '
       . $global
       . '--json --silent %PACKAGES%" 2>&1'
       . $cmdSuffix;
@@ -927,7 +941,8 @@ sub ExecuteNpmCommand($) {
         $cmdPrefix
       . 'echo n | sh -c "'
       . $sudo
-      . 'NODE_ENV=${NODE_ENV:-production} npm update '
+      . $locale
+      . ' NODE_ENV=${NODE_ENV:-production} npm update '
       . $global
       . '--json --silent --unsafe-perm %PACKAGES%" 2>&1'
       . $cmdSuffix;
@@ -936,12 +951,17 @@ sub ExecuteNpmCommand($) {
       . 'echo n | '
       . 'echo "{' . "\n"
       . '\"versions\": "; '
-      . 'node -e "console.log(JSON.stringify(process.versions));"; '
-      . 'L1=$(npm list '
+      . $locale
+      . ' node -e "console.log(JSON.stringify(process.versions));"; '
+      . 'L1=$('
+      . $locale
+      . ' npm list '
       . $global
       . '--json --silent --depth=0 2>/dev/null); '
       . '[ "$L1" != "" ] && [ "$L1" != "\n" ] && echo ", \"listed\": $L1"; '
-      . 'L2=$(npm outdated '
+      . 'L2=$('
+      . $locale
+      . ' npm outdated '
       . $global
       . '--json --silent 2>&1); '
       . '[ "$L2" != "" ] && [ "$L2" != "\n" ] && echo ", \"outdated\": $L2"; '
@@ -958,12 +978,23 @@ sub ExecuteNpmCommand($) {
                 $npm->{npminstall} =
                     $cmdPrefix
                   . 'echo n | if [ -z "$(node --version 2>/dev/null)" ]; then'
-                  . ' sh -c "curl -sSL https://deb.nodesource.com/setup_'
+                  . ' sh -c "( '
+                  . $locale
+                  . ' curl -fsSL https://deb.nodesource.com/setup_'
                   . $1
-                  . '.x | DEBIAN_FRONTEND=noninteractive sudo -n bash - >/dev/null 2>&1" 2>&1 &&'
-                  . ' sh -c "DEBIAN_FRONTEND=noninteractive sudo -n apt-get install -qqy nodejs >/dev/null 2>&1" 2>&1; '
+                  . '.x 2>/dev/null || '
+                  . $locale
+                  . ' wget -qO- https://deb.nodesource.com/setup_'
+                  . $1
+                  . '.x 2>/dev/null ) | '
+                  . $locale
+                  . ' DEBIAN_FRONTEND=noninteractive sudo -n bash - >/dev/null 2>&1" 2>&1 &&'
+                  . ' sh -c "'
+                  . $locale
+                  . ' DEBIAN_FRONTEND=noninteractive sudo -n apt-get install -qqy nodejs >/dev/null 2>&1" 2>&1; '
                   . 'fi; '
-                  . 'node -e "console.log(JSON.stringify(process.versions));" 2>&1'
+                  . $locale
+                  . ' node -e "console.log(JSON.stringify(process.versions));" 2>&1'
                   . $cmdSuffix;
             }
         }
@@ -1058,6 +1089,10 @@ sub NpmUninstall($) {
 
 sub NpmUpdate($) {
     my $cmd = shift;
+    eval {
+        umask 0022;
+        1;
+    };
     my $p   = `$cmd->{npmupdate}`;
     my $ret = RetrieveNpmOutput( $cmd, $p );
 
@@ -1066,6 +1101,10 @@ sub NpmUpdate($) {
 
 sub NpmInstall($) {
     my $cmd = shift;
+    eval {
+        umask 0022;
+        1;
+    };
     my $p   = `$cmd->{npminstall}`;
     my $ret = RetrieveNpmOutput( $cmd, $p );
 
@@ -1144,12 +1183,12 @@ sub RetrieveNpmOutput($$) {
                       . "were authorized to access remote host";
                     $h->{error}{detail} = "<pre>$o</pre>";
                 }
-                elsif ( $o =~ m/^sudo: /i ) {
+                elsif ( $o =~ m/(sudo: .+)/i ) {
                     $h->{error}{code} = "E403";
                     $h->{error}{summary} =
                       "Forbidden - " . "passwordless sudo permissions required";
                     $h->{error}{detail} =
-                        $o
+                        $1
                       . "<br /><br />"
                       . "You may add the following lines to /etc/sudoers.d/$runningUser:\n"
                       . "<pre>"
@@ -1173,6 +1212,16 @@ m/(?:(\w+?): )?(?:(\w+? \d+): )?(\w+?): [^:]*?No.such.file.or.directory$/i
                     $h->{error}{summary} = "Parsing error - " . $@;
                     $h->{error}{detail}  = "<pre>$p</pre>";
                 }
+            }
+            elsif ( $json =~
+                m/(?:(\w+?): )?(?:(\w+? \d+): )?(\w+?): [^:]*?not.found$/im
+                or $json =~
+m/(?:(\w+?): )?(?:(\w+? \d+): )?(\w+?): [^:]*?No.such.file.or.directory$/im
+              )
+            {
+                $h->{error}{code}    = "E404";
+                $h->{error}{summary} = "Not Found - $3 is not installed";
+                $h->{error}{detail}  = "<pre>$o</pre>";
             }
             else {
                 $h->{error}{code}    = "E500";
@@ -1641,7 +1690,6 @@ sub ToDay() {
   </code><br>
   <br>
   This line may easily be added to a new file in /etc/sudoers.d/fhem and will automatically included to /etc/sudoers from there.<br>
-  Only checking for outdated packages does not require any privileged access at all!<br>
   <br>
   <br>
   <a name="npmjsdefine" id="npmjsdefine"></a><b>Define</b><br>
@@ -1738,7 +1786,6 @@ sub ToDay() {
   </code><br>
   <br>
   Diese Zeile kann einfach in einer neuen Datei unter /etc/sudoers.d/fhem hinzugef&uuml;gt werden und wird von dort automatisch in /etc/sudoers inkludiert.<br>
-  Um nur die zu aktualisierenden Pakete zu &uuml;berpr&uuml;fen wird &uuml;berhaupt kein priviligierter Zugriff ben&ouml;tigt!<br>
   <br>
   <br>
   <a name="npmjsdefine" id="npmjsdefine"></a><b>Define</b><br>
@@ -1776,13 +1823,13 @@ sub ToDay() {
   <br>
   <a name="npmjsset" id="npmjsset"></a><b>Set</b>
   <ul>
+    <li>statusRequest - Node.js Installationsstatus aktualisieren
+    </li>
     <li>outdated - Holt aktuelle Informationen &uuml;ber den Updatestatus
     </li>
     <li>update - F&uuml;hrt ein komplettes oder selektives Update aus (nutzt 'npm update' Kommando). FHEM relevante Pakete werden immer auf die neuste Major Version upgegraded (nutzt 'npm install' Kommando anstatt von 'npm update'). <a href="https://semver.org/">Semantische Versionierung</a> wird bei anderen Paketen weiterhin respektiert und es werden keine Major Upgrades durchgef&uuml;hrt.
     </li>
     <li>upgrade - F&uuml;hrt ein komplettes oder selektives Upgrade aus (nutzt 'npm install' Kommando). ACHTUNG! Jedes Paket wird auf die neuste und gr&ouml;&szlig;te Version upgegraded (nutzt 'npm install' Kommando anstatt von 'npm update'), ganz egal ob der Paket Maintainer eine Inkompatibilit&auml;t zwischen der aktuell installierten und der neusten Version definiert hat. Im Zweifel sollte besser stattdessen das Update set Kommando benutzt werden.
-    </li>
-    <li>install - installiert ein oder mehrere NPM Pakete
     </li>
     <li>install - Installiert ein oder mehrere NPM Pakete. Wenn Node.js nicht installiert ist, wird die erstmalige
         Installation von Node.js angeboten (nur für APT kompatible Linux Distributionen). Node.js kann weiterhin
@@ -1825,7 +1872,7 @@ sub ToDay() {
       "abstract": "Modul zur Bedienung der Node.js Installation und Updates"
     }
   },
-  "version": "v1.1.0",
+  "version": "v1.1.6",
   "release_status": "stable",
   "author": [
     "Julian Pawlowski <julian.pawlowski@gmail.com>"

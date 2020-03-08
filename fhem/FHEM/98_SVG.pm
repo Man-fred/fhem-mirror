@@ -49,6 +49,9 @@ sub SVG_getControlPoints($);
 sub SVG_calcControlPoints($$$$$$);
 
 my %SVG_devs;       # hash of from/to entries per device
+my $SVG_hdr = 'version="1.1" xmlns="http://www.w3.org/2000/svg" '.
+              'xmlns:xlink="http://www.w3.org/1999/xlink" '.
+              'data-origin="FHEM"';
 
 
 #####################################
@@ -185,7 +188,7 @@ SVG_getplotsize($)
 }
 
 sub
-SVG_isEmbed($)
+SVG_embed()
 {
   return AttrVal($FW_wname, "plotEmbed", 0);
 }
@@ -238,10 +241,16 @@ SVG_FwFn($$$$)
   if($pm eq "SVG") {
     $ret .= "<div class=\"SVGplot SVG_$d\">";
 
-    if(SVG_isEmbed($FW_wname)) {
+    my $embed = SVG_embed();
+    if($embed) {
       my ($w, $h) = split(",", SVG_getplotsize($d));
-      $ret .= "<embed src=\"$arg\" type=\"image/svg+xml\" " .
-            "width=\"$w\" height=\"$h\" name=\"$d\"/>\n";
+      if($embed == 1) {
+        $ret .= "<embed src='$arg' type='image/svg+xml' " .
+              "width='$w' height='$h' name='$d'/>\n";
+      } else {
+        $ret .= "<svg $SVG_hdr class='plotembed_2' data-src='$arg' ".
+                  "data-dev='$d' style='width:${w}px; height:${h}px'></svg>\n";
+      }
 
     } else {
       my $oret=$FW_RET; $FW_RET="";
@@ -745,7 +754,7 @@ SVG_readgplotfile($$$)
 
   my $specval = AttrVal($wl, "plotfunction", undef);
 
-  my $plotReplace = AttrVal($wl, "plotReplace", undef);
+  my $plotReplace = AttrVal($wl, "plotReplace", $FW_webArgs{plotReplace});
   my $pr;
   (undef, $pr) = parseParams($plotReplace,"\\s"," ") if($plotReplace);
   my $prSubst = sub($)
@@ -838,7 +847,7 @@ SVG_substcfg($$$$$$)
   my $gplot_script = join("", @{$cfg});
   $gplot_script .=  $plot if(!$splitret);
 
-  my $plotReplace = AttrVal($wl, "plotReplace", undef);
+  my $plotReplace = AttrVal($wl, "plotReplace", $FW_webArgs{plotReplace});
   if($plotReplace) {
     my ($list, $pr) = parseParams($plotReplace, "\\s"," ");
     for my $k (keys %$pr) {
@@ -880,8 +889,11 @@ SVG_substcfg($$$$$$)
 sub
 SVG_tspec(@)
 {
+  my $d=$_[3];
+  $d = 28 if($d==29 && $_[4]==1 && $_[5]%4);
+  $d = 30 if($d==31 && ($_[4] =~ /3|5|8|10/));
   return sprintf("%04d-%02d-%02d_%02d:%02d:%02d",
-                 $_[5]+1900,$_[4]+1,$_[3],$_[2],$_[1],$_[0]);
+                 $_[5]+1900,$_[4]+1,$d,$_[2],$_[1],$_[0]);
 }
 
 ##################
@@ -1005,7 +1017,7 @@ SVG_calcOffsets($$)
     }
     $l[4] += $off;
     $l[4] += 12, $l[5]-- if($l[4] < 0);
-    my @me = (31,28,31,30,31,30,31,31,30,31,30,31);
+    my @me = (31,29,31,30,31,30,31,31,30,31,30,31); # 29 is fixed in SVG_tspec
 
     if(SVG_Attr($FW_wname, $wl, "endPlotToday", undef)) {
       $sy = $ey = $l[5];
@@ -1018,7 +1030,6 @@ SVG_calcOffsets($$)
       $sy = $ey = $l[5];
       $sm = $em = $l[4];
       $sd = 1; $ed = $me[$l[4]];
-      $ed++ if($l[4]==1 && !(($sy+1900)%4)); # leap year
     }
     $SVG_devs{$d}{from} = SVG_tspec( 0, 0, 0,$sd,$sm,$sy);
     $SVG_devs{$d}{to}   = SVG_tspec(59,59,23,$ed,$em,$ey);
@@ -1081,9 +1092,9 @@ SVG_doShowLog($$$$;$)
 
     if($pm && $pm =~ m/SVG/) { # FW_fatal for SVG:
       $FW_RETTYPE = "image/svg+xml";
-      FW_pO '<svg xmlns="http://www.w3.org/2000/svg">';
-      FW_pO '<text x="20" y="20">'.$msg.'</text>';
-      FW_pO '</svg>';
+      FW_pO "<svg $SVG_hdr>";
+      FW_pO "<text x='20' y='20'>$msg</text>";
+      FW_pO "</svg>";
       return ($FW_RETTYPE, $FW_RET);
 
     } else {
@@ -1190,6 +1201,7 @@ SVG_doShowLog($$$$;$)
 
 }
 
+# Note: d is FileLog-Name if called from the FileLog details, else SVG-name
 sub
 SVG_getData($$$$$)
 {
@@ -1200,7 +1212,8 @@ SVG_getData($$$$$)
 
   foreach my $src (@{$srcDesc->{order}}) {
     my $s = $srcDesc->{src}{$src};
-    my $fname = ($src eq $defs{$d}{LOGDEVICE} ? $defs{$d}{LOGFILE} : "CURRENT");
+    my $fname = ($defs{$d}{LOGDEVICE} && $src eq $defs{$d}{LOGDEVICE} ?
+                $defs{$d}{LOGFILE} : "CURRENT");
     my $cmd = "get $src $fname INT $f $t ".$s->{arg};
     FW_fC($cmd, 1);
     if($showData) {
@@ -1387,15 +1400,14 @@ SVG_render($$$$$$$$$$)
 
   ######################
   # SVG Header
-  my $svghdr = 'version="1.1" xmlns="http://www.w3.org/2000/svg" '.
-               'xmlns:xlink="http://www.w3.org/1999/xlink" '.
-               "id='SVGPLOT_$name' $filter data-origin='FHEM'";
+  my $svghdr = "$SVG_hdr id='SVGPLOT_$name' $filter";
+  my $style =  "style='width:${ow}px; height:${oh}px;'";
   if(!$noHeader) {
     SVG_pO '<?xml version="1.0" encoding="UTF-8"?>';
     SVG_pO '<!DOCTYPE svg>';
-    SVG_pO "<svg $svghdr width=\"${ow}px\" height=\"${oh}px\">";
+    SVG_pO "<svg $svghdr width='${ow}px' height='${oh}px' $style>";
   } else {
-    SVG_pO "<svg $svghdr style='width:${ow}px; height:${oh}px;'>";
+    SVG_pO "<svg $svghdr $style>";
   }
 
   my $prf = AttrVal($parent_name, "stylesheetPrefix", "");
@@ -1768,7 +1780,9 @@ SVG_render($$$$$$$$$$)
 
     my $scale = "y".($axis)."scale"; $scale = "yscale" if( $axis == 1 );
     my $log = ""; $log = $conf{$scale} if( $conf{$scale} );
-    my $f_log = int($hmax{$a}) ? (SVG_log10($hmax{$a}) / $hmax{$a}) : 1;
+    my $f_log = (int($hmax{$a}) && $dh > 0) ? 
+                    ((SVG_log10($hmax{$a})-SVG_log10($hmin{$a})) / $dh) :
+                    1;
 
     # offsets
     my ($align,$display,$cll);
@@ -1809,8 +1823,8 @@ SVG_render($$$$$$$$$$)
     if($tic && $tic !~ m/mirror/) {
       $tic =~ s/^\((.*)\)$/$1/;   # Strip ()
       for(my $decimal = 0;
-          $decimal < ($log eq 'log'?SVG_log10($hmax{$a}):1);
-          $decimal++ ) {
+          $decimal <($log eq 'log'?SVG_log10($hmax{$a})-SVG_log10($hmin{$a}):1);
+          $decimal++) {
       foreach my $onetic (split(",", $tic)) {
         $onetic =~ s/^ *(.*) *$/$1/;
         my ($tlabel, $tvalue) = split(" ", $onetic);
@@ -1820,7 +1834,8 @@ SVG_render($$$$$$$$$$)
         $tlabel = $tvalue if( !$tlabel );
 
         $off2 = int($y+($hmax{$a}-$tvalue)*$hmul);
-        $off2 = int($y+($hmax{$a}-SVG_log10($tvalue)/$f_log)*$hmul)
+        $off2 = int($y+($hmax{$a}-
+                        (SVG_log10($tvalue)-SVG_log10($hmin{$a}))/$f_log)*$hmul)
                 if( $log eq 'log' );
         #-- tics
         SVG_pO "<polyline points=\"$off3,$off2 $off4,$off2\" $cll/>";
@@ -1842,13 +1857,18 @@ SVG_render($$$$$$$$$$)
     #-- tics automatically 
     } elsif( $hstep{$a}>0 ) {            
       for(my $decimal = 0;
-          $decimal < ($log eq 'log'?SVG_log10($hmax{$a}):1);
-          $decimal++ ) {
-      for(my $i = $hmin{$a}; $i <= $hmax{$a}; $i += $hstep{$a}) {
+          $decimal <($log eq 'log'?SVG_log10($hmax{$a})-SVG_log10($hmin{$a}):1);
+          $decimal++) {
+      for(my $i = ($log eq 'log' ? 0 : $hmin{$a});
+             $i <= $hmax{$a}; $i += $hstep{$a}) {
         my $i = $i / 10 ** $decimal;
-        $off2 = int($y+($hmax{$a}-$i)*$hmul);
-        $off2 = int($y+($hmax{$a}-SVG_log10($i)/$f_log)*$hmul)
-                if( $log eq 'log' );
+        if( $log eq 'log' ) {
+          next if( $i < $hmin{$a} );
+          $off2 = int($y + ($hmax{$a} -
+                    (SVG_log10($i) - SVG_log10($hmin{$a})) / $f_log) * $hmul);
+        } else {
+          $off2 = int($y+($hmax{$a}-$i)*$hmul);
+        }
         #-- tics
         SVG_pO "  <polyline points=\"$off3,$off2 $off4,$off2\" $cll/>";
         #--grids
@@ -1892,15 +1912,17 @@ SVG_render($$$$$$$$$$)
     my $xmul;
     $xmul = $w/($xmax-$xmin) if( $conf{xrange} );
     my $hmul = $h/($hmax{$a}-$min);
+    my $hfill = $hmul*$hmax{$a}; # Fill only to the 0-line, #108858
     my $ret = "";
     my ($dxp, $dyp) = ($hdx[$idx], $hdy[$idx]);
     SVG_pO "<!-- Warning: No data item $idx defined -->" if(!defined($dxp));
     next if(!defined($dxp));
 
-    my $f_log = int($hmax{$a}) ? (SVG_log10($hmax{$a}) / $hmax{$a}) : 1;
+    my $f_log = int($hmax{$a}) ? ((SVG_log10($hmax{$a}) -
+                        SVG_log10($hmin{$a})) / ($hmax{$a}-$hmin{$a})) : 1;
     if( $log eq 'log' ) {
       foreach my $i (1..int(@{$dxp})-1) {
-        $dyp->[$i] = SVG_log10($dyp->[$i]) / $f_log;
+        $dyp->[$i] = (SVG_log10($dyp->[$i])-SVG_log10($hmin{$a})) / $f_log;
       }
     }
 
@@ -1938,7 +1960,7 @@ SVG_render($$$$$$$$$$)
 
     } elsif($lType eq "steps" || $lType eq "fsteps" ) {
 
-      $ret .=  sprintf(" %d,%d", $x+$dxp->[0], $y+$h) if($isFill && @{$dxp});
+      $ret .=  sprintf(" %d,%d", $x+$dxp->[0],$y+$hfill) if($isFill && @{$dxp});
       if(@{$dxp} == 1) {
           my $y1 = $y+$h-($dyp->[0]-$min)*$hmul;
           $ret .=  sprintf(" %d,%d %d,%d %d,%d %d,%d",
@@ -1965,12 +1987,12 @@ SVG_render($$$$$$$$$$)
           }
         }
       }
-      $ret .=  sprintf(" %d,%d", $lx, $y+$h) if($isFill && $lx > -1);
+      $ret .=  sprintf(" %d,%d", $lx, $y+$hfill) if($isFill && $lx > -1);
 
       SVG_pO "<polyline $attributes $lStyle points=\"$ret\"/>";
 
     } elsif($lType eq "histeps" ) {
-      $ret .=  sprintf(" %d,%d", $x+$dxp->[0], $y+$h) if($isFill && @{$dxp});
+      $ret .=  sprintf(" %d,%d", $x+$dxp->[0],$y+$hfill) if($isFill && @{$dxp});
       if(@{$dxp} == 1) {
           my $y1 = $y+$h-($dyp->[0]-$min)*$hmul;
           $ret .=  sprintf(" %d,%d %d,%d %d,%d %d,%d",
@@ -1985,7 +2007,7 @@ SVG_render($$$$$$$$$$)
              $x1,$y1, ($x1+$x2)/2,$y1, ($x1+$x2)/2,$y2, $x2,$y2);
         }
       }
-      $ret .=  sprintf(" %d,%d", $lx, $y+$h) if($isFill && $lx > -1);
+      $ret .=  sprintf(" %d,%d", $lx, $y+$hfill) if($isFill && $lx > -1);
       SVG_pO "<polyline $attributes $lStyle points=\"$ret\"/>";
 
     } elsif( $lType eq "bars" ) {
@@ -2120,7 +2142,7 @@ SVG_render($$$$$$$$$$)
 
         if($i == 0) {
           if($doClose) {
-            $ret .= sprintf("M %d,%d L %d,%d $lt", $x1,$y+$h, $x1,$y1);
+            $ret .= sprintf("M %d,%d L %d,%d $lt", $x1,$y+$hfill, $x1,$y1);
           } else {
             $ret .= sprintf("M %d,%d $lt", $x1,$y1);
           }
@@ -2147,7 +2169,7 @@ SVG_render($$$$$$$$$$)
   
       #-- insert last point for filled line
       $ret .= sprintf(" %.1f,%.1f", $x1, $y1) if(($lt eq "T") && defined($x1));
-      $ret .= sprintf(" L %d,%d Z", $x1, $y+$h) if($doClose && defined($x1));
+      $ret .= sprintf(" L %d,%d Z", $x1,$y+$hfill) if($doClose && defined($x1));
 
       if($ret =~ m/^ (\d+),(\d+)/) { # just points, no M/L
         $ret = sprintf("M %d,%d $lt ", $1, $2).$ret;
@@ -2207,10 +2229,13 @@ SVG_render($$$$$$$$$$)
     $txtoff2 += $th;
   }
 
-  my $fnName = SVG_isEmbed($FW_wname) ? "parent.window.svg_init" : "svg_init";
-
-  SVG_pO "<script type='text/javascript'>if(typeof $fnName == 'function') ".
+  my $embed = SVG_embed();
+  if($embed != 2) {
+    my $fnName = $embed ? "parent.window.svg_init" : "svg_init";
+    SVG_pO "<script type='text/javascript'>if(typeof $fnName == 'function') ".
                 "$fnName('SVGPLOT_$name')</script>";
+  }
+
   SVG_pO "</svg>";
   return $SVG_RET;
 }
@@ -2615,13 +2640,11 @@ plotAsPng(@)
       enclosed in "" or {}. value will be evaluated as a perl expression, if it
       is enclosed in {}.
       <br>
-      In the .gplot file &lt;key&gt; is replaced with the corresponding value,
-      the evaluation of {} takes place <i>after</i> the input file is
-      processed, so $data{min1} etc can be used.
-      <br>
-      %key% will be repaced <i>before</i> the input file is processed, this
-      expression can be used to replace parameters for the input processing.
-    </li><br>
+      In the .gplot file &lt;key&gt; and %key% will be replaced with the
+      corresponding value. The evaluation of &lt;key&gt; takes place after the
+      input file is processed, so e.g. $data{min1} can be used in the title.
+      %key% will be repaced before the input file is processed, this expression
+      can be used to replace parameters for the input processing.  </li><br>
 
     <li><a href="#plotsize">plotsize</a></li><br>
     <li><a href="#plotWeekStartDay">plotWeekStartDay</a></li><br>
@@ -2854,14 +2877,11 @@ plotAsPng(@)
       enthalten, falls es in "" oder {} eingeschlossen ist. Wert wird als
       perl-Ausdruck ausgewertet, falls es in {} eingeschlossen ist.
       <br>
-      In der .gplot Datei werden &lt;Name&gt; Zeichenketten durch den
-      zugehoerigen Wert ersetzt, die Auswertung von {} Ausdr&uuml;cken erfolgt
-      <i>nach</i> dem die Daten ausgewertet wurden, d.h. man kann hier
-      $data{min1},etc verwenden.
-      <br>
-      Bei %Name% erfolgt die Ersetzung <i>vor</i> der Datenauswertung, das kann
-      man verwenden, um Parameter f&uuml;r die Auswertung zu ersetzen.
-    </li><br>
+      In der .gplot Datei wird &lt;Name&gt; und %Name% durch den
+      zugeh&ouml;rigen Wert ersetzt, wobei &lt;Name&gt; nach der Extraktion der
+      Logdaten ersetzt wird, damit man auf Werte wie $data{min1} zugreifen
+      kann, und %Name% davor, damit man die Regeln in der .gplot Datei f&uuml;r
+      die Extraktion anpassen kann.</li><br>
 
     <li><a href="#plotsize">plotsize</a></li><br>
     <li><a href="#plotWeekStartDay">plotWeekStartDay</a></li><br>

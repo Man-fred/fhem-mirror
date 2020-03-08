@@ -35,6 +35,13 @@ eval "use FHEM::Meta;1" or my $modMetaAbsent = 1;
 
 # Versions History intern
 our %SSCamSTRM_vNotesIntern = (
+  "2.10.2" => "08.11.2019  undef \$link in SSCamSTRM_FwFn / SSCamSTRM_AsHtml to save memory ",
+  "2.10.1" => "18.10.2019  set parentState initial in Define, Forum: https://forum.fhem.de/index.php/topic,45671.msg985136.html#msg985136 ",
+  "2.10.0" => "21.09.2019  new attribute hideAudio ",
+  "2.9.0"  => "19.09.2019  new attribute noLink ",
+  "2.8.0"  => "09.09.2019  new attribute hideButtons ",
+  "2.7.0"  => "15.07.2019  FTUI support, new attributes htmlattrFTUI, hideDisplayNameFTUI, ptzButtonSize, ptzButtonSizeFTUI ",
+  "2.6.0"  => "21.06.2019  GetFn -> get <name> html ",
   "2.5.0"  => "27.03.2019  add Meta.pm support ",
   "2.4.0"  => "24.02.2019  support for \"genericStrmHtmlTag\" in streaming device MODEL generic ",
   "2.3.0"  => "04.02.2019  SSCamSTRM_Rename / SSCamSTRM_Copy added, Streaming device can now be renamed or copied ",
@@ -61,11 +68,9 @@ our %SSCamSTRM_vNotesIntern = (
 );
 
 # Standardvariablen und Forward-Declaration
-sub SSCam_ptzpanel($;$$);
-sub SSCam_StreamDev($$$);
+sub SSCam_ptzpanel(@);
+sub SSCam_StreamDev($$$;$);
 sub SSCam_getclhash($;$$);
-
-# my $hlsjs = "hls.js";      # hls.js Release von Seite https://github.com/video-dev/hls.js/releases
 
 ################################################################
 sub SSCamSTRM_Initialize($) {
@@ -75,16 +80,24 @@ sub SSCamSTRM_Initialize($) {
   
   $hash->{DefFn}              = "SSCamSTRM_Define";
   $hash->{SetFn}              = "SSCamSTRM_Set";
+  $hash->{GetFn}              = "SSCamSTRM_Get";
   $hash->{AttrList}           = "autoRefresh:selectnumbers,120,0.2,1800,0,log10 ".
                                 "autoRefreshFW:$fwd ".
                                 "disable:1,0 ". 
                                 "forcePageRefresh:1,0 ".
                                 "genericStrmHtmlTag ".
                                 "htmlattr ".
+                                "htmlattrFTUI ".
+                                "hideAudio:1,0 ".
+                                "hideButtons:1,0 ".
                                 "hideDisplayName:1,0 ".
+                                "hideDisplayNameFTUI:1,0 ".
+                                "noLink:1,0 ".
                                 "popupWindowSize ".
                                 "popupStreamFW:$fwd ".
                                 "popupStreamTo:OK,1,2,3,4,5,6,7,8,9,10,15,20,25,30,40,50,60 ".
+                                "ptzButtonSize:selectnumbers,50,5,100,0,lin ".
+                                "ptzButtonSizeFTUI:selectnumbers,50,5,100,0,lin ".
                                 $readingFnAttributes;
   $hash->{RenameFn}           = "SSCamSTRM_Rename";
   $hash->{CopyFn}             = "SSCamSTRM_Copy";
@@ -118,7 +131,8 @@ sub SSCamSTRM_Define($$) {
   # Versionsinformationen setzen
   SSCamSTRM_setVersionInfo($hash);
   
-  readingsSingleUpdate($hash,"state", "initialized", 1);      # Init für "state" 
+  readingsSingleUpdate($hash,"state", "initialized", 1);            # Init für "state" 
+  readingsSingleUpdate($hash,"parentState", "initialized", 1);      # Init für "parentState" Forum: https://forum.fhem.de/index.php/topic,45671.msg985136.html#msg985136
   
 return undef;
 }
@@ -134,7 +148,10 @@ sub SSCamSTRM_Rename($$) {
 return;
 }
 
-################################################################
+###############################################################
+#                  SSCamSTRM Copy
+#  passt die Deviceparameter bei kopierten Device an
+###############################################################
 sub SSCamSTRM_Copy($$) {
 	my ($old_name,$new_name) = @_;
     my $hash = $defs{$new_name};
@@ -143,6 +160,27 @@ sub SSCamSTRM_Copy($$) {
     $hash->{LINK} =~ s/$old_name/$new_name/g;
 
 return;
+}
+
+###############################################################
+#                  SSCamSTRM Get
+###############################################################
+sub SSCamSTRM_Get($@) {
+ my ($hash, @a) = @_;
+ return "\"get X\" needs at least an argument" if ( @a < 2 );
+ my $name = shift @a;
+ my $cmd  = shift @a;
+       
+ if ($cmd eq "html") {
+     return SSCamSTRM_AsHtml($hash);
+ } 
+ 
+ if ($cmd eq "ftui") {
+     return SSCamSTRM_AsHtml($hash,"ftui");
+ }
+ 
+return undef;
+return "Unknown argument $cmd, choose one of html:noArg";
 }
 
 ################################################################
@@ -243,15 +281,9 @@ sub SSCamSTRM_FwFn($;$$$) {
   RemoveInternalTimer($hash);
   $hash->{HELPER}{FW} = $FW_wname;
        
-  $link = AnalyzePerlCommand(undef, $link) if($link =~ m/^{(.*)}$/s);
-  my $show = $defs{$hash->{PARENT}}->{HELPER}{ACTSTRM} if($hash->{MODEL} =~ /switched/);
-  $show = $show?"($show)":"";
-
-  my $alias = AttrVal($d, "alias", $d);                            # Linktext als Aliasname oder Devicename setzen
-  my $dlink = "<a href=\"/fhem?detail=$d\">$alias</a>"; 
+  $link = AnalyzePerlCommand(undef, $link) if($link =~ m/^{(.*)}$/s); 
   
   my $ret = "";
-  $ret .= "<span>$dlink $show</span><br>"  if(!AttrVal($d,"hideDisplayName",0));
   if(IsDisabled($d)) {
       if(AttrVal($d,"hideDisplayName",0)) {
           $ret .= "Stream-device <a href=\"/fhem?detail=$d\">$d</a> is disabled";
@@ -268,6 +300,8 @@ sub SSCamSTRM_FwFn($;$$$) {
       InternalTimer(gettimeofday()+$al, "SSCamSTRM_refresh", $hash, 0);
       Log3($d, 5, "$d - next start of autoRefresh: ".FmtDateTime(gettimeofday()+$al));
   }
+  
+  undef $link;
 
 return $ret;
 }
@@ -327,6 +361,40 @@ sub SSCamSTRM_setVersionInfo($) {
 return;
 }
 
+################################################################
+#    Grafik als HTML zurück liefern    (z.B. für Widget)
+################################################################
+sub SSCamSTRM_AsHtml($;$) { 
+  my ($hash,$ftui) = @_;
+  my $name         = $hash->{NAME};
+  my $link         = $hash->{LINK};
+  
+  if ($ftui && $ftui eq "ftui") {
+      # Aufruf aus TabletUI -> FW_cmd ersetzen gemäß FTUI Syntax
+      my $s = substr($link,0,length($link)-2);
+      $link = $s.",'$ftui')}";
+  }
+  
+  $link = AnalyzePerlCommand(undef, $link) if($link =~ m/^{(.*)}$/s); 
+  
+  my $ret = "<html>";
+  if(IsDisabled($name)) {  
+      if(AttrVal($name,"hideDisplayName",0)) {
+          $ret .= "Stream-device <a href=\"/fhem?detail=$name\">$name</a> is disabled";
+      } else {
+          $ret .= "Stream-device is disabled";
+      }
+
+  } else {
+	  $ret .= $link;  
+  }
+  
+  $ret .= "</html>";
+  undef $link;
+  
+return $ret;
+}
+
 1;
 
 =pod
@@ -337,27 +405,35 @@ return;
 <a name="SSCamSTRM"></a>
 <h3>SSCamSTRM</h3>
 <br>
-The module SSCamSTRM is a special device module synchronized to the SSCam module. It is used for definition of
-Streaming-Devices. <br>
-Dependend of the Streaming-Device state, different buttons are provided to start actions:
-  <ul>   
-    <table>  
-    <colgroup> <col width=25%> <col width=75%> </colgroup>
-      <tr><td> Switch off      </td><td>- stops a running playback </td></tr>
-      <tr><td> Refresh         </td><td>- refresh a view (no page reload) </td></tr>
-      <tr><td> Restart         </td><td>- restart a running content (e.g. a HLS-Stream) </td></tr>
-      <tr><td> MJPEG           </td><td>- starts a MJPEG Livestream </td></tr>
-      <tr><td> HLS             </td><td>- starts HLS (HTTP Live Stream) </td></tr>
-      <tr><td> Last Record     </td><td>- playback the last recording as iFrame </td></tr>
-      <tr><td> Last Rec H.264  </td><td>- playback the last recording if available as H.264 </td></tr>
-      <tr><td> Last Rec MJPEG  </td><td>- playback the last recording if available as MJPEG </td></tr>
-      <tr><td> Last SNAP       </td><td>- show the last snapshot </td></tr>
-      <tr><td> Start Recording </td><td>- starts an endless recording </td></tr>
-      <tr><td> Stop Recording  </td><td>- stopps the recording </td></tr>
-      <tr><td> Take Snapshot   </td><td>- take a snapshot </td></tr>
-    </table>
-   </ul>     
-   <br>
+  <ul>
+  The module SSCamSTRM is a special device module synchronized to the SSCam module. It is used for definition of
+  Streaming-Devices. <br>
+  Dependend of the Streaming-Device state, different buttons are provided to start actions:
+    <ul>   
+      <table>  
+      <colgroup> <col width=25%> <col width=75%> </colgroup>
+        <tr><td> Switch off      </td><td>- stops a running playback </td></tr>
+        <tr><td> Refresh         </td><td>- refresh a view (no page reload) </td></tr>
+        <tr><td> Restart         </td><td>- restart a running content (e.g. a HLS-Stream) </td></tr>
+        <tr><td> MJPEG           </td><td>- starts a MJPEG Livestream </td></tr>
+        <tr><td> HLS             </td><td>- starts HLS (HTTP Live Stream) </td></tr>
+        <tr><td> Last Record     </td><td>- playback the last recording as iFrame </td></tr>
+        <tr><td> Last Rec H.264  </td><td>- playback the last recording if available as H.264 </td></tr>
+        <tr><td> Last Rec MJPEG  </td><td>- playback the last recording if available as MJPEG </td></tr>
+        <tr><td> Last SNAP       </td><td>- show the last snapshot </td></tr>
+        <tr><td> Start Recording </td><td>- starts an endless recording </td></tr>
+        <tr><td> Stop Recording  </td><td>- stopps the recording </td></tr>
+        <tr><td> Take Snapshot   </td><td>- take a snapshot </td></tr>
+      </table>
+     </ul>     
+     <br>
+   
+  <b>Integration into FHEM TabletUI: </b> <br><br>
+  There is a widget provided for integration of SSCam-Streaming devices into FTUI. For further information please be informed by the
+  (german) FHEM Wiki article: <br>
+   <a href="https://wiki.fhem.de/wiki/FTUI_Widget_f%C3%BCr_SSCam_Streaming_Devices_(SSCamSTRM)">FTUI Widget für SSCam Streaming Devices (SSCamSTRM)</a>.
+  <br><br>
+  </ul>
 
 <ul>
   <a name="SSCamSTRMdefine"></a>
@@ -390,7 +466,17 @@ Dependend of the Streaming-Device state, different buttons are provided to start
   <br>
   
   <a name="SSCamSTRMget"></a>
-  <b>Get</b> <ul>N/A</ul><br>
+  <b>Get</b> 
+  <ul>
+    <br>
+    <ul>
+      <li><b> get &lt;name&gt; html </b> </li>  
+      The stream object (camera live view, snapshots or replay) is fetched as HTML-code and depicted. 
+    </ul>
+    <br>
+    
+    <br>
+  </ul>
   
   <a name="SSCamSTRMattr"></a>
   <b>Attributes</b>
@@ -453,9 +539,27 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
     <br><br>
     </li>
     
+    <a name="hideAudio"></a>
+    <li><b>hideAudio</b><br>
+      Hide the control block for audio playback in the footer.    
+    </li>
+    <br>
+    
+    <a name="hideButtons"></a>
+    <li><b>hideButtons</b><br>
+      Hide the buttons in the footer. It has no impact for streaming devices of type "switched".    
+    </li>
+    <br>
+    
     <a name="hideDisplayName"></a>
     <li><b>hideDisplayName</b><br>
       Hide the device/alias name (link to detail view).     
+    </li>
+    <br>
+    
+    <a name="hideDisplayNameFTUI"></a>
+    <li><b>hideDisplayNameFTUI</b><br>
+      Hide the device/alias name (link to detail view) in FHEM TabletUI.     
     </li>
     <br>
     
@@ -465,8 +569,25 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
       <br><br>
       <ul>
         <b>Example: </b><br>
-        attr &lt;name&gt; htmlattr width="480" height="560" <br>
+        attr &lt;name&gt; htmlattr width="580" height="460" <br>
       </ul>
+    </li>
+    <br>
+    
+    <a name="htmlattrFTUI"></a>
+    <li><b>htmlattrFTUI</b><br>
+      Additional HTML tags to manipulate the streaming device in TabletUI. 
+      <br><br>
+      <ul>
+        <b>Example: </b><br>
+        attr &lt;name&gt; htmlattr width="580" height="460" <br>
+      </ul>
+    </li>
+    <br>
+    
+    <a name="noLink"></a>
+    <li><b>noLink</b><br>
+      The device name or alias doesn't contain a link to the detail device view. 
     </li>
     <br>
     
@@ -502,6 +623,18 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
         attr &lt;name&gt; popupWindowSize width="600" height="425"  <br>
       </ul>
     </li>
+    <br>
+    
+    <a name="ptzButtonSize"></a>
+    <li><b>ptzButtonSize</b><br>
+      Specifies the PTZ-panel button size (in %).
+    </li>
+    <br>
+    
+    <a name="ptzButtonSizeFTUI"></a>
+    <li><b>ptzButtonSizeFTUI</b><br>
+      Specifies the PTZ-panel button size used in a Tablet UI (in %).
+    </li>
   
   </ul>
   </ul>
@@ -513,28 +646,35 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
 
 <a name="SSCamSTRM"></a>
 <h3>SSCamSTRM</h3>
-
-<br>
-Das Modul SSCamSTRM ist ein mit SSCam abgestimmtes Gerätemodul zur Definition von Streaming-Devices. <br>
-Abhängig vom Zustand des Streaming-Devices werden zum Start von Aktionen unterschiedliche Drucktasten angeboten:
-  <ul>   
-    <table>  
-    <colgroup> <col width=25%> <col width=75%> </colgroup>
-      <tr><td> Switch off      </td><td>- stoppt eine laufende Wiedergabe </td></tr>
-      <tr><td> Refresh         </td><td>- auffrischen einer Ansicht (kein Browser Seiten-Reload) </td></tr>
-      <tr><td> Restart         </td><td>- neu starten eines laufenden Contents (z.B. eines HLS-Streams) </td></tr>
-      <tr><td> MJPEG           </td><td>- Startet MJPEG Livestream </td></tr>
-      <tr><td> HLS             </td><td>- Startet HLS (HTTP Live Stream) </td></tr>
-      <tr><td> Last Record     </td><td>- spielt die letzte Aufnahme als iFrame </td></tr>
-      <tr><td> Last Rec H.264  </td><td>- spielt die letzte Aufnahme wenn als H.264 vorliegend </td></tr>
-      <tr><td> Last Rec MJPEG  </td><td>- spielt die letzte Aufnahme wenn als MJPEG vorliegend </td></tr>
-      <tr><td> Last SNAP       </td><td>- zeigt den letzten Snapshot </td></tr>
-      <tr><td> Start Recording </td><td>- startet eine Endlosaufnahme </td></tr>
-      <tr><td> Stop Recording  </td><td>- stoppt eine Aufnahme </td></tr>
-      <tr><td> Take Snapshot   </td><td>- löst einen Schnappschuß aus </td></tr>
-    </table>
-   </ul>     
-   <br>
+<ul>
+  <br>
+  Das Modul SSCamSTRM ist ein mit SSCam abgestimmtes Gerätemodul zur Definition von Streaming-Devices. <br>
+  Abhängig vom Zustand des Streaming-Devices werden zum Start von Aktionen unterschiedliche Drucktasten angeboten:
+    <ul>   
+      <table>  
+      <colgroup> <col width=25%> <col width=75%> </colgroup>
+        <tr><td> Switch off      </td><td>- stoppt eine laufende Wiedergabe </td></tr>
+        <tr><td> Refresh         </td><td>- auffrischen einer Ansicht (kein Browser Seiten-Reload) </td></tr>
+        <tr><td> Restart         </td><td>- neu starten eines laufenden Contents (z.B. eines HLS-Streams) </td></tr>
+        <tr><td> MJPEG           </td><td>- Startet MJPEG Livestream </td></tr>
+        <tr><td> HLS             </td><td>- Startet HLS (HTTP Live Stream) </td></tr>
+        <tr><td> Last Record     </td><td>- spielt die letzte Aufnahme als iFrame </td></tr>
+        <tr><td> Last Rec H.264  </td><td>- spielt die letzte Aufnahme wenn als H.264 vorliegend </td></tr>
+        <tr><td> Last Rec MJPEG  </td><td>- spielt die letzte Aufnahme wenn als MJPEG vorliegend </td></tr>
+        <tr><td> Last SNAP       </td><td>- zeigt den letzten Snapshot </td></tr>
+        <tr><td> Start Recording </td><td>- startet eine Endlosaufnahme </td></tr>
+        <tr><td> Stop Recording  </td><td>- stoppt eine Aufnahme </td></tr>
+        <tr><td> Take Snapshot   </td><td>- löst einen Schnappschuß aus </td></tr>
+      </table>
+     </ul>     
+     <br>
+   
+    <b>Integration in FHEM TabletUI: </b> <br><br>
+    Zur Integration von SSCam Streaming Devices (Typ SSCamSTRM) wird ein Widget bereitgestellt. 
+	Für weitere Information dazu bitte den Artikel im Wiki durchlesen: <br>
+    <a href="https://wiki.fhem.de/wiki/FTUI_Widget_f%C3%BCr_SSCam_Streaming_Devices_(SSCamSTRM)">FTUI Widget für SSCam Streaming Devices (SSCamSTRM)</a>.
+    <br><br><br>
+</ul>
 
 <ul>
   <a name="SSCamSTRMdefine"></a>
@@ -568,7 +708,18 @@ Abhängig vom Zustand des Streaming-Devices werden zum Start von Aktionen unters
   <br>
   
   <a name="SSCamSTRMget"></a>
-  <b>Get</b> <ul>N/A</ul><br>
+  <b>Get</b> 
+  <ul>
+    <br>
+    <ul>
+      <li><b> get &lt;name&gt; html </b> </li>  
+      Das eingebundene Streamobjekt (Kamera Live View, Schnappschüsse oder Wiedergabe einer Aufnahme) wird als HTML-code 
+      abgerufen und dargestellt. 
+    </ul>
+    <br>
+    
+    <br>
+  </ul>
 
   <a name="SSCamSTRMattr"></a>
   <b>Attribute</b>
@@ -629,7 +780,19 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
       Devicenamen bzw. das Attribut "popupWindowSize" im Streaming-Device, welches die Größe eines Popup-Windows festlegt.    
     </ul>
     <br><br>
-    </li>    
+    </li> 
+    
+    <a name="hideAudio"></a>
+    <li><b>hideAudio</b><br>
+      Verbirgt die Steuerungsbereich für die Audiowiedergabe in der Fußzeile.    
+    </li>
+    <br>  
+
+    <a name="hideButtons"></a>
+    <li><b>hideButtons</b><br>
+      Verbirgt die Drucktasten in der Fußzeile. Dieses Attribut hat keinen Einfluß bei Streaming-Devices vom Typ "switched".    
+    </li>
+    <br>    
     
     <a name="hideDisplayName"></a>
     <li><b>hideDisplayName</b><br>
@@ -637,14 +800,37 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
     </li>
     <br>
     
+    <a name="hideDisplayNameFTUI"></a>
+    <li><b>hideDisplayNameFTUI</b><br>
+      Verbirgt den Device/Alias-Namen (Link zur Detailansicht) im TabletUI.    
+    </li>
+    <br>
+    
     <a name="htmlattr"></a>
     <li><b>htmlattr</b><br>
-      Zusätzliche HTML Tags zur Darstellungsänderung im Streaming Device. 
+      Zusätzliche HTML Tags zur Darstellung im Streaming Device. 
       <br><br>
       <ul>
         <b>Beispiel: </b><br>
-        attr &lt;name&gt; htmlattr width="480" height="560"  <br>
+        attr &lt;name&gt; htmlattr width="580" height="460"  <br>
       </ul>
+    </li>
+    <br>
+    
+    <a name="htmlattrFTUI"></a>
+    <li><b>htmlattrFTUI</b><br>
+      Zusätzliche HTML Tags zur Darstellung des Streaming Device im TabletUI. 
+      <br><br>
+      <ul>
+        <b>Beispiel: </b><br>
+        attr &lt;name&gt; htmlattr width="580" height="460"  <br>
+      </ul>
+    </li>
+    <br>
+    
+    <a name="noLink"></a>
+    <li><b>noLink</b><br>
+      Der Devicename oder Alias enthält keinen Link zur Detailansicht. 
     </li>
     <br>
     
@@ -678,6 +864,18 @@ attr &lt;name&gt; genericStrmHtmlTag &lt;img $HTMLATTR
         <b>Beispiel: </b><br>
         attr &lt;name&gt; popupWindowSize width="600" height="425"  <br>
       </ul>
+    </li>
+    <br>
+    
+    <a name="ptzButtonSize"></a>
+    <li><b>ptzButtonSize</b><br>
+      Legt die Größe der Drucktasten des PTZ Paneels fest (in %).
+    </li>
+    <br>
+    
+    <a name="ptzButtonSizeFTUI"></a>
+    <li><b>ptzButtonSizeFTUI</b><br>
+      Legt die Größe der Drucktasten des PTZ Paneels in einem Tablet UI fest (in %).
     </li>
 
   </ul>

@@ -1,4 +1,5 @@
 
+
 # $Id$
 
 # "Hue Personal Wireless Lighting" is a trademark owned by Koninklijke Philips Electronics N.V.,
@@ -22,6 +23,7 @@ use Time::Local;
 #require "30_HUEBridge.pm";
 #require "$attr{global}{modpath}/FHEM/30_HUEBridge.pm";
 
+use vars qw($devcount);   # Maximum device number, used for storing
 use vars qw(%FW_webArgs); # all arguments specified in the GET
 
 my %hueModels = (
@@ -98,6 +100,10 @@ my %hueModels = (
   LLM012 => {name => 'Color Temperature Module' ,type => 'Color temperature light' ,subType => 'ctdimmer', },
   LWL001 => {name => 'LivingWhites Outlet'      ,type => 'Dimmable plug-in unit'   ,subType => 'dimmer',
                                                                                     icon => 'hue_filled_outlet', },
+  LOM001 => {name => 'Hue Smart Plug'           ,type => 'On/Off plug-in unit'     ,subType => 'switch',
+                                                                                    icon => 'hue_filled_plug', },
+  LOM002 => {name => 'Hue Smart Plug'           ,type => 'On/Off plug-in unit'     ,subType => 'switch',
+                                                                                    icon => 'hue_filled_plug', },
 
   RWL020    => {name => 'Hue Dimmer Switch'     ,type => 'ZLLSwitch'               ,subType => 'sensor',
                                                                                     icon => 'hue_filled_hds', },
@@ -178,7 +184,8 @@ sub HUEDevice_Initialize($)
                       "transitiontime ".
                       "model:".join(",", sort map { $_ =~ s/ /#/g ;$_} keys %hueModels)." ".
                       "setList:textField-long ".
-                      "subType:extcolordimmer,colordimmer,ctdimmer,dimmer,switch ".
+                      "configList:textField-long ".
+                      "subType:extcolordimmer,colordimmer,ctdimmer,dimmer,switch,blind ".
                       $readingFnAttributes;
 
   #$hash->{FW_summaryFn} = "HUEDevice_summaryFn";
@@ -200,6 +207,18 @@ HUEDevice_devStateIcon($)
   return undef if( !$hash );
   my $name = $hash->{NAME};
 
+  return ".*:light_question:toggle" if( !$hash->{helper}{reachable} );
+  return ".*:light_question:toggle" if( ReadingsVal($name, 'mode', 'homeautomation') ne 'homeautomation' );
+
+  my $pct = ReadingsVal($name, 'pct', 100);
+  my $subtype = AttrVal($name, 'subType', 'extcolordimmer' );
+
+  if( $subtype eq 'blind' ) {
+    my $p = int(10-$pct/10)*10;
+    return ".*:fts_window_2w" if( $p == 0 );
+    return ".*:fts_shutter_$p";
+  }
+
   if( $hash->{helper}->{devtype} && $hash->{helper}->{devtype} eq 'G' ) {
     if( $hash->{IODev} ) {
       my $createGroupReadings = AttrVal($hash->{IODev}{NAME},"createGroupReadings",undef);
@@ -207,7 +226,6 @@ HUEDevice_devStateIcon($)
         return undef if( $createGroupReadings && !AttrVal($hash->{NAME},"createGroupReadings", 1) );
         return undef if( !$createGroupReadings && !AttrVal($hash->{NAME},"createGroupReadings", undef) );
 
-        return ".*:light_question:toggle" if( !$hash->{helper}{reachable} );
 
         return ".*:off:toggle" if( ReadingsVal($name,"onoff","0") eq "0" );
 
@@ -227,22 +245,14 @@ HUEDevice_devStateIcon($)
 
   return undef if( $hash->{helper}->{devtype} );
 
-  return ".*:light_question:toggle" if( !$hash->{helper}{reachable} );
-
   return ".*:off:toggle" if( ReadingsVal($name,"state","off") eq "off" );
 
-  my $pct = ReadingsVal($name,"pct","100");
   my $s = $dim_values{int($pct/7)};
   $s="on" if( $pct eq "100" );
 
   return ".*:$s:toggle" if( AttrVal($name, "model", "") eq "LWL001" );
-  return ".*:$s:toggle" if( AttrVal($name, "subType", "") eq "dimmer" );
-  return ".*:$s:toggle" if( AttrVal($name, "subType", "") eq "switch" );
-
-  #return ".*:$s:toggle" if( AttrVal($name, "model", "") eq "LWB001" );
-  #return ".*:$s:toggle" if( AttrVal($name, "model", "") eq "LWB003" );
-  #return ".*:$s:toggle" if( AttrVal($name, "model", "") eq "LWB004" );
-
+  return ".*:$s:toggle" if( $subtype eq "dimmer" );
+  return ".*:$s:toggle" if( $subtype eq "switch" );
 
   return ".*:$s@#".CommandGet("","$name RGB").":toggle" if( $pct < 100 && AttrVal($name, "color-icons", 0) == 2 );
   return ".*:on@#".CommandGet("","$name rgb").":toggle" if( AttrVal($name, "color-icons", 0) != 0 );
@@ -260,8 +270,94 @@ HUEDevice_summaryFn($$$$)
   return HUEDevice_devStateIcon($hash);
 }
 
-sub HUEDevice_Define($$)
+sub
+HUEDevice_IODevChanged($$$;$)
 {
+  my ($hash,$old,$new, $new_id) = @_;
+  $hash = $defs{$hash} if( ref($hash) ne 'HASH' );
+  my $name = $hash->{NAME};
+
+  if( $hash->{TYPE} ne 'HUEDevice' ) {
+    Log3 $name, 1, "$name: can't change IODev for TYPE $hash->{TYPE}";
+    return undef;
+  }
+  if( $new_id && $hash->{helper}->{devtype} ) {
+    Log3 $name, 1, "$name: can't change IODev for groups and sensors";
+    return undef;
+  }
+
+  $old = AttrVal($name, "IODev", undef) if( !$old );
+
+  my $code = $hash->{ID};
+  $code = $old ."-". $code if( $old );
+
+  delete $modules{HUEDevice}{defptr}{$code};
+
+  AssignIoPort($hash,$new);
+  if( defined($hash->{IODev}) ) {
+    Log3 $name, 3, "$name: I/O device is " . $hash->{IODev}->{NAME};
+  } else {
+    Log3 $name, 1, "$name: no I/O device";
+  }
+  $new = $hash->{IODev}->{NAME} if( defined($hash->{IODev}) );
+
+  $hash->{ID} = $new_id if( defined($new_id) );
+
+  $code = $hash->{ID};
+  $code = $new ."-". $code if( $new );
+  $modules{HUEDevice}{defptr}{$code} = $hash;
+
+  if( $old ) {
+    if( $new ) {
+      $hash->{DEF} =~ s/IODev=$old/IODev=$new/;
+    } else {
+      $hash->{DEF} =~ s/IODev=$old//;
+    }
+  } elsif( $new ) {
+    $hash->{DEF} .= " IODev=$new"
+  }
+
+  $hash->{NR} = $devcount++ if( $new_id && $new && $defs{$new}->{NR} > $hash->{NR} );
+  $hash->{DEF} =~ s/[^\s]+/$new_id/ if( $new_id );
+
+  $hash->{DEF} =~ s/  / /g;
+
+  addStructChange( 'modify', $name, "$name $hash->{DEF}");
+
+  return $new;
+}
+
+sub
+HUEDevice_moveToBridge($$$) {
+  my ($serial, $new, $new_id) = @_;
+
+  my $found;
+
+  return $found if( !$serial );
+  return $found if( !$new_id );
+
+  foreach my $hash ( values %{$modules{HUEDevice}{defptr}} ) {
+    next if( !$hash->{uniqueid} );
+    next if( $hash->{helper}{devtype} );
+    next if( $serial ne $hash->{uniqueid} );
+
+    my $name = $hash->{NAME};
+    my $old = AttrVal( $name, 'IODev', '<unknown>' );
+
+    Log3 $name, 2, "moving $name [$serial] from $old to $new";
+
+    HUEDevice_IODevChanged($hash, undef, $new, $new_id);
+    CommandSave(undef,undef) if( AttrVal( "autocreate", "autosave", 1 ) );
+
+    $found = 1;
+    last;
+    }
+
+  return $found;
+}
+
+sub
+HUEDevice_Define($$) {
   my ($hash, $def) = @_;
 
   return $@ unless ( FHEM::Meta::SetInternals($hash) );
@@ -298,13 +394,7 @@ sub HUEDevice_Define($$)
 
   $hash->{ID} = $hash->{helper}->{devtype}.$id;
 
-  AssignIoPort($hash,$iodev) if( !$hash->{IODev} );
-  if(defined($hash->{IODev})) {
-    Log3 $name, 3, "$name: I/O device is " . $hash->{IODev}->{NAME};
-  } else {
-    Log3 $name, 1, "$name: no I/O device";
-  }
-  $iodev = $hash->{IODev}->{NAME} if( defined($hash->{IODev}) );
+  $iodev = HUEDevice_IODevChanged( $hash, undef, $iodev ) if( !$hash->{IODev} );
 
   my $code = $hash->{ID};
   $code = $iodev ."-". $code if( defined($iodev) );
@@ -344,6 +434,10 @@ sub HUEDevice_Define($$)
 
     $hash->{helper}{pct} = -1;
     $hash->{helper}{rgb} = "";
+
+    $hash->{helper}{battery} = -1;
+
+    $hash->{helper}{mode} = '';
 
     $attr{$name}{devStateIcon} = '{(HUEDevice_devStateIcon($name),"toggle")}' if( !defined( $attr{$name}{devStateIcon} ) );
 
@@ -394,7 +488,7 @@ sub HUEDevice_Undefine($$)
   RemoveInternalTimer($hash);
 
   my $code = $hash->{ID};
-  $code = $hash->{IODev}->{NAME} ."-". $code if( defined($hash->{IODev}->{NAME}) );
+  $code = $hash->{IODev}->{NAME} ."-". $code if( defined($hash->{IODev}) );
 
   delete($modules{HUEDevice}{defptr}{$code});
 
@@ -425,9 +519,22 @@ HUEDevice_SetParam($$@)
     $cmd = 'bri';
   }
 
-  if($cmd eq "pct" && $value == 0 ) {
-    $cmd = "off";
-    $value = $value2;
+  my $subtype = "extcolordimmer";
+  if( $name ) {
+    $subtype = AttrVal($name, "subType", $subtype);
+    if( $cmd eq 'up' ) {
+      $cmd = 'pct';
+      $value = 100;
+
+    } elsif( $cmd eq 'down' ) {
+      $cmd = 'pct';
+      $value = 0;
+
+    } elsif( $cmd eq 'pct' && $value == 0 && $subtype ne 'blind' ) {
+      $cmd = "off";
+      $value = $value2;
+
+    }
   }
 
   if($cmd eq 'on') {
@@ -442,6 +549,10 @@ HUEDevice_SetParam($$@)
     $obj->{'transitiontime'} = $value * 10 if( defined($value) );
 
   } elsif($cmd eq "pct") {
+    if( $subtype  eq 'blind' ) {
+      $obj->{'pct'}  = int($value);
+    }
+
     my $bri;
     if( $value > 50 ) {
       $bri = 2.57 * ($value-50) + 128;
@@ -450,9 +561,7 @@ HUEDevice_SetParam($$@)
     }
     $bri = 0 if( $bri < 0 );
     $bri = 254 if( $bri > 254 );
-    #$value = 3.5 if( $value < 3.5 && AttrVal($name, "model", "") eq "LWL001" );
     $obj->{'on'}  = JSON::true;
-    #$obj->{'bri'}  = int(2.55 * $value);
     $obj->{'bri'}  = int($bri);
     $obj->{'transitiontime'} = $value2 * 10 if( defined($value2) );
 
@@ -499,29 +608,29 @@ HUEDevice_SetParam($$@)
     }
 
   } elsif($cmd eq "satUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'sat_inc'}  = 25;
       $obj->{'sat_inc'} = 0+$value if( defined($value) );
   } elsif($cmd eq "satDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'sat_inc'}  = -25;
       $obj->{'sat_inc'} = 0+$value if( defined($value) );
 
   } elsif($cmd eq "hueUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'hue_inc'}  = 6553;
       $obj->{'hue_inc'} = 0+$value if( defined($value) );
   } elsif($cmd eq "hueDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'hue_inc'}  = -6553;
       $obj->{'hue_inc'} = 0+$value if( defined($value) );
 
   } elsif($cmd eq "ctUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'ct_inc'}  = 16;
       $obj->{'ct_inc'} = 0+$value if( defined($value) );
   } elsif($cmd eq "ctDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
+      $obj->{'on'}  = JSON::true if( $name && !$defs{$name}->{helper}{on} );
       $obj->{'ct_inc'}  = -16;
       $obj->{'ct_inc'} = 0+$value if( defined($value) );
 
@@ -546,8 +655,10 @@ HUEDevice_SetParam($$@)
   } elsif( $cmd eq "rgb" && $value =~ m/^(..)(..)(..)/) {
     my( $r, $g, $b ) = (hex($1)/255.0, hex($2)/255.0, hex($3)/255.0);
 
-    if( $name && ( !defined( AttrVal($name, "model", undef) )
-                   || AttrVal($name, "model", undef) eq 'LLC020') ) {
+    my $hash = $defs{$name};
+    if( $name && ( !AttrVal($name, "model", undef)
+                   || AttrVal($name, "model", undef) eq 'LLC020'
+                   || ($hash && $hash->{IODev} &&  $hash->{IODev}{TYPE} eq 'tradfri' ) ) ) {
       my( $h, $s, $v ) = Color::rgb2hsv($r,$g,$b);
 
       $obj->{'on'}  = JSON::true;
@@ -609,6 +720,13 @@ HUEDevice_SetParam($$@)
     $defs{$name}->{helper}->{update_timeout} = 0;
   } elsif( $name &&  $cmd eq "noUpdate" ) {
     $defs{$name}->{helper}->{update_timeout} = -1;
+
+  } elsif( $cmd eq 'stop' && $subtype  eq 'blind' ) {
+    $obj->{stop} = JSON::true;
+
+  } elsif( $cmd eq 'habridgeupdate' ) {
+    $obj->{habridgeupdate} = JSON::true;
+
   } else {
     return 0;
   }
@@ -623,6 +741,8 @@ HUEDevice_Set($@)
   my ($cmd, @args) = @aa;
 
   my %obj;
+  my @match;
+  my $entries;
 
   $hash->{helper}->{update_timeout} =  AttrVal($name, "delayedUpdate", 1);
 
@@ -660,11 +780,23 @@ HUEDevice_Set($@)
       return fhem( "set $hash->{IODev}{NAME} deletescene $aa[1]" );
 
     } elsif( $cmd eq 'scene' ) {
-      return "usage: scene <id>" if( @args != 1 );
+      return "usage: scene <id>|<name>" if( !@args );
+      my $arg = join( ' ', @args );
+      my $deConz;
+      if( $hash->{IODev} && $hash->{IODev}{TYPE} eq 'HUEBridge' ) {
+        if( defined($hash->{IODev}{modelid}) && $hash->{IODev}{modelid} eq 'deCONZ' ) {
+          $deConz = 1;
+          $arg = HUEBridge_scene2id_deCONZ($hash, $arg);
+        } else {
+          $arg = HUEBridge_scene2id($hash->{IODev}, $arg);
+        }
+      }
 
-      my $obj = {'scene' => $aa[1]};
+      my $obj = {'scene' => $arg};
       $hash->{helper}->{update} = 1;
-      my $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/action",$obj);
+      my $result;
+      $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/action",$obj) if( !$deConz );
+      $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/scenes/$arg/recall",$obj) if( $deConz );
       return $result->{error}{description} if( $result->{error} );
 
       if( defined($result) && $result->{'error'} ) {
@@ -699,24 +831,63 @@ HUEDevice_Set($@)
       return undef;
 
     } elsif( $cmd eq 'json' ) {
-      return HUEBridge_Set( $shash, $shash->{NAME}, 'setsensor', $id, @args );
+      return "usage: json [setsensor|configsensor] <json>" if( !@args );
+      my $type = 'setsensor';
+      if( $args[0] eq 'setsensor' || $args[0] eq 'configsensor' ) {
+        $type = shift @args;
+       }
+      return HUEBridge_Set( $shash, $shash->{NAME}, $type, $id, @args );
 
       return undef;
 
-    } elsif( my @match = grep { $cmd eq $_ } keys %{($hash->{helper}{setList}{cmds}?$hash->{helper}{setList}{cmds}:{})} ) {
+    } elsif( @match = grep { $cmd eq $_ } keys %{($hash->{helper}{setList}{cmds}?$hash->{helper}{setList}{cmds}:{})} ) {
       return HUEBridge_Set( $shash, $shash->{NAME}, 'setsensor', $id, $hash->{helper}{setList}{cmds}{$match[0]} );
 
-    } elsif( my $entries = $hash->{helper}{setList}{regex} ) {
+    } elsif( $entries = $hash->{helper}{setList}{regex} ) {
       foreach my $entry (@{$entries}) {
         if( join(' ', @aa) =~ /$entry->{regex}/ ) {
           my $VALUE1 = $1;
           my $VALUE2 = $2;
           my $VALUE3 = $3;
           my $json = $entry->{json};
-          $json =~ s/\$1/$VALUE1/;
-          $json =~ s/\$2/$VALUE2/;
-          $json =~ s/\$3/$VALUE3/;
+          if( $json =~ m/^perl:\{(.*)\}$/ ) {
+            $json = eval $json;
+            if($@) {
+              Log3 $name, 3, "$name: configList: ". join(' ', @aa). ": ". $@;
+              return "error: ". join(' ', @aa). ": ". $@;
+            }
+          } else {
+            $json =~ s/\$1/$VALUE1/;
+            $json =~ s/\$2/$VALUE2/;
+            $json =~ s/\$3/$VALUE3/;
+          }
           return HUEBridge_Set( $shash, $shash->{NAME}, 'setsensor', $id, $json );
+
+        }
+      }
+
+    } elsif( @match = grep { $cmd eq $_ } keys %{($hash->{helper}{configList}{cmds}?$hash->{helper}{configList}{cmds}:{})} ) {
+      return HUEBridge_Set( $shash, $shash->{NAME}, 'configsensor', $id, $hash->{helper}{configList}{cmds}{$match[0]} );
+
+    } elsif( $entries = $hash->{helper}{configList}{regex} ) {
+      foreach my $entry (@{$entries}) {
+        if( join(' ', @aa) =~ /$entry->{regex}/ ) {
+          my $VALUE1 = $1;
+          my $VALUE2 = $2;
+          my $VALUE3 = $3;
+          my $json = $entry->{json};
+          if( $json =~ m/^perl:\{(.*)\}$/ ) {
+            $json = eval $json;
+            if($@) {
+              Log3 $name, 3, "$name: configList: ". join(' ', @aa). ": ". $@;
+              return "error: ". join(' ', @aa). ": ". $@;
+            }
+          } else {
+            $json =~ s/\$1/$VALUE1/;
+            $json =~ s/\$2/$VALUE2/;
+            $json =~ s/\$3/$VALUE3/;
+          }
+          return HUEBridge_Set( $shash, $shash->{NAME}, 'configsensor', $id, $json );
 
         }
       }
@@ -727,6 +898,14 @@ HUEDevice_Set($@)
     $list .= ' '. join( ':noArg ', keys %{$hash->{helper}{setList}{cmds}} ) if( $hash->{helper}{setList}{cmds} );
     $list .= ':noArg' if( $hash->{helper}{setList}{cmds} );
     if( my $entries = $hash->{helper}{setList}{regex} ) {
+      foreach my $entry (@{$entries}) {
+        $list .= ' ';
+        $list .= (split( ' ', $entry->{regex} ))[0];
+      }
+    }
+    $list .= ' '. join( ':noArg ', keys %{$hash->{helper}{configList}{cmds}} ) if( $hash->{helper}{configList}{cmds} );
+    $list .= ':noArg' if( $hash->{helper}{configList}{cmds} );
+    if( my $entries = $hash->{helper}{configList}{regex} ) {
       foreach my $entry (@{$entries}) {
         $list .= ' ';
         $list .= (split( ' ', $entry->{regex} ))[0];
@@ -800,6 +979,8 @@ HUEDevice_Set($@)
     if( $hash->{helper}->{devtype} eq 'G' ) {
       $hash->{helper}->{update} = 1;
       $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/action",\%obj);
+    } elsif( defined( $obj{habridgeupdate} ) ) {
+      $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/bridgeupdatestate",\%obj);
     } else {
       $result = HUEDevice_ReadFromServer($hash,"$hash->{ID}/state",\%obj);
     }
@@ -834,6 +1015,8 @@ HUEDevice_Set($@)
   $list .= " color:colorpicker,CT,2000,1,6500 ct:colorpicker,CT,154,1,500" if( $subtype =~ m/ct|ext/ );
   $list .= " hue:colorpicker,HUE,0,1,65535 sat:slider,0,1,254 xy" if( $subtype =~ m/color/ );
 
+  $list = 'up:noArg stop:noArg down:noArg pct:colorpicker,BRI,0,1,100' if( $subtype eq 'blind' );
+
   if( $hash->{IODev} && $hash->{IODev}{helper}{apiversion} && $hash->{IODev}{helper}{apiversion} >= (1<<16) + (7<<8) ) {
     $list .= " dimUp:noArg dimDown:noArg" if( $subtype =~ m/dimmer/ );
     $list .= " ctUp:noArg ctDown:noArg" if( $subtype =~ m/ct|ext/ );
@@ -846,21 +1029,65 @@ HUEDevice_Set($@)
 
   if( $hash->{IODev} && $hash->{IODev}{TYPE} eq 'HUEBridge' ) {
     $list .= " alert:none,select,lselect";
+    $list .= ",breathe,okay,channelchange,finish,stop" if( defined($hash->{IODev}{modelid}) && $hash->{IODev}{modelid} eq 'deCONZ' );
+
     $list .= " effect:none,colorloop" if( $subtype =~ m/color/ );
 
     $list .= " lights" if( $hash->{helper}->{devtype} eq 'G' );
 
     $list .= " rename";
 
-    $list .= " savescene deletescene" if( $hash->{helper}->{devtype} eq 'G' );
+    if( $hash->{helper}->{devtype} eq 'G' ) {
+      $list .= " savescene deletescene";
+    }
   }
-  $list .= " scene" if( $hash->{helper}->{devtype} eq 'G' );
+
+  if( $hash->{IODev} && defined($hash->{IODev}{modelid}) && $hash->{IODev}{modelid} eq 'deCONZ' ) {
+    if( my $scenes = $hash->{helper}{scenes} ) {
+      my @names;
+      for my $scene (@{$scenes}) {
+         push(@names, $scene->{name});
+      }
+      # my $s_scenes = join (",",(my $names = map { $_->{name}} @$scenes));
+      my $scenes = join (',', @names);
+      $scenes =~ s/ /#/g;
+      $list .= " scene:". $scenes;
+    }
+
+  } elsif( my $scenes = $hash->{IODev}{helper}{scenes} ) {
+    local *containsOneOfMyLights = sub($) {
+      return 1 if( !defined($hash->{helper}{lights}) );
+
+      my( $lights ) = @_;
+
+      foreach my $light (@{$lights}) {
+        return 1 if( defined($hash->{helper}{lights}{$light}) );
+      }
+      return 0;
+    };
+    my %count;
+    map { $count{$scenes->{$_}{name}}++ } keys %{$scenes};
+    $list .= " scene:". join(",", sort grep { defined } map { if( !containsOneOfMyLights($scenes->{$_}{lights}) ) {
+                                                                undef;
+                                                              } else {
+                                                                my $scene = $scenes->{$_}{name};
+                                                                if( $count{$scene} > 1 ) {
+                                                                  $scene .= " [id=$_]";
+                                                                 }
+                                                                $scene =~ s/ /#/g; $scene;
+                                                              }
+                                                            } keys %{$scenes} );
+
+  } else {
+    $list .= " scene";
+
+  }
 
   return SetExtensions($hash, $list, $name, @aa);
 }
 
 sub
-cttorgb($)
+HUEDevice_cttorgb($)
 {
   my ($ct) = @_;
 
@@ -897,7 +1124,7 @@ cttorgb($)
 }
 
 sub
-xyYtorgb($$$)
+HUEDevice_xyYtorgb($$$)
 {
   # calculation from http://www.brucelindbloom.com/index.html
   my ($x,$y,$Y) = @_;
@@ -961,7 +1188,7 @@ HUEDevice_Get($@)
     my $cm = ReadingsVal($name,"colormode","");
     if( $cm eq "ct" ) {
       if( ReadingsVal($name,"ct","") =~ m/(\d+) .*/ ) {
-        ($r,$g,$b) = cttorgb($1);
+        ($r,$g,$b) = HUEDevice_cttorgb($1);
       }
     } elsif( $cm eq "hs" ) {
       my $h = ReadingsVal($name,"hue",0) / 65535.0;
@@ -974,9 +1201,9 @@ HUEDevice_Get($@)
       $b *= 255;
     } elsif( ReadingsVal($name,"xy","") =~ m/(.+),(.+)/ ) {
       my ($x,$y) = ($1, $2);
-      my $Y = ReadingsVal($name,"bri","") / 254.0;
+      my $Y = ReadingsVal($name,"bri",0) / 254.0;
 
-      ($r,$g,$b) = xyYtorgb($x,$y,$Y);
+      ($r,$g,$b) = HUEDevice_xyYtorgb($x,$y,$Y);
     }
     return sprintf( "%02x%02x%02x", $r+0.5, $g+0.5, $b+0.5 );
   } elsif($cmd eq "RGB") {
@@ -987,7 +1214,7 @@ HUEDevice_Get($@)
     my $cm = ReadingsVal($name,"colormode","");
     if( $cm eq "ct" ) {
       if( ReadingsVal($name,"ct","") =~ m/(\d+) .*/ ) {
-        ($r,$g,$b) = cttorgb($1);
+        ($r,$g,$b) = HUEDevice_cttorgb($1);
       }
     } elsif( $cm eq "hs" ) {
       my $h = ReadingsVal($name,"hue",0) / 65535.0;
@@ -1002,7 +1229,7 @@ HUEDevice_Get($@)
       my ($x,$y) = ($1, $2);
       my $Y = 1;
 
-      ($r,$g,$b) = xyYtorgb($x,$y,$Y);
+      ($r,$g,$b) = HUEDevice_xyYtorgb($x,$y,$Y);
     }
     return sprintf( "%02x%02x%02x", $r+0.5, $g+0.5, $b+0.5 );
   } elsif ( $cmd eq "startup" ) {
@@ -1016,10 +1243,18 @@ HUEDevice_Get($@)
     return HUEDevice_devStateIcon($hash);
   }
 
-  my $list = "rgb:noArg RGB:noArg devStateIcon:noArg";
+
+  my $list;
+  $list .= "rgb:noArg RGB:noArg devStateIcon:noArg" if( $hash->{helper}->{devtype} ne 'S' );
+
+  if( my $subtype = $attr{$name}{subType} ) {
+    $list = ' devStateIcon:noArg' if( $subtype eq 'blind' );
+  }
+
   if( $hash->{IODev} && $hash->{IODev}{helper}{apiversion} && $hash->{IODev}{helper}{apiversion} >= (1<<16) + (26<<8) ) {
     $list .= " startup:noArg";
   }
+
   return "Unknown argument $cmd, choose one of $list";
 }
 
@@ -1062,7 +1297,7 @@ HUEDevice_GetUpdate($)
       return;
     }
 
-    HUEDevice_Parse($hash,$result);
+    HUEDevice_Parse($hash, $result);
 
   } elsif( $hash->{helper}->{devtype} eq 'S' ) {
   }
@@ -1085,8 +1320,9 @@ HUEDevice_GetUpdate($)
     return;
   }
 
-  HUEDevice_Parse($hash,$result);
-  HUEBridge_updateGroups($hash->{IODev}, $hash->{ID}) if( $hash->{IODev}{TYPE} eq 'HUEBridge' );
+  HUEDevice_Parse($hash, $result);
+  HUEBridge_updateGroups($hash->{IODev}, $hash->{ID}) if( $hash->{IODev} && ( $hash->{IODev}{TYPE} eq 'HUEBridge'
+                                                                              || $hash->{IODev}{TYPE} eq 'tradfri' ) );
 }
 
 sub
@@ -1100,7 +1336,7 @@ HUEDeviceSetIcon($;$)
 
   return if( defined($attr{$name}{icon}) && !$force );
 
-  if( $hash->{modelid} ) {
+  if( defined($hash->{modelid}) ) {
     my $model = $hueModels{$hash->{modelid}};
     return undef if( !$model );
 
@@ -1108,11 +1344,18 @@ HUEDeviceSetIcon($;$)
     return undef if( !$icon );
 
     $attr{$name}{icon} = $icon;
+
   } elsif( $hash->{class} ) {
     my $class = lc( $hash->{class} );
     $class =~ s/ room//;
+    $class =~ s/ /_/;
 
     $attr{$name}{icon} = "hue_room_$class";
+
+  } elsif( defined($hash->{helper}{json}) && defined($hash->{helper}{json}{config}) ) {
+    my $archetype = $hash->{helper}{json}{config}{archetype};
+
+    # TODO ...
   }
 }
 sub
@@ -1123,7 +1366,8 @@ HUEDevice_Parse($$)
 
   if( ref($result) ne "HASH" ) {
     if( ref($result) && $HUEDevice_hasDataDumper) {
-      Log3 $name, 2, "$name: got wrong status message for $name: ". Dumper $result;
+       #Log3 $name, 2, "$name: got wrong status message for $name: ". Dumper $result;
+      Log3 $name, 2, "$name: got wrong status message for $name: $result";
     } else {
       Log3 $name, 2, "$name: got wrong status message for $name: $result";
     }
@@ -1131,23 +1375,42 @@ HUEDevice_Parse($$)
   }
 
   Log3 $name, 4, "parse status message for $name";
-  Log3 $name, 5, Dumper $result if($HUEDevice_hasDataDumper);
+  #Log3 $name, 5, Dumper $result if($HUEDevice_hasDataDumper);
 
   $hash->{name} = $result->{name} if( defined($result->{name}) );
   $hash->{type} = $result->{type} if( defined($result->{type}) );
   $hash->{class} = $result->{class} if( defined($result->{class}) );
   $hash->{uniqueid} = $result->{uniqueid} if( defined($result->{uniqueid}) );
 
+  $hash->{helper}{json} = $result;
+
   if( $hash->{helper}->{devtype} eq 'G' ) {
+    #if( !defined($attr{$name}{subType}) && $hash->{type} ) {
+    #  if( $hash->{type} eq 'Room' ) {
+    #    $attr{$name}{subType} = 'room';
+    #
+    #  } elsif( $hash->{type} eq 'LightGroup' ) {
+    #    $attr{$name}{subType} = 'lightgroup';
+    #  }
+    #}
+
+    $hash->{helper}{scenes} = $result->{scenes} if( defined($result->{scenes}) );
+
     if( $result->{lights} ) {
+      $hash->{helper}{lights} = {map {$_=>1} @{$result->{lights}}};
       $hash->{lights} = join( ",", sort { $a <=> $b } @{$result->{lights}} );
     } else {
+      $hash->{helper}{lights} = {};
       $hash->{lights} = '';
     }
 
     if( ref($result->{state}) eq 'HASH' ) {
       my %readings;
 
+      if( $result->{stream}
+          && (defined($hash->{helper}{stream_active}) || $result->{stream}{active}) ) {
+        $readings{stream_active} = $result->{stream}{active}?1:0;
+      }
       if( $result->{state} ) {
         $readings{all_on} = $result->{state}{all_on};
         $readings{any_on} = $result->{state}{any_on};
@@ -1165,6 +1428,18 @@ HUEDevice_Parse($$)
         $readings{effect} = $state->{effect};
 
         $readings{reachable} = $state->{reachable}?1:0 if( defined($state->{reachable}) );
+
+        $readings{scene} = $state->{scene};
+        if( defined($readings{scene}) ) {
+          if( my $scenes = $hash->{helper}{scenes} ) {
+            for my $scene (@{$scenes}) {
+              if( $readings{scene} == $scene->{id} ) {
+                $readings{scene} = $scene->{name};
+                last;
+              }
+            }
+          }
+        }
 
         my $s = '';
         my $pct = -1;
@@ -1213,7 +1488,7 @@ HUEDevice_Parse($$)
 
     if( defined($hash->{helper}->{update}) ) {
       delete $hash->{helper}->{update};
-      fhem( "set $hash->{IODev}{NAME} statusRequest" );
+      fhem( "set $hash->{IODev}{NAME} statusRequest" ) if( $hash->{IODev} );
       return undef;
     }
 
@@ -1221,11 +1496,15 @@ HUEDevice_Parse($$)
   }
 
   $hash->{modelid} = $result->{modelid} if( defined($result->{modelid}) );
+  $attr{$name}{model} = $result->{modelid} if( !defined($attr{$name}{model}) && $result->{modelid} );
+
   $hash->{productid} = $result->{productid} if( defined($result->{productid}) );
   $hash->{swversion} = $result->{swversion} if( defined($result->{swversion}) );
   $hash->{swconfigid} = $result->{swconfigid} if( defined($result->{swconfigid}) );
   $hash->{manufacturername} = $result->{manufacturername} if( defined($result->{manufacturername}) );
   $hash->{luminaireuniqueid} = $result->{luminaireuniqueid} if( defined($result->{luminaireuniqueid}) );
+
+  $hash->{power} = $result->{power} if( defined($result->{power}) );
 
   if( $hash->{helper}->{devtype} eq 'S' ) {
     my %readings;
@@ -1250,10 +1529,17 @@ HUEDevice_Parse($$)
 
       #Xiaomi Aqara Vibrationsensor (lumi.vibration.aq1)
       $hash->{sensitivitymax} = $config->{sensitivitymax} if( defined ($config->{sensitivitymax}) );
+
+      #Eurotronic Spirit ZigBee (SPZB0001)
+      $readings{heatsetpoint} = sprintf("%.1f",$config->{heatsetpoint} * 0.01) if( defined ($config->{heatsetpoint}) );
+      $readings{locked} = $config->{locked}?'true':'false' if( defined ($config->{locked}) );
+      $readings{displayflipped} = $config->{displayflipped}?'true':'false' if( defined ($config->{displayflipped}) );
+      $readings{mode} = $config->{mode} if( defined ($config->{mode}) );
     }
 
-    my $lastupdated;
-    my $lastupdated_local;
+    my $lastupdated = '';
+    my $lastupdated_local = '';
+    my $offset = 0;
     if( my $state = $result->{state} ) {
       $lastupdated = $state->{lastupdated};
 
@@ -1262,7 +1548,6 @@ HUEDevice_Parse($$)
 
       substr( $lastupdated, 10, 1, ' ' ) if($lastupdated);
 
-      my $offset = 0;
       if( my $iohash = $hash->{IODev} ) {
         substr( $lastupdated, 10, 1, '_' );
         my $sec = SVG_time_to_sec($lastupdated);
@@ -1283,18 +1568,11 @@ HUEDevice_Parse($$)
         $sec += $offset;
         $lastupdated_local = FmtDateTime($sec);
       }else{
+
         $lastupdated_local = $lastupdated;
       }
 
-      $hash->{lastupdated} = ReadingsVal( $name, '.lastupdated', undef ) if( !$hash->{lastupdated} );
-      $hash->{lastupdated_local} = ReadingsVal( $name, '.lastupdated_local', undef ) if( !$hash->{lastupdated_local} );
-      return undef if( $hash->{lastupdated} && $hash->{lastupdated} eq $lastupdated );
-
-      Log3 $name, 4, "$name: lastupdated: $lastupdated, hash->{lastupdated}:  $hash->{lastupdated}, lastupdated_local: $lastupdated_local, offsetUTC: $offset";
-      Log3 $name, 5, "$name: ". Dumper $result if($HUEDevice_hasDataDumper);
-
-      $hash->{lastupdated} = $lastupdated;
-      $hash->{lastupdated_local} = $lastupdated_local;
+      $readings{reachable} = ($state->{reachable}?1:0) if( defined($state->{reachable}) );
 
       $readings{state} = $state->{status} if( defined($state->{status}) );
       $readings{state} = $state->{flag}?'1':'0' if( defined($state->{flag}) );
@@ -1318,6 +1596,7 @@ HUEDevice_Parse($$)
       $readings{water} = $state->{water} if( defined($state->{water}) );
       $readings{fire} = $state->{fire} if( defined($state->{fire}) );
       $readings{tampered} = $state->{tampered} if( defined($state->{tampered}) );
+      $readings{battery} = $state->{battery} if( defined($state->{battery}) );
       $readings{batteryState} = $state->{lowbattery}?'low':'ok' if( defined($state->{lowbattery}) );
 
       #Xiaomi Aqara Vibrationsensor (lumi.vibration.aq1)
@@ -1325,7 +1604,25 @@ HUEDevice_Parse($$)
       $readings{vibration} = $state->{vibration} if( defined ($state->{vibration}) );
       $readings{orientation} = join(',', @{$state->{orientation}}) if( defined($state->{orientation}) && ref($state->{orientation}) eq 'ARRAY' );
       $readings{vibrationstrength} = $state->{vibrationstrength} if( defined ($state->{vibrationstrength}) );
+
+      #Eurotronic Spirit ZigBee (SPZB0001)
+      $readings{valve} = ceil((100/255) * $state->{valve}) if( defined ($state->{valve}) );
+
+      #Heiman Gassensor HS1CG
+      $readings{carbonmonoxide} = $state->{carbonmonoxide} if( defined($state->{carbonmonoxide}) );
     }
+
+    $hash->{lastupdated} = ReadingsVal( $name, '.lastupdated', '' ) if( !$hash->{lastupdated} );
+    $hash->{lastupdated_local} = ReadingsVal( $name, '.lastupdated_local', '' ) if( !$hash->{lastupdated_local} );
+    return undef if( $hash->{lastupdated}
+                     && $hash->{lastupdated} eq $lastupdated
+                     && (!$readings{state} || $readings{state} eq ReadingsVal( $name, 'state', '' ))  );
+
+    Log3 $name, 4, "$name: lastupdated: $lastupdated, hash->{lastupdated}:  $hash->{lastupdated}, lastupdated_local: $lastupdated_local, offsetUTC: $offset";
+    #Log3 $name, 5, "$name: ". Dumper $result if($HUEDevice_hasDataDumper);
+
+    $hash->{lastupdated} = $lastupdated;
+    $hash->{lastupdated_local} = $lastupdated_local;
 
     if( scalar keys %readings ) {
        readingsBeginUpdate($hash);
@@ -1359,11 +1656,8 @@ HUEDevice_Parse($$)
      }
 
     return undef;
-
   }
 
-
-  $attr{$name}{model} = $result->{modelid} if( !defined($attr{$name}{model}) && $result->{modelid} );
 
   if( !defined($attr{$name}{subType}) ) {
     if( defined($attr{$name}{model}) ) {
@@ -1422,6 +1716,7 @@ HUEDevice_Parse($$)
       $attr{$name}{webCmd} = 'ct:ct 490:ct 380:ct 270:ct 160:toggle:on:off' if( $subtype eq "ctdimmer" );
       $attr{$name}{webCmd} = 'pct:toggle:on:off' if( $subtype eq "dimmer" );
       $attr{$name}{webCmd} = 'toggle:on:off' if( $subtype eq "switch" );
+      $attr{$name}{webCmd} = 'up:stop:down:pct' if( $subtype eq "blind" );
     } elsif( $hash->{helper}->{devtype} eq 'G' ) {
       $attr{$name}{webCmd} = 'on:off';
     }
@@ -1430,6 +1725,7 @@ HUEDevice_Parse($$)
   readingsBeginUpdate($hash);
 
   my $state = $result->{'state'};
+  my $config = $result->{'config'};
 
   my $on        = $state->{on};
      $on = $hash->{helper}{on} if( !defined($on) );
@@ -1450,6 +1746,11 @@ HUEDevice_Parse($$)
   my $rgb       = undef;
      $rgb       = $state->{rgb} if( defined($state->{rgb}) );
 
+  my $battery   = undef;
+     $battery   = $config->{battery} if( defined($config->{battery}) );
+
+  my $mode   = undef;
+     $mode   = $state->{mode} if( defined($state->{mode}) && ($hash->{helper}{mode} || $state->{mode} ne 'homeautomation') );
 
   if( defined($colormode) && $colormode ne $hash->{helper}{colormode} ) {readingsBulkUpdate($hash,"colormode",$colormode);}
   if( defined($bri) && $bri != $hash->{helper}{bri} ) {readingsBulkUpdate($hash,"bri",$bri);}
@@ -1470,9 +1771,16 @@ HUEDevice_Parse($$)
 
   if( defined($rgb) && $rgb ne $hash->{helper}{rgb} ) {readingsBulkUpdate($hash,"rgb",$rgb);}
 
+  if( defined($battery) && $battery ne $hash->{helper}{battery} ) {readingsBulkUpdate($hash,"battery",$battery);}
+
+  if( defined($mode) && $mode ne $hash->{helper}{mode} ) {readingsBulkUpdate($hash,"mode",$mode);}
+
   my $s = '';
   my $pct = -1;
-  if( $on )
+  if( defined($state->{'pct'}) ) {
+    $pct = $state->{'pct'};
+    $s = $pct;
+  } elsif( $on )
     {
       $s = 'on';
       if( $on != $hash->{helper}{on} ) {readingsBulkUpdate($hash,"onoff",1);}
@@ -1516,6 +1824,10 @@ HUEDevice_Parse($$)
 
   $hash->{helper}{rgb} = $rgb if( defined($rgb) );
 
+  $hash->{helper}{battery} = $battery if( defined($battery) );
+
+  $hash->{helper}{mode} = $mode if( defined($mode) );
+
   $hash->{helper}{pct} = $pct;
 
   my $changed = $hash->{CHANGED}?1:0;
@@ -1541,20 +1853,20 @@ HUEDevice_Attr($$$;$)
 {
   my ($cmd, $name, $attrName, $attrVal) = @_;
 
-  if( $attrName eq "setList" ) {
+  if( $attrName eq 'setList' || $attrName eq 'configList' ) {
     my $hash = $defs{$name};
-    delete $hash->{helper}{setList};
+    delete $hash->{helper}{$attrName};
     return "$name is not a sensor device" if( $hash->{helper}->{devtype} ne 'S' );
-    return "$name is not a CLIP sensor device" if( $hash->{type} && $hash->{type} !~ m/^CLIP/ );
+    #return "$name is not a CLIP sensor device" if( $hash->{type} && $hash->{type} !~ m/^CLIP/ );
     if( $cmd eq "set" && $attrVal ) {
       foreach my $line ( split( "\n", $attrVal ) ) {
         my($cmd,$json) = split( ":", $line,2 );
         if( $cmd =~ m'^/(.*)/$' ) {
           my $regex = $1;
-          $hash->{helper}{setList}{'regex'} = [] if( !$hash->{helper}{setList}{':regex'} );
-          push @{$hash->{helper}{setList}{'regex'}}, { regex => $regex, json => $json };
+          $hash->{helper}{$attrName}{'regex'} = [] if( !$hash->{helper}{$attrName}{'regex'} );
+          push @{$hash->{helper}{$attrName}{'regex'}}, { regex => $regex, json => $json };
         } else {
-          $hash->{helper}{setList}{cmds}{$cmd} = $json;
+          $hash->{helper}{$attrName}{cmds}{$cmd} = $json;
         }
       }
     }
@@ -1566,8 +1878,8 @@ HUEDevice_Attr($$$;$)
 1;
 
 =pod
-=item cloudfree
-=item openapi
+=item tag cloudfree
+=item tag publicAPI
 =item summary    Devices connected to a Phillips HUE bridge, an LIGHTIFY or TRADFRI gateway
 =item summary_DE Ger&auml;te an einer Philips HUE Bridge, einem LIGHTIFY oder Tradfri Gateway
 =begin html
@@ -1681,6 +1993,12 @@ HUEDevice_Attr($$$;$)
       The lights are given as a comma sparated list of fhem device names or bridge light numbers.</li>
       <li>rename &lt;new name&gt;<br>
       Renames the device in the bridge and changes the fhem alias.</li>
+      <li>json [setsensor|configsensor] &lt;json&gt;<br>
+      send &lt;json&gt; to the state or config endpoints for this device.</li>
+      <li>habridgeupdate [ : &lt; on | off &gt; ] [ : &lt; bri | pct &gt; &lt; value &gt; ] <br>
+      This command is only for usage of HA-Bridges that are emulating an Hue Hub. <br>
+      It updates your HA-Bridge internal light state of the devices without changing the devices itself.
+      <br>bri and pct have to be used in the same way as changing the brightness or dimvalue of the device. </li>
       <br>
       <li><a href="#setExtensions"> set extensions</a> are supported.</li>
       <br>
@@ -1721,6 +2039,10 @@ HUEDevice_Attr($$$;$)
       The list of know set commands for sensor type devices. one command per line, eg.: <code><br>
    attr mySensor setList present:{&lt;json&gt;}\<br>
 absent:{&lt;json&gt;}</code></li>
+    <li>configList<br>
+      The list of know config commands for sensor type devices. one command per line, eg.: <code><br>
+attr mySensor mode:{&lt;json&gt;}\<br>
+/heatsetpoint (.*)/:perl:{'{"heatsetpoint":'. $VALUE1 * 100 .'}'}</code></li>
     <li>subType<br>
       extcolordimmer -> device has rgb and color temperatur control<br>
       colordimmer -> device has rgb controll<br>

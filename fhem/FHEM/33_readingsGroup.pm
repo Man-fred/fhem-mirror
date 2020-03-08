@@ -100,9 +100,9 @@ readingsGroup_updateDevices($;$)
       $hash->{DEF} =~ s/(\s*)\\$param((:\S+)?\s*)/ /g;
       $hash->{DEF} =~ s/^ //;
       $hash->{DEF} =~ s/ $//;
-    } elsif( $param =~ m/^{/) {
+    } elsif( $param =~ m/^\{/) {
       $attr{$hash->{NAME}}{mapping} = $param ." ". join( " ", @params );
-      $hash->{DEF} =~ s/\s*[{].*$//g;
+      $hash->{DEF} =~ s/\s*\{.*$//g;
       last;
     } else {
       my @device = split(":", $param, 2);               # 2 -> to allow : in calc expressions
@@ -191,7 +191,7 @@ readingsGroup_updateDevices($;$)
         next if( $regex && $regex =~ m/^\+(.*)/ );
         next if( $regex && $regex =~ m/^\?(.*)/ );
 
-        if( $name =~ m/^{(.*)}$/s ) {
+        if( $name =~ m/^\{(.*)\}$/s ) {
           my $DEVICE = $device->[0];
           $name = eval $name;
         }
@@ -282,7 +282,7 @@ lookup($$$$$$$$$)
   my($mapping,$name,$alias,$reading,$value,$room,$group,$row,$default) = @_;
 
   if( $mapping ) {
-    if( !ref($mapping) && $mapping =~ m/^{.*}$/s) {
+    if( !ref($mapping) && $mapping =~ m/^\{.*\}$/s) {
       my $DEVICE = $name;
       my $READING = $reading;
       my $VALUE = $value;
@@ -308,7 +308,7 @@ lookup($$$$$$$$$)
 
     return $default if( !defined($default) );
 
-    if( !ref($default) && $default =~ m/^{.*}$/s) {
+    if( !ref($default) && $default =~ m/^\{.*\}$/s) {
       my $DEVICE = $name;
       my $READING = $reading;
       my $VALUE = $value;
@@ -347,7 +347,7 @@ lookup2($$$$;$$)
 
   return "" if( !$lookup );
 
-  if( !ref($lookup) && $lookup =~ m/^{.*}$/s) {
+  if( !ref($lookup) && $lookup =~ m/^\{.*\}$/s) {
     my $DEVICE = $name;
     my $READING = $reading;
     my $VALUE = $value;
@@ -377,7 +377,7 @@ lookup2($$$$;$$)
 
   return undef if( !defined($lookup) );
 
-  if( !ref($lookup) && $lookup =~ m/^{.*}$/s) {
+  if( !ref($lookup) && $lookup =~ m/^\{.*\}$/s) {
     my $DEVICE = $name;
     my $READING = $reading;
     my $VALUE = $value;
@@ -723,7 +723,7 @@ readingsGroup_2html($;$)
   my $separator = AttrVal( $d, "separator", ":" );
 
   my $style = AttrVal( $d, "style", "" );
-  if( $style =~ m/^{.*}$/s ) {
+  if( $style =~ m/^\{.*\}$/s ) {
     my $s = eval $style;
     $style = $s if( $s );
   }
@@ -854,7 +854,7 @@ readingsGroup_2html($;$)
       if( $regex && $regex =~ m/^<(.*)>$/ ) {
         my $txt = $1;
         my $readings;
-        if( $txt =~ m/^{(.*)}(@[\w\-|.*]+)?$/ ) {
+        if( $txt =~ m/^\{(.*)\}(@[\w\-|.*]+)?$/ ) {
           $txt = "{$1}";
           $readings = $2;
 
@@ -1010,7 +1010,7 @@ readingsGroup_2html($;$)
           $regex = $1;
           my $force_device = $2;
           $name = $3;
-          if( $name =~ m/^{(.*)}$/s ) {
+          if( $name =~ m/^\{(.*)\}$/s ) {
             my $DEVICE = $device->[0];
             $name = eval $name;
           }
@@ -1109,6 +1109,7 @@ readingsGroup_2html($;$)
         ($informid,$v,$devStateIcon) = readingsGroup_value2html($hash,$calc,$name,$name2,$n,$v,$cell_row,$cell_column,$type);
         next if( !defined($informid) );
         #$informid = "informId=\"$d-item:$cell_row:$item\"" if( $format );
+        $informid =~ s/"$/:$format"/ if( $format );
 
         my $cell_style0 = lookup2($hash->{helper}{cellStyle},$name,$n,$v,$cell_row,0);
         my $cell_style = lookup2($hash->{helper}{cellStyle},$name,$n,$v,$cell_row,$cell_column);
@@ -1213,6 +1214,43 @@ readingsGroup_detailFn()
 }
 
 sub
+readingsGroup_Update($$$)
+{
+  my ($hash, $item, $value) = @_;
+  my $name  = $hash->{NAME};
+
+  $hash->{changed} = 1;
+
+  if( $hash->{alwaysTrigger} ) {
+    DoTrigger( $name, "$item: $value" );
+
+  } else {
+    foreach my $ntfy (values(%defs)) {
+      next if(!$ntfy->{TYPE} ||
+              $ntfy->{TYPE} ne "FHEMWEB" ||
+              !$ntfy->{inform} ||
+              !$ntfy->{inform}{devices}{$name} ||
+              $ntfy->{inform}{type} ne "status");
+      next if( !$ntfy->{inform}{devices}{$name} );
+      if(!FW_addToWritebuffer($ntfy,
+          FW_longpollInfo($ntfy->{inform}{fmt}, "$name-$item", $value, $value ) ."\n" )) {
+        my $name = $ntfy->{NAME};
+        Log3 $name, 4, "Closing connection $name due to full buffer in FW_Notify";
+        TcpServer_Close($ntfy, 1);
+      }
+      if(!FW_addToWritebuffer($ntfy,
+          FW_longpollInfo($ntfy->{inform}{fmt}, "$name-$item-ts", "", TimeNow() ) ."\n" )) {
+        my $name = $ntfy->{NAME};
+        Log3 $name, 4, "Closing connection $name due to full buffer in FW_Notify";
+        TcpServer_Close($ntfy, 1);
+      }
+    }
+
+  }
+
+}
+
+sub
 readingsGroup_Notify($$)
 {
   my ($hash,$dev) = @_;
@@ -1240,6 +1278,8 @@ readingsGroup_Notify($$)
   my $devices = $hash->{DEVICES};
   $devices = $hash->{DEVICES2} if( $hash->{DEVICES2} );
 
+  $hash->{changed} = 0;
+
   my %triggers = ();
   my $max = int(@{$events});
   for (my $i = 0; $i < $max; $i++) {
@@ -1263,8 +1303,10 @@ readingsGroup_Notify($$)
         $hash->{DEF} =~ s/ $//;
       }
       readingsGroup_updateDevices($hash);
+
     } elsif( $dev->{NAME} eq "global" && $s =~ m/^DEFINED ([^ ]*)$/) {
       readingsGroup_updateDevices($hash);
+
     } else {
       next if(AttrVal($name,"disable", undef));
 
@@ -1349,7 +1391,7 @@ readingsGroup_Notify($$)
           if( $regex && $regex =~ m/^<(.*)>$/ ) {
             my $txt = $1;
             my $readings;
-            if( $txt =~ m/^{(.*)}(@([\w\-|.*]+))?$/ ) {
+            if( $txt =~ m/^\{(.*)\}(@([\w\-|.*]+))?$/ ) {
               $txt = "{$1}";
               $readings = $3;
 
@@ -1374,13 +1416,18 @@ readingsGroup_Notify($$)
                 ($txt,undef) = readingsGroup_makeLink($txt,undef,$cmd);
               }
 
-              DoTrigger( $name, "item:$cell_row:$item: <html>$txt</html>" );
+              readingsGroup_Update( $hash, "item:$cell_row:$item", "<html>$txt</html>" );
             }
 
             next;
           }
 
-          next if( defined($regex) && $reading !~ m/^$regex$/);
+          if( $regex ) {
+            my $regex = $regex;
+            $regex =~ s/\{/\\\{/g;
+            $regex =~ s/\}/\\\}/g;
+            next if( $reading !~ m/^$regex$/);
+          }
 
           my $value = $value;
           if( $format eq 't' || $format eq 'sec' ) {
@@ -1441,7 +1488,7 @@ readingsGroup_Notify($$)
                 }
               }
 
-              DoTrigger( $name, "$n.$reading: <html>$devStateIcon</html>" );
+              readingsGroup_Update( $hash, "$n.$reading", "<html>$devStateIcon</html>" );
               next;
             }
           }
@@ -1449,11 +1496,9 @@ readingsGroup_Notify($$)
           $cmd = lookup2($hash->{helper}{commands},$n,$reading,$value);
           if( $cmd && $cmd =~ m/^(\w.*):(\S.*)?$/ ) {
             if( $reading eq "state" ) {
-              DoTrigger( $name, "$n: $value" );
-              #DoTrigger( $name, "$n: <html>$value</html>" );
+              readingsGroup_Update( $hash, $n, $value );
             } else {
-              DoTrigger( $name, "$n.$reading: $value" );
-              #DoTrigger( $name, "$n.$reading: <html>$value</html>" );
+              readingsGroup_Update( $hash, "$n.$reading", $value );
             }
             next;
           }
@@ -1478,7 +1523,11 @@ readingsGroup_Notify($$)
           $value = "<div $value_style>$value</div>" if( $value_style );
 
           #FIXME: create {'$n.$reading'} = $value hash to avaid multiple events and calculations if same reading is included multiple times
-          $triggers{"$n.$reading"} = $value;
+          if( $format ) {
+            $triggers{"$n.$reading:$format"} = $value;
+          } else {
+            $triggers{"$n.$reading"} = $value;
+          }
 
           if( my $cells = $hash->{helper}{positions}{"$n.$reading"} ) {
             foreach my $cell ( split( ',', $cells ) ) {
@@ -1494,9 +1543,9 @@ readingsGroup_Notify($$)
     }
   }
 
-  readingsBeginUpdate($hash) if( $hash->{alwaysTrigger} && $hash->{alwaysTrigger} > 1 );
+  our %readings;
   foreach my $trigger (keys %triggers) {
-    DoTrigger( $name, "$trigger: <html>$triggers{$trigger}</html>" );
+    readingsGroup_Update( $hash, $trigger, "<html>$triggers{$trigger}</html>" );
 
     our $count = 0;
     sub updateRefs($$);
@@ -1525,13 +1574,9 @@ readingsGroup_Notify($$)
         my($informid,$v,$devStateIcon) = readingsGroup_value2html($hash,$calc,$name,$name,$func,$func,$row,$col,undef);
         $v = "" if( !defined($v) );
 
-        #FIXME: use FW_directNotify
-        DoTrigger( $name, "calc:$row:$col: <html>$v</html>" ) if( $hash->{mayBeVisible} );
+        readingsGroup_Update( $hash, "calc:$row:$col", "<html>$v</html>" );
 
-        if( $hash->{alwaysTrigger} && $hash->{alwaysTrigger} > 1 ) {
-          #DoTrigger( $name, "$func: $hash->{helper}{values}{formated}[$col][$row]" );
-          readingsBulkUpdate($hash, $func, $hash->{helper}{values}{formated}[$col][$row]);
-        }
+        $readings{$func} = $hash->{helper}{values}{formated}[$col][$row];
 
         if( my $refs = $hash->{helper}{recalc}[$col][$row] ) {
           updateRefs( $hash, $refs );
@@ -1551,11 +1596,26 @@ readingsGroup_Notify($$)
     }
 
   }
-  readingsEndUpdate($hash,1) if( $hash->{alwaysTrigger} && $hash->{alwaysTrigger} > 1 );
+
+  return undef if( !$hash->{changed} );
+  delete $hash->{changed};
+
+
+  if( $hash->{alwaysTrigger} && $hash->{alwaysTrigger} > 1 ) {
+    readingsBeginUpdate($hash);
+    foreach my $key ( keys %readings ) {
+      if( defined($readings{$key}) ) {
+        readingsBulkUpdate($hash, $key, $readings{$key}, 1); #if( !defined($hash->{helper}{$key}) || $hash->{helper}{$key} ne $readings{$key} );
+        $hash->{helper}{$key} = $readings{$key};
+      }
+    }
+    readingsEndUpdate($hash,1);
+  }
+
 
   if( %triggers ) {
-    my $sort_column = AttrVal( $hash->{NAME}, 'sortColumn', undef );
-    DoTrigger( $hash->{NAME}, "sort: $sort_column" ) if( defined($sort_column) )
+    my $sort_column = AttrVal( $hash, 'sortColumn', undef );
+    readingsGroup_Update( $hash, "sort", $sort_column ) if( defined($sort_column) )
   }
 
   return undef;
@@ -1573,7 +1633,7 @@ readingsGroup_Set($@)
     return undef;
   } elsif( $cmd eq "visibility" ) {
     readingsGroup_updateDevices($hash);
-    DoTrigger( $hash->{NAME}, "visibility: $param" );
+    readingsGroup_Update( $hash, "visibility", $param );
     return undef;
   }
 
@@ -1587,7 +1647,7 @@ readingsGroup_Set($@)
 
         my $v = join(" ", @a);
         my $set_fn = AttrVal( $hash->{NAME}, "setFn", "" );
-        if( $set_fn =~ m/^{.*}$/s ) {
+        if( $set_fn =~ m/^\{.*\}$/s ) {
           my $CMD = $cmd;
           my $ARGS = $param ." ". join(" ", @a);
 
@@ -1659,7 +1719,7 @@ readingsGroup_Attr($$$;$)
       my $err = perlSyntaxCheck($attrVal, %specials);
       return $err if($err);
 
-      if( $attrVal =~ m/^{.*}$/s && $attrVal =~ m/=>/ && $attrVal !~ m/\$/ ) {
+      if( $attrVal =~ m/^\{.*\}$/s && $attrVal =~ m/=>/ && $attrVal !~ m/\$/ ) {
 
         my $av = eval $attrVal;
         if( $@ ) {
@@ -1823,7 +1883,7 @@ readingsGroup_Attr($$$;$)
     <b>Attributes</b>
     <ul>
       <li>alwaysTrigger<br>
-        1 -> alwaysTrigger update events. even if not visible.<br>
+        1 -> always trigger update events. even if not visible.<br>
         2 -> trigger events for calculated values.</li><br>
       <li>disable<br>
         1 -> disable notify processing and longpoll updates. Notice: this also disables rename and delete handling.<br>
@@ -1885,7 +1945,7 @@ readingsGroup_Attr($$$;$)
         this reading will be skipped. Can be given as a string, a perl expression returning a hash or a perl
         expression returning a string, e.g.:<br>
           <code>attr temperatures valueFormat %.1f &deg;C</code><br>
-          <code>attr temperatures valueFormat { temperature => "%.1f &deg;C", humidity => "%i %" }</code><br>
+          <code>attr temperatures valueFormat { temperature => "%.1f &deg;C", humidity => "%i %%" }</code><br>
           <code>attr temperatures valueFormat { ($READING eq 'temperature')?"%.1f &deg;C":undef }</code></li><br>
       <li>valuePrefix<br>
         text to be prepended to the reading value</li><br>
@@ -2080,8 +2140,8 @@ readingsGroup_Attr($$$;$)
     <b>Attribute</b>
     <ul>
       <li>alwaysTrigger<br>
-        1 -> alwaysTrigger Ereignisse aktualisieren auch wenn nicht sichtbar.<br>
-        2 -> trigger Ereignisse f&uuml;r berechnete Werte.</li><br>
+        1 -> Events auch wenn nicht sichtbar.<br>
+        2 -> Events f&uuml;r berechnete Werte.</li><br>
       <li>disable<br>
         1 -> Deaktivieren der Benachrichtigung Verarbeitung und Longpoll-Updates. Hinweis: Dadurch wird auch die Umbenennung und L&ouml;schbehandlung deaktiviert.<br>
         2 -> Deaktivieren der HTML-Tabellenerstellung<br>
@@ -2099,14 +2159,14 @@ readingsGroup_Attr($$$;$)
       <li>notime<br>
         Wenn der Wert auf 1 gesetzt, wird der Readings-Timestamp nicht angezeigt.</li><br>
       <li>mapping<br>
-        Kann ein einfacher String oder ein in {} eingeschlossener Perl-Ausdruck sein, der einen Hash zur&uuml;ckgibt, der den Reading-Name dem angezeigten Namen zuordnet. 
+        Kann ein einfacher String oder ein in {} eingeschlossener Perl-Ausdruck sein, der einen Hash zur&uuml;ckgibt, der den Reading-Name dem angezeigten Namen zuordnet.
 		Der Schl&uuml;ssel kann entweder der Name des Readings oder &lt;device&gt;.&lt;reading&gt; oder &lt;reading&gt;.&lt;value&gt; oder &lt;device&gt;.&lt;reading&gt;.&lt;value&gt; sein.
         %DEVICE, %ALIAS, %ROOM, %GROUP, %ROW und %READING werden durch den Ger&auml;tenamen, Ger&auml;tealias, Raumattribut ersetzt. Sie k&ouml;nnen diesen Keywords auch ein Pr&auml;fix voranstellen $ anstatt von %. Beispiele:<br>
           <code>attr temperatures mapping $DEVICE-$READING</code><br>
           <code>attr temperatures mapping {temperature => "%DEVICE Temperatur"}</code>
         </li><br>
       <li>separator<br>
-        Das zu verwendende Trennzeichen zwischen dem Ger&auml;tealias und dem Reading-Namen, wenn keine Zuordnung angegeben ist, standardgem&auml;&szlig; ':' 
+        Das zu verwendende Trennzeichen zwischen dem Ger&auml;tealias und dem Reading-Namen, wenn keine Zuordnung angegeben ist, standardgem&auml;&szlig; ':'
         Ein Leerzeichen wird so dargestellt <code>&amp;nbsp;</code></li><br>
       <li>setList<br>
         Eine durch Leerzeichen getrennte Liste von Befehlen, die zur&uuml;ckgegeben werden "set name ?",
@@ -2119,7 +2179,7 @@ readingsGroup_Attr($$$;$)
           <code>attr temperatures style style="font-size:20px"</code></li><br>
       <li>cellStyle<br>
         Geben Sie einen HTML-Stil f&uuml;r eine Zelle der Readings-Tabelle an. Normale Zeilen und Spalten werden gez&auml;hlt beginnend mit 1,
-        Die Zeilen&uuml;berschriften beginnt mit der Spaltennummer 0. Perl-Code hat Zugriff auf $ROW und $COLUMN. Schl&uuml;ssel f&uuml;r Hash-Lookup k&ouml;nnen sein: 
+        Die Zeilen&uuml;berschriften beginnt mit der Spaltennummer 0. Perl-Code hat Zugriff auf $ROW und $COLUMN. Schl&uuml;ssel f&uuml;r Hash-Lookup k&ouml;nnen sein:
         r:#, c:# oder r:#,c:# , z.Bsp:<br>
           <code>attr temperatures cellStyle { "c:0" => 'style="text-align:right"' }</code></li><br>
       <li>nameStyle<br>
@@ -2135,10 +2195,10 @@ readingsGroup_Attr($$$;$)
         Geben Sie einen HTML-Colspan f&uuml;r die Readings-Werte an, z.Bsp:<br>
           <code>attr wzReceiverRG valueColumns { eventdescription => 'colspan="4"' }</code></li><br>
       <li>valueFormat<br>
-        Geben Sie eine Sprintf-Stilformat-Zeichenfolge an, die zum Anzeigen der Readings-Werte verwendet wird. Wenn die Formatzeichenfolge undef ist 
+        Geben Sie eine Sprintf-Stilformat-Zeichenfolge an, die zum Anzeigen der Readings-Werte verwendet wird. Wenn die Formatzeichenfolge undef ist
         wird dieser Messwert &uuml;bersprungen. Es kann als String angegeben werden, ein Perl-Ausdruck, der einen Hash- oder Perl-Ausdruck zur&uuml;ckgibt, der einen String zur&uuml;ckgibt, z.Bsp:<br>
           <code>attr temperatures valueFormat %.1f &deg;C</code><br>
-          <code>attr temperatures valueFormat { temperature => "%.1f &deg;C", humidity => "%i %" }</code><br>
+          <code>attr temperatures valueFormat { temperature => "%.1f &deg;C", humidity => "%i %%" }</code><br>
           <code>attr temperatures valueFormat { ($READING eq 'temperature')?"%.1f &deg;C":undef }</code></li><br>
       <li>valuePrefix<br>
         Text, der dem Readings-Wert vorangestellt wird</li><br>
@@ -2200,12 +2260,12 @@ readingsGroup_Attr($$$;$)
           <code>attr temperatures valueStyle {($DEVICE =~ m/aussen/)?'style="color:green"':'style="color:red"'}</code>
       </ul><br>
 
-      Hinweis: Nur valueStyle, valueFomat, valueIcon und <{...}@reading> werden bei Longpoll-Updates ausgewertet und valueStyle muss f&uuml;r jeden m&ouml;glichen Wert einen nicht leeren Stil zur&uuml;ckgeben. Alle anderen Perl-Ausdr&uuml;cke werden nur einmal w&auml;hrend der HTML-Erstellung ausgewertet und geben keine Wertupdates mit longpoll wieder. 
+      Hinweis: Nur valueStyle, valueFomat, valueIcon und <{...}@reading> werden bei Longpoll-Updates ausgewertet und valueStyle muss f&uuml;r jeden m&ouml;glichen Wert einen nicht leeren Stil zur&uuml;ckgeben. Alle anderen Perl-Ausdr&uuml;cke werden nur einmal w&auml;hrend der HTML-Erstellung ausgewertet und geben keine Wertupdates mit longpoll wieder.
       Aktualisieren Sie die Seite, um den dynamischen Stil zu aktualisieren. F&uuml;r nameStyle funktioniert das Farbattribut momentan nicht, die font -... und background Attribute funktionieren.<br><br>
 
       Berechnung: Bitte sehen Sie sich daf&uuml;r diese <a href="http://www.fhemwiki.de/wiki/ReadingsGroup#Berechnungen">Beschreibung</a> an in der Wiki.<br>
       z.Bsp: <code>define rg readingsGroup .*:temperature rg:$avg</code>
-      
+
 </ul>
 
 =end html_DE

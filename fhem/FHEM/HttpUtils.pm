@@ -139,6 +139,21 @@ ip2str($)
 
 # https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
 my %HU_dnsCache;
+
+sub
+HttpUtils_dumpDnsCache()
+{
+  my @ret;
+  my $max = 0;
+  map { my $l=length($_); $max=$l if($l>$max) } keys %HU_dnsCache;
+  for my $hn (sort keys %HU_dnsCache) {
+    push @ret, sprintf("%*s   TS: %s   TTL: %5s   ADDR: %s", -$max, $hn, 
+      FmtDateTime($HU_dnsCache{$hn}{TS}), $HU_dnsCache{$hn}{TTL},
+      join(".", unpack("C*", $HU_dnsCache{$hn}{addr})));
+  }
+  return join("\n", @ret);
+}
+
 sub
 HttpUtils_dnsParse($$$)
 {
@@ -173,7 +188,7 @@ HttpUtils_dnsParse($$$)
   return "No A record found";
 }
 
-# { HttpUtils_gethostbyname({timeout=>4}, "google.com", 1,
+# { HttpUtils_gethostbyname({timeout=>4}, "fhem.de", 1,
 #   sub(){my($h,$e,$a)=@_;; Log 1, $e ? "ERR:$e": ("IP:".ip2str($a)) }) }
 sub
 HttpUtils_gethostbyname($$$$)
@@ -254,48 +269,57 @@ HttpUtils_gethostbyname($$$$)
   return $fn->($hash, "Cant create UDP socket:$!", undef) if(!$c);
 
   my %dh = ( conn=>$c, FD=>$c->fileno(), NAME=>"DNS", origHash=>$hash,
-             addr=>$dnsServer, callback=>$fn );
-  my %timerHash = ( hash=>\%dh, msg=>"DNS" );
+             addr=>$dnsServer, callback=>$fn, host=>$host, try6=>$try6 );
   my $bhost = join("", map { pack("CA*",length($_),$_) } split(/\./, $host));
-  my $qry = pack("nnnnnn", 0x7072,0x0100,1,0,0,0) .
+  $dh{qry} = pack("nnnnnn", 0x7072,0x0100,1,0,0,0) .
                 $bhost . pack("Cnn", 0,$try6 ? 28:1,1);
-  my $ql = length($qry);
-  Log 5, "DNS QUERY ".unpack("H*", $qry);
+  $dh{ql} = length($dh{qry});
+  Log 5, "DNS QUERY ".unpack("H*", $dh{qry});
 
-  $dh{directReadFn} = sub() {                           # Parse the answer
-    RemoveInternalTimer(\%timerHash);
+  sub
+  directReadFn($) {                           # Parse the answer
+    my ($dh) = @_;
+    RemoveInternalTimer($dh);
+
     my $buf;
-    my $len = sysread($dh{conn},$buf,65536);
-    HttpUtils_Close(\%dh);
+    my $len = sysread($dh->{conn},$buf,65536);
+    HttpUtils_Close($dh);
     Log 5, "DNS ANSWER ".($len?$len:0).":".($buf ? unpack("H*", $buf):"N/A");
-    my ($err, $addr, $ttl) = HttpUtils_dnsParse($buf,$ql,$try6);
-    return HttpUtils_gethostbyname($hash, $host, 0, $fn) if($err && $try6);
-    return $fn->($hash, "DNS: $err", undef) if($err);
-    Log 4, "DNS result for $host: ".ip2str($addr).", ttl:$ttl";
-    $HU_dnsCache{$host}{TS} = gettimeofday();
-    $HU_dnsCache{$host}{TTL} = $ttl;
-    $HU_dnsCache{$host}{addr} = $addr;
-    return $fn->($hash, undef, $addr);
-  };
+    my ($err, $addr, $ttl) = HttpUtils_dnsParse($buf, $dh->{ql}, $dh->{try6});
+    return HttpUtils_gethostbyname($dh->{origHash},
+                                   $dh->{host}, 0, $dh->{callback})
+      if($err && $dh->{try6});
+    return $dh->{callback}->($dh->{origHash}, "DNS: $err", undef) if($err);
+    Log 4, "DNS result for $dh->{host}: ".ip2str($addr).", ttl:$ttl";
+    $HU_dnsCache{$dh->{host}}{TS} = gettimeofday();
+    $HU_dnsCache{$dh->{host}}{TTL} = $ttl;
+    $HU_dnsCache{$dh->{host}}{addr} = $addr;
+    return $dh->{callback}->($dh->{origHash}, undef, $addr);
+  }
+  $dh{directReadFn} = \&directReadFn;
   $selectlist{\%dh} = \%dh;
 
-  my $dnsQuery;
-  my $dnsTo = 0.25;
-  my $lSelectTs = $selectTimestamp;
-  $dnsQuery = sub()
+  $dh{dnsTo} = 0.25;
+  $dh{lSelectTs} = $selectTimestamp;
+  $dh{selectTimestamp} = $selectTimestamp;
+
+  sub
+  dnsQuery($)
   {
-    $dnsTo *= 2 if($lSelectTs != $selectTimestamp);
-    $lSelectTs = $selectTimestamp;
-    return HttpUtils_Err(\%timerHash) if($dnsTo > $hash->{timeout}/2);
-    my $ret = syswrite $dh{conn}, $qry;
-    if(!$ret || $ret != $ql) {
+    my ($dh) = @_;
+    $dh->{dnsTo} *= 2 if($dh->{lSelectTs} != $dh->{selectTimestamp});
+    $dh->{lSelectTs} = $dh->{selectTimestamp};
+    return HttpUtils_Err({ hash=>$dh, msg=>"DNS"})
+        if($dh->{dnsTo} > $dh->{origHash}->{timeout}/2);
+    my $ret = syswrite $dh->{conn}, $dh->{qry};
+    if(!$ret || $ret != $dh->{ql}) {
       my $err = $!;
-      HttpUtils_Close(\%dh);
-      return $fn->($hash, "DNS write error: $err", undef);
+      HttpUtils_Close($dh);
+      return $dh->{callback}->($dh->{origHash}, "DNS write error: $err", undef);
     }
-    InternalTimer(gettimeofday()+$dnsTo, $dnsQuery, \%timerHash);
-  };
-  $dnsQuery->();
+    InternalTimer(gettimeofday()+$dh->{dnsTo}, \&dnsQuery, $dh);
+  }
+  dnsQuery(\%dh);
 }
 
 
@@ -409,8 +433,9 @@ HttpUtils_Connect($)
             my $errno = unpack("I",$packed);
             if($errno) {
               HttpUtils_Close($hash);
-              my $msg = "$host: ".strerror($errno);
+              my $msg = "$host: ".strerror($errno)." ($errno)";
               Log3 $hash, $hash->{loglevel}, "HttpUtils: $msg";
+              $hash->{errno} = $errno;
               return $hash->{callback}($hash, $msg, "");
             }
 
@@ -547,36 +572,37 @@ HttpUtils_Connect2($)
   }
 
   my $method = $hash->{method};
-  $method = ($data ? "POST" : "GET") if( !$method );
+  $method = (defined($data) && length($data) > 0 ? "POST" : "GET") if(!$method);
 
   my $httpVersion = $hash->{httpversion} ? $hash->{httpversion} : "1.0";
 
   my $path = $hash->{path};
   $path = "$hash->{protocol}://$hash->{host}$hash->{hu_portSfx}$path"
         if($hash->{hu_proxy});
-  my $hdr = "$method $path HTTP/$httpVersion\r\n";
-  $hdr .= "Host: $hash->{host}$hash->{hu_portSfx}\r\n";
-  $hdr .= "User-Agent: fhem\r\n"
-        if(!$hash->{header} || $hash->{header} !~ "User-Agent:");
-  $hdr .= "Accept-Encoding: gzip,deflate\r\n" if($hash->{compress});
-  $hdr .= "Connection: keep-alive\r\n" if($hash->{keepalive});
-  $hdr .= "Connection: Close\r\n"
-                              if($httpVersion ne "1.0" && !$hash->{keepalive});
 
-  $hdr .= "Authorization: Basic ".
-                      encode_base64($hash->{user}.":".$hash->{pwd}, "")."\r\n"
-              if($hash->{auth} && !$hash->{digest} &&
-                 !($hash->{header} &&
-                   $hash->{header} =~ /^Authorization:\s*Digest/mi));
+  my $hdr = "$method $path HTTP/$httpVersion\r\n";
+  my $ha = sub($$) {
+    my ($n,$v)=@_;
+    return if($hash->{header} && $hash->{header} =~ /^$n:/mi);
+    $hdr .= "$n: $v\r\n";
+  };
+
+  $ha->("Host", "$hash->{host}$hash->{hu_portSfx}");
+  $ha->("User-Agent", "fhem");
+  $ha->("Accept-Encoding", "gzip,deflate") if($hash->{compress});
+  $ha->("Connection", "keep-alive") if($hash->{keepalive});
+  $ha->("Connection", "Close") if($httpVersion ne "1.0" && !$hash->{keepalive});
+  $ha->("Authorization",
+        "Basic ".encode_base64($hash->{user}.":".$hash->{pwd},""))
+              if($hash->{auth});
   $hdr .= $hash->{header}."\r\n" if($hash->{header});
-  if(defined($data)) {
-    $hdr .= "Content-Length: ".length($data)."\r\n";
-    $hdr .= "Content-Type: application/x-www-form-urlencoded\r\n"
-                if ($hdr !~ "Content-Type:");
+  if(defined($data) && length($data) > 0) {
+    $ha->("Content-Length", length($data));
+    $ha->("Content-Type", "application/x-www-form-urlencoded");
   }
   if(!$usingSSL) {
     my $pw = AttrVal("global", "proxyAuth", "");
-    $hdr .= "Proxy-Authorization: Basic $pw\r\n" if($pw);
+    $ha->("Proxy-Authorization","Basic $pw") if($pw);
   }
   Log3 $hash, $hash->{loglevel}+1, "HttpUtils request header:\n$hdr";
   $hdr .= "\r\n";
@@ -592,9 +618,11 @@ HttpUtils_Connect2($)
     delete($hash->{httpheader});
     $hash->{NAME} = "" if(!defined($hash->{NAME})); 
     my %timerHash = (hash=>$hash, checkSTS=>$selectTimestamp, msg=>"write to");
+    $hash->{conn}->blocking(0);
     $hash->{directReadFn} = sub() {
       my $buf;
       my $len = sysread($hash->{conn},$buf,65536);
+      return if(!defined($len) && $! == EWOULDBLOCK);
       $hash->{buf} .= $buf if(defined($len) && $len > 0);
       if(!defined($len) || $len <= 0 || 
          HttpUtils_DataComplete($hash)) {
@@ -616,6 +644,7 @@ HttpUtils_Connect2($)
     $hash->{directWriteFn} = sub($) { # Nonblocking write
       my $ret = syswrite $hash->{conn}, $data;
       if($ret <= 0) {
+        return if($! == EAGAIN);
         my $err = $!;
         RemoveInternalTimer(\%timerHash);
         HttpUtils_Close($hash);

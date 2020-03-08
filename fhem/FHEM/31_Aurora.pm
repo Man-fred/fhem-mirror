@@ -338,104 +338,139 @@ Aurora_SetParam($$@)
 
   $cmd = "off" if($cmd eq "pct" && $value == 0 );
 
+  if( $cmd eq "previousEffect" 
+      || $cmd eq "nextEffect" ) {
+    my $hash = $defs{$name};
+    if( $hash->{helper}{effects} ) {
+      my $count = @{$hash->{helper}{effects}};
+      if( my ($index) = grep { $hash->{helper}{effects}[$_] eq $hash->{helper}{effect} } (0 .. $count-1) ) {
+        if( $cmd eq "nextEffect" ) {
+          $index = 0 if( ++$index > $count-1 );
+        } elsif( $cmd eq "nextEffect" ) {
+          $index = $count-1 if( --$index < 0 );
+        }
+
+        $cmd = 'effect';
+        $value = $hash->{helper}{effects}[$index];
+      }
+
+    }
+  }
+
   if($cmd eq 'on') {
-    $obj->{'on'}  = JSON::true;
-    $obj->{'transitiontime'} = $value * 10 if( defined($value) );
+    $obj->{on} = { value => JSON::true };
+    $obj->{on}{duration} = $value * 10 if( defined($value) );
 
   } elsif($cmd eq 'off') {
-    $obj->{'on'}  = JSON::false;
-    $obj->{'transitiontime'} = $value * 10 if( defined($value) );
+    $obj->{on} = { value => JSON::false };
+    $obj->{on}{duration} = $value * 10 if( defined($value) );
 
   } elsif($cmd eq "pct") {
     $value = 0 if( $value < 0 );
     $value = 100 if( $value > 100 );
-    $obj->{'on'}  = JSON::true;
-    $obj->{'brightness'}  = int($value);
-    $obj->{'transitiontime'} = $value2 * 10 if( defined($value2) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{brightness} = { value => int($value) };
+    $obj->{brightness}{duration} = $value2 * 10 if( defined($value2) );
 
   } elsif($name && $cmd eq "dimUp") {
-    my $pct = ReadingsVal($name,"pct","0");
-    $pct += 10;
-    $pct = 100 if( $pct > 100 );
-    $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-    $obj->{'brightness'}  = 0+$pct;
-    $obj->{'transitiontime'} = 1;
-    #$obj->{'transitiontime'} = $value * 10 if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{brightness} = { increment => 10 };
+    $obj->{brightness} = { increment => 0+$value } if( defined($value) );
+    $obj->{brightness}{duration} = $value2 * 10 if( defined($value2) );
     $defs{$name}->{helper}->{update_timeout} = 0;
 
   } elsif($name && $cmd eq "dimDown") {
-    my $pct = ReadingsVal($name,"pct","0");
-    $pct -= 10;
-    $pct = 0 if( $pct < 0 );
-    $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-    $obj->{'brightness'}  = 0+$pct;
-    $obj->{'transitiontime'} = 1;
-    #$obj->{'transitiontime'} = $value * 10 if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{brightness} = { increment => -10 };
+    $obj->{brightness} = { increment => 0-$value } if( defined($value) );
+    $obj->{brightness}{duration} = $value2 * 10 if( defined($value2) );
     $defs{$name}->{helper}->{update_timeout} = 0;
 
   } elsif($cmd eq "satUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'sat_inc'}  = 10;
-      $obj->{'sat_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{sat} = { increment => 10 };
+    $obj->{sat} = { increment => 0+$value } if( defined($value) );
+    $obj->{sat}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif($cmd eq "satDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'sat_inc'}  = -10;
-      $obj->{'sat_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{sat} = { increment => 10 };
+    $obj->{sat} = { increment => 0-$value } if( defined($value) );
+    $obj->{sat}{duration} = $value2 * 10 if( defined($value2) );
 
   } elsif($cmd eq "hueUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'hue_inc'}  = 30;
-      $obj->{'hue_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{hue} = { increment => 10 };
+    $obj->{hue} = { increment => 0+$value } if( defined($value) );
+    $obj->{hue}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif($cmd eq "hueDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'hue_inc'}  = -30;
-      $obj->{'hue_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{hue} = { increment => 10 };
+    $obj->{hue} = { increment => 0-$value } if( defined($value) );
+    $obj->{hue}{duration} = $value2 * 10 if( defined($value2) );
 
   } elsif($cmd eq "ctUp") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'ct_inc'}  = 16;
-      $obj->{'ct_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{ct} = { increment => 16 };
+    $obj->{ct} = { increment => 0+$value } if( defined($value) );
+    $obj->{ct}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif($cmd eq "ctDown") {
-      $obj->{'on'}  = JSON::true if( !$defs{$name}->{helper}{on} );
-      $obj->{'ct_inc'}  = -16;
-      $obj->{'ct_inc'} = 0+$value if( defined($value) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{ct} = { increment => 16 };
+    $obj->{ct} = { increment => 0-$value } if( defined($value) );
+    $obj->{ct}{duration} = $value2 * 10 if( defined($value2) );
 
   } elsif($cmd eq "ct") {
-    $obj->{'on'}  = JSON::true;
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
     $value = int(1000000/$value) if( $value < 1000 );
-    $obj->{'ct'}  = 0+$value;
-    $obj->{'transitiontime'} = $value2 * 10 if( defined($value2) );
+    $obj->{ct} = { value => 0+$value };
+    $obj->{ct}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif($cmd eq "hue") {
-    $obj->{'on'}  = JSON::true;
-    $obj->{'hue'}  = 0+$value;
-    $obj->{'transitiontime'} = $value2 * 10 if( defined($value2) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{hue} = 0+$value;
+    $obj->{hue}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif($cmd eq "sat") {
-    $obj->{'on'}  = JSON::true;
-    $obj->{'sat'}  = 0+$value;
-    $obj->{'transitiontime'} = $value2 * 10 if( defined($value2) );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{sat} = 0+$value;
+    $obj->{sat}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif( $cmd eq "rgb" && $value =~ m/^(..)(..)(..)/) {
     my( $r, $g, $b ) = (hex($1)/255.0, hex($2)/255.0, hex($3)/255.0);
 
-      my( $h, $s, $v ) = Color::rgb2hsv($r,$g,$b);
+    my( $h, $s, $v ) = Color::rgb2hsv($r,$g,$b);
 
-      $obj->{'on'}  = JSON::true;
-      $obj->{'hue'} = int( $h * 359 );
-      $obj->{'sat'} = int( $s * 100 );
-      $obj->{'brightness'} = int( $v * 100 );
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{hue} = { value => int( $h * 359 ) };
+    $obj->{sat} = { value => int( $s * 100 ) };
+    $obj->{brightness} = { value => int( $v * 100 ) };
+    $obj->{hue}{duration} = $value2 * 10 if( defined($value2) );
+    $obj->{sat}{duration} = $value2 * 10 if( defined($value2) );
+    $obj->{brightness}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif( $cmd eq "hsv" && $value =~ m/^(..)(..)(..)/) {
     my( $h, $s, $v ) = (hex($1), hex($2), hex($3));
 
-    $s = 100 if( $s > 100 );
-    $v = 100 if( $v > 100 );
+    $h =  int(255 / $h * 356);
+    $s =  int(255 / $s * 100);
+    $v =  int(255 / $v * 100);
 
-    $obj->{'on'}  = JSON::true;
-    $obj->{'hue'}  = int($h*100);
-    $obj->{'sat'}  = 0+$s;
-    $obj->{'brightness'}  = 0+$v;
+    $obj->{on} = { value => JSON::true } if( !$defs{$name}->{helper}{on} );
+    $obj->{hue} = { value => 0+$h };
+    $obj->{sat} = { value => 0+$s };
+    $obj->{brightness} = { value => 0+$v };
+    $obj->{hue}{duration} = $value2 * 10 if( defined($value2) );
+    $obj->{sat}{duration} = $value2 * 10 if( defined($value2) );
+    $obj->{brightness}{duration} = $value2 * 10 if( defined($value2) );
+
   } elsif( $cmd eq "effect" ) {
     $obj->{'select'} = "$value";
     $obj->{'select'} .= " $value2" if( $value2 );
     $obj->{'select'} .= " ". join(" ", @a) if( @a );
+
   } elsif( $cmd eq "transitiontime" ) {
     $obj->{'transitiontime'} = 0+$value;
   } elsif( $name &&  $cmd eq "delayedUpdate" ) {
@@ -525,13 +560,14 @@ Aurora_Set($@)
     my $effects = join(',',@{$hash->{helper}{effects}});
     $effects =~ s/\s/#/g;
     $list .= " effect:,$effects";
+    $list .= " previousEffect:noArg nextEffect:noArg";
   }
 
   return SetExtensions($hash, $list, $name, @aa);
 }
 
 sub
-cttorgb($)
+Aurora_cttorgb($)
 {
   my ($ct) = @_;
 
@@ -568,7 +604,7 @@ cttorgb($)
 }
 
 sub
-xyYtorgb($$$)
+Aurora_xyYtorgb($$$)
 {
   # calculation from http://www.brucelindbloom.com/index.html
   my ($x,$y,$Y) = @_;
@@ -632,7 +668,7 @@ Aurora_Get($@)
     my $cm = ReadingsVal($name,"colormode","");
     if( $cm eq "ct" ) {
       if( ReadingsVal($name,"ct","") =~ m/(\d+)/ ) {
-        ($r,$g,$b) = cttorgb(1000000/$1);
+        ($r,$g,$b) = Aurora_cttorgb(1000000/$1);
       }
     } else {
       my $h = ReadingsVal($name,"hue",0) / 359.0;
@@ -653,7 +689,7 @@ Aurora_Get($@)
     my $cm = ReadingsVal($name,"colormode","");
     if( $cm eq "ct" ) {
       if( ReadingsVal($name,"ct","") =~ m/(\d+) .*/ ) {
-        ($r,$g,$b) = cttorgb($1);
+        ($r,$g,$b) = Aurora_cttorgb($1);
       }
     } else {
       my $h = ReadingsVal($name,"hue",0) / 359.0;
@@ -923,8 +959,6 @@ Aurora_Attr($$$;$)
   <a name="Aurora_Readings"></a>
   <b>Readings</b>
   <ul>
-    <li>bri<br>
-    the brightness reported from the device. the value can be betwen 1 and 254</li>
     <li>colormode<br>
     the current colormode</li>
     <li>ct<br>
@@ -959,8 +993,6 @@ Aurora_Attr($$$;$)
         Note: the FS20 compatible dimXX% commands are also accepted.</li>
       <li>color &lt;value&gt;<br>
         set colortemperature to &lt;value&gt; kelvin.</li>
-      <li>bri &lt;value&gt; [&lt;ramp-time&gt;]<br>
-        set brighness to &lt;value&gt;; range is 0-254.</li>
       <li>dimUp [delta]</li>
       <li>dimDown [delta]</li>
       <li>ct &lt;value&gt; [&lt;ramp-time&gt;]<br>
@@ -976,6 +1008,8 @@ Aurora_Attr($$$;$)
       <li>satUp [delta]</li>
       <li>satDown [delta]</li>
       <li>effect &lt;name&gt;</li>
+      <li>previousEffect</li>
+      <li>nextEffect</li>
       <li>rgb &lt;rrggbb&gt;<br>
         set the color to (the nearest equivalent of) &lt;rrggbb&gt;</li>
       <br>
@@ -987,7 +1021,7 @@ Aurora_Attr($$$;$)
         <li>multiple paramters can be set at once separated by <code>:</code><br>
           Examples:<br>
             <code>set LC on : transitiontime 100</code><br>
-            <code>set bulb on : bri 100 : color 4000</code><br></li>
+            <code>set bulb on : pct 100 : color 4000</code><br></li>
         </ul>
     </ul><br>
 

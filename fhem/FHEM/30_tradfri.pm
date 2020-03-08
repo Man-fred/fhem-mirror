@@ -17,6 +17,8 @@ use Data::Dumper;
 use POSIX;
 use Socket;
 
+require "$attr{global}{modpath}/FHEM/31_HUEDevice.pm";
+
 use vars qw(%modules);
 use vars qw(%defs);
 use vars qw(%attr);
@@ -33,8 +35,10 @@ tradfri_Initialize($)
 
   $hash->{ReadFn}   = "tradfri_Read";
   $hash->{WriteFn}  = "tradfri_Write";
+  $hash->{Clients}  = ":HUEDevice:";
 
   $hash->{DefFn}    = "tradfri_Define";
+  $hash->{RenameFn} = "tradfri_Rename";
   $hash->{NotifyFn} = "tradfri_Notify";
   $hash->{UndefFn}  = "tradfri_Undefine";
   $hash->{DelayedShutdownFn} = "tradfri_DelayedShutdown";
@@ -106,7 +110,18 @@ tradfri_Define($$)
 
   return undef;
 }
-
+sub
+tradfri_Rename($$$)
+{
+  my ($new,$old) = @_;
+ 
+  foreach my $chash ( values %{$modules{HUEDevice}{defptr}} ) {
+    next if( !$chash->{IODev} );
+    next if( $chash->{IODev}{NAME} ne $new );
+ 
+    HUEDevice_IODevChanged($chash, $old, $new);
+  }
+}
 sub
 tradfri_Notify($$)
 {
@@ -238,11 +253,13 @@ tradfri_processEvent($$) {
         Log3 $name, 1, "$name: Autocreate: An error occurred while creating device for id '$id': $ret";
 
       } else {
-        CommandAttr(undef,"$cname alias ".$decoded->{name});
+        CommandAttr(undef,"$cname alias ".$decoded->{name}) if( $decoded->{name} );
         CommandAttr(undef,"$cname room Tradfri");
         #CommandAttr(undef,"$cname IODev $name");
 
         CommandAttr(undef, "$name createGroupReadings 1") if( $decoded->{r} eq 'group' );
+
+        CommandAttr(undef,"$cname subType blind") if( $decoded->{type} eq 'blind' );
 
         HUEDeviceSetIcon($cname);
         $defs{$cname}{helper}{fromAutocreate} = 1 ;
@@ -651,6 +668,8 @@ tradfri_Attr($$$)
 1;
 
 =pod
+=item tag cloudfree
+=item protocol:zigbee
 =item summary    Module to control the FHEM/tradfri integration
 =item summary_DE Modul zur Konfiguration der FHEM/tradfri Integration
 =begin html

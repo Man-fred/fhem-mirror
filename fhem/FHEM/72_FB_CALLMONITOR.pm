@@ -445,7 +445,7 @@ FB_CALLMONITOR_Read($)
             if($array[1] eq "CALL")
             {
                 # Remove Call-By-Call number (Germany)
-                $external_number =~ s/^(010\d\d|0100\d\d)//g if($country_code eq "0049");
+                $external_number =~ s/^(010[1-9]\d|0100[1-9]\d)//g if($country_code eq "0049");
                 
                 # Remove Call-By-Call number (Austria)
                 $external_number =~ s/^10\d\d//g if($country_code eq "0043");
@@ -553,6 +553,8 @@ FB_CALLMONITOR_Read($)
             delete($hash->{helper}{TEMP}{$array[2]});
         } 
     }
+    
+    $hash->{PARTIAL} = $buffer;
 }
 
 #####################################

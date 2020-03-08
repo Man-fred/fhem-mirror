@@ -251,9 +251,7 @@ sv_menu(evt, embed)
           $(svg).append(par.circle);
 
           par.div = $('<div id="svgmarker">');
-          par.divoffY = $(embed ? embed : svg).offset().top -
-                       $("#content").offset().top-50 +
-                       $("#content").scrollTop();
+          par.divoffY = -50;
           var parent = (embed ? $(embed).parent() : $(svg).parent()); 
           $(parent).append(par.div);
 
@@ -304,7 +302,9 @@ sv_menu(evt, embed)
 
     if( par.log_scale ) {
       y *= par.log_scale;
-      y = Math.pow(10,y) - 1;
+      if( par.y_min )
+        y += Math.log(par.y_min)/Math.log(10);
+      y = Math.pow(10,y);
     }
 
     y = y.toFixed(par.decimals);
@@ -419,6 +419,19 @@ svg_init(par)    // also called directly from perl, in race condition
       return;
     svg_init_one(e, sTag);
   });
+
+  if(par)
+    return;
+
+  $("svg.plotembed_2[data-src]").each(function(){
+    var svgThis = this;
+    var src = $(this).attr("data-src");
+    var dev = FW_escapeSelector($(this).attr("data-dev"));
+    FW_cmd(src, function(data){
+      $(svgThis).replaceWith(data.substr(data.indexOf('<svg')));
+      svg_init_one(undefined, $("svg#SVGPLOT_"+dev));
+   });
+  });
 }
 
 $(document).ready(function(){
@@ -429,6 +442,8 @@ $(document).ready(function(){
     svg_load("svg_pastedata", function(val) {svg_pastedata = val} );
   });
   $("svg[id]").each(function(){        // <svg> (direct)
+    if($(this).parent().parent('td').length)    // needed in groups
+      $(this).parent().css( "position", "relative" );
     if($(this).attr("id").indexOf("SVGPLOT") == 0)
       svg_init_one(undefined, this);
   });

@@ -3,10 +3,9 @@
 package main;
 use strict;
 use warnings;
-use Data::Dumper;
-use Time::Local;
+use POSIX;
 
-require RESIDENTStk;
+use RESIDENTStk;
 our ( @RESIDENTStk_attr, %RESIDENTStk_subTypes );
 
 # initialize ##################################################################
@@ -26,7 +25,7 @@ sub GUEST_Initialize($) {
         "disable:1,0 disabledForIntervals do_not_notify:1,0 "
       . "rg_states:multiple-strict,home,gotosleep,asleep,awoken,absent,none "
       . "subType:"
-      . join( ',', @{ $RESIDENTStk_subTypes{GUEST} } ) . " "
+      . join( ',', @{ $RESIDENTStk_subTypes{en}{GUEST} } ) . " "
       . $readingFnAttributes;
 
     foreach (@RESIDENTStk_attr) {

@@ -154,6 +154,7 @@ generateModuleCommandref($$;$$)
     my $docCount = 0;
     my $hasLink = 0;
     my $dosMode = 0;
+    my $nrEnd = 0;
     while(my $l = <$modFh>) {
       $line++;
 
@@ -163,28 +164,15 @@ generateModuleCommandref($$;$$)
         print "*** $lang $mod: nonempty line after =begin html ignored\n"
           if($l =~ m/^...*$/);
         $skip = 0; $line++;
+        $nrEnd++;
 
       } elsif($l =~ m/^=end html$suffix$/) {
         $skip = 1;
+        $nrEnd--;
         print $fh "<p>" if($fh);        
 
       } elsif(!$skip) {
         print $fh $l if($fh);
-        chkAndGenLangLinks($l, $lang, $fh);
-
-        $docCount++;
-        $hasLink = ($l =~ m/<a name="$mod"/) if(!$hasLink);
-        foreach $tag (TAGS) {
-          $tagcount{$tag} +=()= ($l =~ /<$tag>/gi);
-          $tagcount{$tag} -=()= ($l =~ /<\/$tag>/gi);
-          if($tagcount{$tag} < 0) {
-            print "*** $lang $fPath: negative tagcount for $tag, line $line\n"
-                if(!$noWarnings);
-            $tagcount{$tag} = 0;
-          }
-          $llwct{$tag} = $line if(!$tagcount{$tag});
-        }
-
         if($l =~ m,INSERT_DOC_FROM: ([^ ]+)/([^ /]+) ,) {
           my ($dir, $re) = ($1, $2);
           if(opendir(DH, $dir)) {
@@ -194,6 +182,28 @@ generateModuleCommandref($$;$$)
             closedir(DH);
           }
         }
+        chkAndGenLangLinks($l, $lang, $fh);
+
+        $docCount++;
+        next if($noWarnings);
+        $hasLink = ($l =~ m/<a name="$mod"/) if(!$hasLink);
+        foreach $tag (TAGS) {
+          if($l =~ m/<$tag ([^>]+)>/i) {
+            my $attr = $1;
+            print "*** $lang $mod line $line: $tag with attributes (apart ".
+                "from class) is not allowed\n" 
+              if($attr !~ m/class="[^"]*"/ && !$noWarnings);
+          }
+          $tagcount{$tag} +=()= ($l =~ /<$tag( [^>]+)?>/gi);
+          $tagcount{$tag} -=()= ($l =~ /<\/$tag>/gi);
+          if($tagcount{$tag} < 0) {
+            print "*** $lang $fPath: negative tagcount for $tag, line $line\n"
+                if(!$noWarnings);
+            $tagcount{$tag} = 0;
+          }
+          $llwct{$tag} = $line if(!$tagcount{$tag});
+        }
+
       }
     }
     close($modFh);
@@ -201,7 +211,8 @@ generateModuleCommandref($$;$$)
         if($dosMode);
 # TODO: add doc to each $jsfile
     print "*** $lang $fPath: No document text found\n"
-       if(!$jsFile && !$suffix && !$docCount && !$dosMode && $fPath !~ m,/99_,);
+       if(!$jsFile && !$suffix && !$docCount && !$dosMode &&
+          $fPath !~ m,/99_, && !$noWarnings);
     if(!$jsFile && $suffix && !$docCount && !$dosMode) {
       if($lang eq "DE" && $fh) {
         print $fh <<EOF;
@@ -222,4 +233,7 @@ EOF
                 "($tagcount{$tag}, last line ok: $llwct{$tag})\n")
         if($tagcount{$tag} && !$noWarnings);
     }
+
+    print "*** $lang $fPath: =end html$suffix: ".($nrEnd>0 ? "missing":"there are too many")."\n"
+        if($nrEnd && !$noWarnings);
 }

@@ -88,8 +88,9 @@ my %zwave_class = (
                                              "state:dim ".hex($1)))',
                "052603(..)(..)(..)" => 'sprintf("swmStatus:%s target %s '.
                     'duration %s", hex($1), hex($2), ZWave_byte2time($3))', # V4
-               "..260100.."=> "state:setOff",
-               "..2601ff.."=> "state:setOn",
+               "..2601(..).."=> '($1 eq "00" ? "state:setOff" :
+                                 ($1 eq "ff" ? "state:setOn" :
+                                               "state:setDim ".hex($1)))',
                "..260420"  => "state:swmBeginUp",
                "..260460"  => "state:swmBeginDown",
                "..2604(..)(..)(..)(..)"  => 'ZWave_swmParse($1,$2,$3,$4)',
@@ -146,10 +147,12 @@ my %zwave_class = (
     get   => { ccCapability=> '01', # no more args
                ccStatus    => '03%02x' },
     set   => { # Forum #36050
+               color       => 'ZWave_ccColorSet("%s")',
                rgb         => '05050000010002%02x03%02x04%02x', # Forum #44014
                wcrgb       => '050500%02x01%02x02%02x03%02x04%02x' },
     parse => { "043302(..)(..)"=> 'ZWave_ccCapability($1,$2)',
-               "043304(..)(.*)"=> '"ccStatus_".hex($1).":".hex($2)' } },
+               "0.3304(..)(..)(.*)"=> '"ccStatus_".hex($1).":".hex($2)',
+               "..3304(..)(..)(.*)"=> 'ZWave_ccParse(hex($1),hex($2))' } },
   ZIP_ADV_CLIENT           => { id => '34' },
   METER_PULSE              => { id => '35' },
   BASIC_TARIFF_INFO        => { id => '36' },
@@ -364,7 +367,8 @@ my %zwave_class = (
   ZWAVEPLUS_INFO           => { id => '5e',
     get   => { zwavePlusInfo=>"01"},
     parse => { "095e02(..)(..)(..)(....)(....)"
-                                => 'ZWave_plusInfoParse($1,$2,$3,$4,$5)'} },
+                                => 'ZWave_plusInfoParse($1,$2,$3,$4,$5)'},
+    init  => { ORDER=>49, CMD => '"get $NAME zwavePlusInfo"' } },
   ZIP_GATEWAY              => { id => '5f' },
   MULTI_CHANNEL            => { id => '60',  # Version 2, aka MULTI_INSTANCE
     set   => { mcCreateAll => 'ZWave_mcCreateAll($hash,"")' },
@@ -439,13 +443,13 @@ my %zwave_class = (
     },
   MANUFACTURER_SPECIFIC    => { id => '72',
     get   => { model       => "04" },
-    parse => { "0[8a]7205(....)(....)(....)(.*)"
+    parse => { "..7205(....)(....)(....)(.*)"
                           => 'ZWave_mfsParse($hash,$1,$2,$3,0)',
-               "0[8a]7205(....)(....)(.{4})(.*)"
+               "..7205(....)(....)(.{4})(.*)"
                           => 'ZWave_mfsParse($hash,$1,$2,$3,1)',
-               "0[8a]7205(....)(.{4})(.{4})(.*)"
+               "..7205(....)(.{4})(.{4})(.*)"
                           => 'ZWave_mfsParse($hash,$1,$2,$3,2)' },
-    init  => { ORDER=>49, CMD => '"get $NAME model"' } },
+    init  => { ORDER=> 1, CMD => '"get $NAME model"' } },
   POWERLEVEL               => { id => '73',
     set   => { powerlevel     => "01%02x%02x",
                powerlevelTest => "04%02x%02x%04x" },
@@ -474,7 +478,22 @@ my %zwave_class = (
                location => '05' },
     parse => { '..770300(.*)' => '"name:".pack("H*", $1)',
                '..770600(.*)' => '"location:".pack("H*", $1)' } },
-  FIRMWARE_UPDATE_MD       => { id => '7a' },
+  SOUND_SWITCH             => { id => '79',
+    set   => { toneConfiguration  => "05%02x%02x",
+               tonePlay           => "08%02x",
+               tonePlayDefault    => "08FF" },
+               toneStop           => "0800",
+    get   => { toneNumbers        => "01",
+               tonePlay           => "09",
+               toneConfiguration  => "06"},
+    parse => { "037902(..)"       => '"toneNumbers:".hex($1)',
+               "047907(..)(..)"   => '"toneConfiguration:Volume ".hex($1).'.
+                                     '" Default ".hex($2)',
+               "03790a(..)"       => '"tonePlay:".hex($1)' } },
+  FIRMWARE_UPDATE_MD       => { id => '7a',
+    get   => { fwMetaData  => 'ZWave_firmware($hash, "")'  },
+    set   => { fwUpdate    => 'ZWave_firmware($hash, "%s")'},
+    parse => { "..7a(..)(.*)" => 'ZWave_firmwareUpdateParse($hash, $1, $2)' } },
   GROUPING_NAME            => { id => '7b' },
   REMOTE_ASSOCIATION_ACTIVATE=>{id => '7c' },
   REMOTE_ASSOCIATION       => { id => '7d' },
@@ -527,7 +546,7 @@ my %zwave_class = (
                  '%d.%02d App %d.%d HW %d FWCounter %d FW %d.%d",'.
                  'unpack("C*",pack("H*","$1")))',
                "048614(..)(..)"     => '"versionClass_".hex($1).":".hex($2)' },
-   init  => { ORDER=> 1, CMD => '"get $NAME versionClassAll"' } },
+   init  => { ORDER=> 2, CMD => '"get $NAME versionClassAll"' } },
   INDICATOR                => { id => '87',
     set   => { indicatorOff    => "0100",
                indicatorOn     => "01FF",
@@ -676,12 +695,11 @@ our %zwave_deviceSpecial;
                alarmAmbulanceOn=>"05000000000a030000",
                alarmPoliceOn   =>"05000000000a010000",
                alarmDoorchimeOn=>"050000000006160000",
-               alarmBeepOn     =>"05000000000a050000" } } },
-
-   ZME_KFOB => {
-     ZWAVEPLUS_INFO => {
-      # Example only. ORDER must be >= 50
-      init => { ORDER=>50, CMD => '"get $NAME zwavePlusInfo"' } } }
+               alarmBeepOn     =>"05000000000a050000" } } }
+#   ZME_KFOB => {
+#     ZWAVEPLUS_INFO => {
+#      # Example only. ORDER must be >= 50
+#      init => { ORDER=>50, CMD => '"get $NAME zwavePlusInfo"' } } }
 );
 
 my $zwave_cryptRijndael = 0;
@@ -711,6 +729,7 @@ ZWave_Initialize($)
   $hash->{UndefFn}   = "ZWave_Undef";
   $hash->{AttrFn}    = "ZWave_Attr";
   $hash->{ParseFn}   = "ZWave_Parse";
+  $hash->{RenameFn}  = "ZWave_Rename";
   no warnings 'qw';
   my @attrList = qw(
     IODev
@@ -841,12 +860,14 @@ ZWave_setEndpoints($)
     delete($h->{endpointParent});
     delete($h->{endpointChildren});
   }
+  my $tn = TimeNow();
   for my $k (sort keys %{$mp}) {
     my $h = $mp->{$k};
     next if($h->{nodeIdHex} !~ m/(..)(..)/);
     my ($root, $lid) = ($1, $2);
     my $rd = $mp->{$h->{homeId}." ".$root};
     $h->{endpointParent} = ($rd ? $rd->{NAME} : "unknown");
+    setReadingsVal($h, "associatedWith", $h->{endpointParent}, $tn);
     $h->{".vclasses"} = ($rd ? $rd->{".vclasses"} : {} );
     if($rd) {
       if($rd->{endpointChildren}) {
@@ -854,6 +875,7 @@ ZWave_setEndpoints($)
       } else {
         $rd->{endpointChildren} = $h->{NAME};
       }
+      setReadingsVal($rd, "associatedWith", $rd->{endpointChildren}, $tn);
     }
   }
 }
@@ -896,10 +918,35 @@ ZWave_execInits($$;$)
   my $homeReading = ReadingsVal($iodev->{NAME}, "homeId", "") if($iodev);
   my $CTRLID=hex($1) if($homeReading && $homeReading =~ m/CtrlNodeIdHex:(..)/);
 
+  # ZWavePlus devices with MCA need mcaAdd instead of associationAdd
+  my $cls = AttrVal($NAME, "classes", "");
+  my $isMc = ($cls =~ m/ZWAVEPLUS_INFO/ &&
+              $cls =~ m/MULTI_CHANNEL_ASSOCIATION/ &&
+              $cls =~ m/MULTI_CHANNEL\b/);
+
   my @cmd;
+  my $nih = $hash->{nodeIdHex};
   foreach my $i (sort { $a->{ORDER}<=>$b->{ORDER} } @initList) {
     my $version = $hash->{".vclasses"}{$i->{CC}};
-    push @cmd, eval $i->{CMD} if(!defined($version) || $version > 0);
+    if($isMc && $i->{CMD} =~ m/associationAdd 1/) {
+      $hash->{p1} = eval $i->{CMD}; # cannot access local variables
+      $hash->{p2} = eval '"set $NAME mcaAdd 1 0 $CTRLID 0"';
+      next;
+    }
+    push @cmd, eval $i->{CMD}
+        if(!defined($version) || $version > 0);
+  }
+
+  if($isMc) {
+    # Cannot access the stack here, only $hash (?)
+    $zwave_parseHook{"$nih:versionClassAll"} = sub(){
+      my $mcaVers = $hash->{".vclasses"}{MULTI_CHANNEL_ASSOCIATION};
+      return if(!$mcaVers); # called too early
+      AnalyzeCommand(undef, $hash->{$mcaVers < 3 ? "p1" : "p2"});
+      delete($zwave_parseHook{"$hash->{nodeIdHex}:versionClassAll"});
+      delete($hash->{p1});
+      delete($hash->{p2});
+    };
   }
 
   push @cmd, ZWave_initFromModelfile($hash->{NAME}, $CTRLID, $cfg)
@@ -1710,9 +1757,12 @@ ZWave_assocGroupCmdList($$)
 }
 
 my %zwm_unit = (
-  energy=> ["kWh", "kVAh", "W", "pulseCount", "V", "A", "PowerFactor"],
-  gas   => ["m3", "feet3", "undef", "pulseCount"],
-  water => ["m3", "feet3", "USgallons", "pulseCount"]
+  energy  => ["kWh", "kVAh", "W", "pulseCount", "V", "A", "PowerFactor","undef",
+              "kVar", "kVarh"],
+  gas     => ["m3", "feet3", "undef", "pulseCount"],
+  water   => ["m3", "feet3", "USgallons", "pulseCount"],
+  heating => ["kWh" ],
+  cooling => ["kWh" ]
 );
 
 sub
@@ -1731,7 +1781,7 @@ ZWave_meterParse($$)
                         "undef" : $rate_type_text[$rate_type]);
 
   my $meter_type = ($v1 & 0x1f);
-  my @meter_type_text =("undef", "energy", "gas", "water", "undef");
+  my @meter_type_text =("undef", "energy", "gas", "water", "heating","cooling");
   my $meter_type_text = ($meter_type > $#meter_type_text ?
                         "undef" : $meter_type_text[$meter_type]);
 
@@ -1740,6 +1790,7 @@ ZWave_meterParse($$)
   my $size      =  $v2     & 0x7; # 3 bits
 
   $scale |= (($v1 & 0x80) >> 5);
+  $scale = 8+hex(substr($v3, -2)) if($scale == 7); # V4
 
   my $unit_text = ($meter_type_text eq "undef" ?
                         "undef" : $zwm_unit{$meter_type_text}[$scale]);
@@ -1748,19 +1799,25 @@ ZWave_meterParse($$)
   $meter_type_text = "current" if ($unit_text eq "A");
 
   my $mv = hex(substr($v3, 0, 2*$size));
+  $mv = ($mv >> 31 ? $mv - 2 ** 32 : $mv) if($size == 4);
+  $mv = ($mv >> 24 ? $mv - 2 ** 24 : $mv) if($size == 3);
+  $mv = ($mv >> 16 ? $mv - 2 ** 16 : $mv) if($size == 2);
+  $mv = ($mv >>  8 ? $mv - 2 **  8 : $mv) if($size == 1);
+
   $mv = $mv / (10 ** $precision);
   $mv -= (2 ** ($size*8)) if $mv >= (2 ** ($size*8-1));
+  # Log 1, "$v1 $v2 $v3 precision:$precision size:$size scale:$scale val:$mv";
   $v3 = substr($v3, 2*$size, length($v3)-(2*$size));
 
   if (length($v3) < 4) { # V1 report
-    return "$meter_type_text: $mv $unit_text";
+    return "$meter_type_text:$mv $unit_text";
 
   } else { # V2 or greater report
     my $delta_time = hex(substr($v3, 0, 4));
     $v3 = substr($v3, 4, length($v3)-4);
 
     if ($delta_time == 0) { # no previous meter value
-      return "$meter_type_text: $mv $unit_text";
+      return "$meter_type_text:$mv $unit_text";
 
     } else { # previous meter value present
       my $pmv = hex(substr($v3, 0, 2*$size));
@@ -1772,7 +1829,7 @@ ZWave_meterParse($$)
       } else {
         $delta_time .= " s";
       };
-      return "$meter_type_text: $mv $unit_text previous: $pmv delta_time: ".
+      return "$meter_type_text:$mv $unit_text previous: $pmv delta_time: ".
                 "$delta_time"; # V2 report
     }
   }
@@ -1787,19 +1844,18 @@ ZWave_meterGet($)
     return("", "01");
   };
 
-  if (($scale < 0) || ($scale > 6)) {
-    return("argument must be one of: 0 to 6","");
-  } else {
-    $scale = $scale << 3;
-    return("",sprintf('01%02x', $scale));
-  };
+  if($scale < 7) {
+    return ("",sprintf('01%02x', $scale << 3));
+  } else { # Version 4
+    return ("",sprintf('01%02x%02x', 7<<3, $scale-8));
+  }
 
 }
 
 #V2: 1b7:reset 1b65:resrvd, 1b4-0:type, 2b7-4:resrvd, 2b3-0:scale
 #V3: 1b7:reset 1b65:resrvd, 1b4-0:type, 2b:scale
 #V4: 1b7:reset 1b65:rate, 1b4-0:type, 2b7:mst, 2b6-0:scale1, 3b:#scaleBytes,...
-# No V4 support...
+# some V4 support...
 sub
 ZWave_meterSupportedParse($$)
 {
@@ -1811,6 +1867,10 @@ ZWave_meterSupportedParse($$)
 
   my $meter_reset = $v1 & 0x80;
   my $meter_reset_text = $meter_reset ? "yes" : "no";
+  my $meter_rate_type = ($v1 & 0x60) >> 5;
+  my @meter_rate_text = ("", ", import only (consumed)", 
+                        ", export only (produced)", ", both import and export");
+  my $meter_rate_text = $meter_rate_text[$meter_rate_type];
 
   my $meter_type = ($v1 & 0x1f);
   my @meter_type_text =("undef", "energy", "gas", "water", "undef");
@@ -1818,17 +1878,18 @@ ZWave_meterSupportedParse($$)
                             "undef" : $meter_type_text[$meter_type]);
 
   my $scale = $v2 & 0x7f;
-  my $unit_text="";
-
-  for (my $i=0; $i <= 6; $i++) {
-    if ($scale & 2**$i) {
-        $unit_text .= ", " if (length($unit_text)>0);
-        $unit_text .= $i.":".$zwm_unit{$meter_type_text}[$i];
-    };
-  };
-
-  return "meterSupported: type: $meter_type_text scales: $unit_text resetable:".
-            " $meter_reset_text";
+  my $l = 6;
+  if($v2 & 0x80 && $val =~ m/^....(..)(..)/) {
+    $l += 8;
+    $scale = hex($2)*256+$scale;
+  }
+  my @unit_text;
+  for (my $i=0; $i <= $l; $i++) {
+    last if(@{$zwm_unit{$meter_type_text}} <= $i);
+    push (@unit_text, "$i:".$zwm_unit{$meter_type_text}[$i]) if($scale & 2**$i);
+  }
+  return "meterSupported:type:$meter_type_text$meter_rate_text,".
+         " resetable:$meter_reset_text, scales: ".join(" ", @unit_text);
 }
 
 
@@ -1871,6 +1932,11 @@ ZWave_versionClassAllGet($@)
     $hash->{".vclasses"}{$zwave_id2class{lc($1)}} = hex($2);
     $attr{$name}{vclasses} = join(" ", sort keys %h);
   }
+
+  if($zwave_parseHook{"$hash->{nodeIdHex}:versionClassAll"}) { # Used by init
+    $zwave_parseHook{"$hash->{nodeIdHex}:versionClassAll"}->();
+  }
+
   return !$hash->{asyncGet}; # "veto" for parseHook/getAll
 }
 
@@ -2339,6 +2405,7 @@ sub
 ZWave_mfsParse($$$$$)
 {
   my ($hash, $mf, $prod, $id, $config) = @_;
+  my $getVal = sub { return $_[0] =~ m/$_[1]\s*=\s*"([^"]*)"/ ? $1 : "unknown"};
 
   if($config == 2) {
     setReadingsVal($hash, "modelId", "$mf-$prod-$id", TimeNow());
@@ -2351,23 +2418,26 @@ ZWave_mfsParse($$$$$)
   if(open(FH, $xml)) {
     my ($lastMf, $mName, $ret) = ("","");
     while(my $l = <FH>) {
-      if($l =~ m/<Manufacturer.*id="([^"]*)".*name="([^"]*)"/) {
-        $lastMf = lc($1);
-        $mName = $2;
+      if($l =~ m/<Manufacturer/) {
+        $lastMf = lc($getVal->($l, "id"));
+        $mName = $getVal->($l, "name");
         next;
       }
 
-      if($l =~ m/<Product type\s*=\s*"([^"]*)".*id\s*=\s*"([^"]*)".*name\s*=\s*"([^"]*)"/) {
-        if($mf eq $lastMf && $prod eq lc($1) && $id eq lc($2)) {
+      if($l =~ m/<Product/) {
+        my $lId = lc($getVal->($l, "id"));
+        my $lProd = lc($getVal->($l, "type"));
+        if($mf eq $lastMf && $prod eq $lProd && $id eq $lId) {
           if($config) {
-            $ret = (($l =~ m/config\s*=\s*"([^"]*)"/) ? $1 : "unknown");
+            $ret = $getVal->($l, "config");
             ZWave_mfsAddClasses($hash, $1);
             # execInits needs the modelId
             setReadingsVal($hash, "modelId", "$mf-$prod-$id", TimeNow());
             ZWave_execInits($hash, 50, $ret);
             return "modelConfig:$ret";
           } else {
-            $ret = "model:$mName $3";
+            my $pName = $getVal->($l, "name");
+            $ret = "model:$mName $pName";
           }
           last;
         }
@@ -2475,6 +2545,36 @@ ZWave_doorLLRParse($$)
     return "doorLockLoggingRecord:$val";
   }
 }
+
+sub
+ZWave_ccParse($$)
+{
+  my ($ch,$val) = @_;
+  my @ccLabel = ("WarmWhite","ColdWhite","Red","Green","Blue",
+                 "Amber","Cyan","Purple","Indexed");
+  my $l = ($ch > @ccLabel-1 ? "unknown":$ccLabel[$ch]);
+  return "cc$l:$val";
+}
+
+sub
+ZWave_ccColorSet($)
+{
+  my ($spec) = @_;
+  my @arg = split(/\s+/, $spec);
+  my $usage = "wrong arg, need: colorComponent level colorComponent level ...";
+
+  return ($usage,"") if(@arg < 1 || int(@arg) > 18 || (int(@arg))%2 != 0);
+  my $ret;
+  $ret = sprintf("%02x", (int(@arg))/2);
+  for(my $i=0; $i<@arg; $i+=2) {
+    return ($usage, "") if($arg[$i] !~ m/^(\d)$/ || $1 > 8);
+    $ret .= sprintf("%02x", $arg[$i]);
+    return ($usage, "") if($arg[$i+1] !~ m/^(\d+)$/ || $1 < 0 || $1 > 255);
+    $ret .= sprintf("%02x", $arg[$i+1]);
+  }
+  return ("", "05$ret");
+}
+
 
 my @zwave_wd = ("none","mon","tue","wed","thu","fri","sat","sun");
 
@@ -2666,8 +2766,32 @@ ZWave_configParseModel($;$)
   }
 
   my $partial="";
+  my $bsHelp="";
+  my %OZW;
   while($gz->gzreadline($line)) {
     last if($line =~ m+^\s*</Product>+);
+
+    if($line =~ m,<(Help|MetaDataItem)>, && 
+       $line !~ m,</(Help|MetaDataItem)>,) { # Multiline Help
+      $partial = $line;
+      next;
+    }
+
+    if($partial) {
+      if($line =~ m,</(Help|MetaDataItem)>,) {
+        $line = $partial.$line;
+        $line =~ s/[\r\n]//gs;
+        $partial = "";
+      } else {
+        $partial .= $line;
+        next;
+      }
+    }
+
+    if($line =~ m+<MetaDataItem.*name="(.*?)".*>(.*)</MetaDataItem>+s) {
+      $OZW{$1} = $2;
+    }
+
     if($line =~ m/^\s*<CommandClass.*id="([^"]*)"(.*)$/) {
       $class = $1;
       $classInfo{$class} = $2;
@@ -2683,6 +2807,7 @@ ZWave_configParseModel($;$)
       $h{min}   = $1 if($line =~ m/min="([^"]*)"/i);
       $h{max}   = $1 if($line =~ m/max="([^"]*)"/i);
       $h{value} = $1 if($line =~ m/value="([^"]*)"/i);
+      $h{bitmask}= $1 if($line =~ m/bitmask="([^"]*)"/i);
       $h{index} = $1 if($line =~ m/index="([^"]*)"/i); # 1, 2, etc
       $h{read_only}  = $1 if($line =~ m/read_only="([^"]*)"/i); # true,false
       $h{write_only} = $1 if($line =~ m/write_only="([^"]*)"/i); # true,false
@@ -2697,23 +2822,18 @@ ZWave_configParseModel($;$)
       $h{Help} .= "Full text for $cmdName is: $h{label}<br>"
         if($shortened || $origName ne $cmdName);
       $hash{$cmdName} = \%h;
+      $bsHelp = ""; $partial = "";
     }
 
-    if($line =~ m,<Help>, && $line !~ m,</Help>,) { # Multiline Help
-      $partial = $line;
+    if($line =~ m,<BitSet\s+id="(.*)">,) {
+      $bsHelp = "Bit $1: ";
       next;
     }
-    if($partial) {
-      if($line =~ m,</Help>,) {
-        $line = $partial.$line;
-        $line =~ s/[\r\n]//gs;
-        $partial = "";
-      } else {
-        $partial .= $line;
-        next;
-      }
+
+    if($line =~ m+<Help>(.*)</Help>+s) {
+      $hash{$cmdName}{Help} .= "$bsHelp$1<br>";
+      $bsHelp="";
     }
-    $hash{$cmdName}{Help} .= "$1<br>" if($line =~ m+<Help>(.*)</Help>+s);
 
     if($line =~ m/^\s*<Item/) {
       my $label = $1 if($line =~ m/label="([^"]*)"/i);
@@ -2737,7 +2857,21 @@ ZWave_configParseModel($;$)
     my $caName = "$cfg$cmd";
     $zwave_cmdArgs{set}{$caName} = join(",", keys %{$h->{Item}}) if($h->{Item});
     $zwave_cmdArgs{set}{$caName} = "noArg" if($h->{type} eq "button");
+    if($h->{type} eq "bitset") {
+      $zwave_cmdArgs{set}{$caName} = 
+          "bitfield,".($h->{size}*8).($h->{bitmask} ? ",$h->{bitmask}":"");
+    }
     $zwave_cmdArgs{get}{$caName} = "noArg";
+  }
+
+  if(%OZW) {
+    my $OZW="";
+    foreach my $k (sort keys %OZW) {
+      my $v = $OZW{$k};
+      $v = "<a target='_blank' href='$v'>$v</a>" if($v =~ m+http.*://+);
+      $OZW .= "<h4>$k</h4><ul>$v</ul>";
+    }
+    $mc{OZW} = $OZW;
   }
 
   $zwave_modelConfig{$cfg} = \%mc;
@@ -3088,7 +3222,7 @@ ZWave_ALARM_05_Report($$$$)
     $rt0 = "alarm_type_$t:level $l";
     $rt1 = "alarm_$at:level $l";
   } elsif ($r =~ m/(..)(..)(..)(..)(..)(.*)/) {
-    my ($zid, $ns, $t2, $e, $prop, $opt) = ($1, $2, $3, $4, $5, $6);
+    my ($zid, $ns, $t2, $e, $prop, $opt) = ($1, $2, $3, $4, hex($5), $6);
       
     if ($e ne "00") {
       if (($t ne "00") && ($l eq "00")) {
@@ -5021,6 +5155,13 @@ ZWave_Parse($$@)
   return $name;
 }
 
+#####################################
+sub
+ZWave_Rename($$)
+{
+  my ($old, $new) = @_;
+  ZWave_setEndpoints($defs{$new});
+}
 
 #####################################
 sub
@@ -5221,6 +5362,7 @@ ZWave_helpFn($$)
   my ($d,$cmd) = @_;
   my $mc = ZWave_configGetHash($defs{$d});
   return "" if(!$mc);
+  return $mc->{OZW} if($cmd eq "OZW" && $mc->{OZW});
   my $h = $mc->{config}{$cmd};
   return "" if(!$h || !$h->{Help});
   $cmd .= " (numeric code $h->{index})" if(defined($h->{index}));
@@ -5278,8 +5420,17 @@ ZWave_fhemwebFn($$$$)
     my $url = ($n eq "alliance" ?
               "http://products.z-wavealliance.org/products/" :
               "http://devel.pepper1.net/zwavedb/device/");
-    $pl .= "<a target='_blank' href='$url/$link'>Details in $n DB</a>";
+    $pl .= "<a target='_blank' href='$url/$link'>Details:$n</a>";
     $pl .= "</div>";
+  }
+
+  if(ReadingsVal($d, "modelConfig", undef)) {
+    my $mc = ZWave_configGetHash($defs{$d});
+    if($mc && $mc->{OZW}) {
+      $pl .= "<div class='detLink ZWPepper'>";
+      $pl .= "<a id='details_ozw' href='#'>Details:OZW</a>";
+      $pl .= "</div>";
+    }
   }
 
   my $img = ZWave_getPic($iodev, lc($model));
@@ -5292,19 +5443,28 @@ ZWave_fhemwebFn($$$$)
   return
   "<div id='ZWHelp' class='makeTable help'></div>$pl".
   '<script type="text/javascript">'.
-   "var zwaveDevice='$d', FW_tp='$FW_tp';" . <<'JSEND'
+   "var zwd='$d', FW_tp='$FW_tp';" . <<'JSEND'
     $(document).ready(function() {
       $("div#ZWHelp").insertBefore("div.makeTable.internals"); // Move
       $("div.detLink.ZWPepper").insertAfter("div.detLink.devSpecHelp");
       if(FW_tp) $("div.img.ZWPepper").appendTo("div#menu");
       $("select.set,select.get").each(function(){
-        $(this).get(0).setValueFn = function(val) {
-          $("div#ZWHelp").html(val);
-        }
+        var ss = $(this).get(0);
+        ss.setValueFn = function(val) { $("div#ZWHelp").html(val); }
         $(this).change(function(){
-          FW_queryValue('{ZWave_helpFn("'+zwaveDevice+'","'+$(this).val()+'")}',
-                        $(this).get(0));
+          FW_queryValue('{ZWave_helpFn("'+zwd+'","'+$(this).val()+'")}', ss);
         });
+      });
+
+      $("a#details_ozw").click(function(){
+        if($("#devSpecHelp").length) {
+          $("#devSpecHelp").remove();
+          return;
+        }
+        $("#content").append('<div id="devSpecHelp"></div>');
+        var dsh = $("#devSpecHelp").get(0);
+        dsh.setValueFn = function(val) { $("#devSpecHelp").html(val); }
+        FW_queryValue('{ZWave_helpFn("'+zwd+'","OZW")}', dsh);
       });
     });
   </script>
@@ -5320,7 +5480,337 @@ s2Hex($)
   $p = hex($p);
   return ($p > 32767 ? -(65536-$p) : $p);
 }
+#####################################
+# OTA Firmware update 
+sub
+ZWave_firmware($$)
+{
+  my ($hash, $args) = @_;
+  if($args) {
+    return("Firmware update in progress. Please try update again later", "EMPTY")
+        if(defined $hash->{FW_UPDATE_DATA});
+    my $classVersion = $hash->{".vclasses"}{FIRMWARE_UPDATE_MD};
+    return("Firmware update with FIRMWARE_UPDATE_MD classversion > 4 ".
+                "not supported", "EMPTY") if($classVersion > 4);
+    my ($target, $fwFile) = split / /, $args;
+    my $usage = "wrong argumets, need: <FwTargetAsNumber> <FwFileName>";
+    return ($usage, "EMPTY")
+        if(!defined($target) || $target !~ m/^\d+$/ || !$fwFile);
 
+    my $fName = "$attr{global}{modpath}/FHEM/firmware/$fwFile";
+    my $l = -s $fName;
+    return "$fName does not exists, or is empty" if(!$l);
+    open(IN, $fName) || return "Cant open $fName: $!";
+    binmode(IN);
+    my $buf;
+    while (1) {
+      my $part = $l - length($buf);
+      my $success = read(IN, $buf, 100, length($buf));
+      if( not defined $success) {
+        return "Cant read $l bytes from $fName";
+      }
+      last if not $success;
+    }
+    close(IN);
+    my $strbuff = unpack('H*',$buf);
+    my $FwNewChkSum = ZWave_CRC16($strbuff);
+    $hash->{FW_UPDATE_DATA}->{CONTENT} = $strbuff;
+    $hash->{FW_UPDATE_DATA}->{CHK_SUM} = $FwNewChkSum;
+    $hash->{FW_UPDATE_DATA}->{TARGET} = $target;
+    $hash->{FW_UPDATE_DATA}->{FILE_LENGTH} = $l;
+    $hash->{FW_UPDATE_DATA}->{CL} = $hash->{CL};
+    $hash->{FW_UPDATE_DATA}->{STAGE} = "INTERVIEW";
+    
+    Log3 $hash, 3, "ZWave_firmware: Target: $target FILE: $fName ".
+                "LENGTH: $l CRC $FwNewChkSum Version $classVersion";
+    return("Firmware Update Version $classVersion does not support targets != 0",
+           "EMPTY") if (int($target) != 0 && $classVersion < 3);
+  }
+  
+  
+  ZWave_firmwareSendCmd($hash, "01"); #send FIRMWARE_MD_GET
+  if(defined $hash->{FW_UPDATE_DATA}) {
+    $zwave_parseHook{"$hash->{nodeIdHex}:..7a.*"} = \&ZWave_firmwareUpdateParse;
+    return(ZWave_WibMsg($hash).", performing firmware update", "EMPTY");
+  } else {
+    return(ZWave_WibMsg($hash).", fetching firmware meta data", "EMPTY");
+  }
+}
+
+sub
+ZWave_firmwareSendCmd($$)
+{
+  my ($hash, $cmd) = @_;
+  my $name = $hash->{NAME};
+  my $id = $hash->{nodeIdHex};
+  my $len = sprintf("%02x", length($cmd)/2+1);
+  my $cmdEf  = (AttrVal($name, "noExplorerFrames", 0) == 0 ? "25" : "05");
+  my $data = "13$id${len}7a$cmd$cmdEf". ZWave_callbackId($hash);
+  ZWave_addToSendStack($hash, "set", $data);
+  #my $data = "0013$id${len}7a$cmd$cmdEf" . ZWave_callbackId($hash);
+  #ZWDongle_Write($hash->{IODev}, "", $data);
+  return;
+}
+
+sub
+ZWave_firmwareUpdateTimeOut($)
+{
+  my ($arg) = @_;
+  my $hash = $arg->{hash};
+  my $msg = "Time out in stage ".$hash->{FW_UPDATE_DATA}->{STAGE};
+  
+  Log3 $hash, 3, "ZWave_firmwareUpdateTimeOut: MSG: $msg";
+  ZWave_firmwareUpdateFinish($hash, $msg)
+}
+
+sub
+ZWave_firmwareUpdateFinish($$)
+{
+  my ($hash, $msg) = @_;
+  return if(!defined $hash->{FW_UPDATE_DATA});
+  
+  $msg = "Finished firmware update: ".$msg;
+  
+  Log3 $hash, 3, "ZWave_firmwareUpdateFinish: MSG: $msg";
+  foreach my $h (keys %zwave_parseHook) {
+    if( $h =~ m/$hash->{nodeIdHex}:..7a.*/) 
+    {
+      delete $zwave_parseHook{$h};
+    }
+  }
+  
+  RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
+  RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{REPORT_TIMER});
+  
+  my $cl = $hash->{FW_UPDATE_DATA}->{CL};
+  delete($hash->{FW_UPDATE_DATA});
+  
+  asyncOutput($cl, $msg);
+}
+
+sub
+ZWave_firmwareUpdateSendSingleReport($)
+{
+  my ($arg) = @_;
+  my $hash = $arg->{hash};
+  my $reportsToSend = $hash->{FW_UPDATE_DATA}->{REPORTS_TO_SEND};
+  if($reportsToSend > 0)
+  {
+    my $classVersion = $hash->{".vclasses"}{FIRMWARE_UPDATE_MD};
+    my $nextReport = $hash->{FW_UPDATE_DATA}->{NEXT_REPORT};
+    my $reportSize = $hash->{FW_UPDATE_DATA}->{FRAG_SIZE};
+    my $l = $hash->{FW_UPDATE_DATA}->{FILE_LENGTH};
+    my $off = ($nextReport - 1) * hex($reportSize);
+    my $dataLength = $l - $off > hex($reportSize) ? hex($reportSize) : $l - $off;
+    my $last = $l - $off <= hex($reportSize) ? 1 : 0;
+    my $dataToSend = substr($hash->{FW_UPDATE_DATA}->{CONTENT}, $off * 2, $dataLength * 2); #one byte -> two positions in string
+    $nextReport = $nextReport | $last << 15;
+    my $reportCmd = "06".sprintf("%04x",$nextReport).sprintf("%s",$dataToSend);
+    Log3 $hash, 3, "ZWave_firmwareUpdateSendSingleReport: sending report: $nextReport";
+    if($classVersion >= 2)
+    {
+      $reportCmd .= ZWave_CRC16("7a".$reportCmd);
+    }
+    
+    ZWave_firmwareSendCmd($hash, $reportCmd); #send FIRMWARE_UPDATE_MD_REPORT
+    
+    $hash->{FW_UPDATE_DATA}->{REPORTS_TO_SEND} = $hash->{FW_UPDATE_DATA}->{REPORTS_TO_SEND} - 1;
+    $hash->{FW_UPDATE_DATA}->{NEXT_REPORT} = $nextReport + 1 if( $last == 0);
+    
+    if($hash->{FW_UPDATE_DATA}->{REPORTS_TO_SEND} > 0) #send back to back report 
+    {
+      $hash->{FW_UPDATE_DATA}->{REPORT_TIMER} = { hash => $hash };
+      InternalTimer(gettimeofday() + 0.035, "ZWave_firmwareUpdateSendSingleReport", $hash->{FW_UPDATE_DATA}->{REPORT_TIMER}, 0);
+    }
+    else
+    {
+      $hash->{FW_UPDATE_DATA}->{STAGE} = "GET";
+      $zwave_parseHook{"$hash->{nodeIdHex}:..7a0[4 5 7].*"} = \&ZWave_firmwareUpdateParse;
+      $hash->{FW_UPDATE_DATA}->{TIMER} = { hash => $hash };
+      InternalTimer(gettimeofday() + 50, "ZWave_firmwareUpdateTimeOut", $hash->{FW_UPDATE_DATA}->{TIMER}, 0);
+    }
+  }
+}
+
+sub
+ZWave_firmwareUpdateParse($$$)
+{
+  my ($hash, $cmd, $msg) = @_;
+  my $classVersion = $hash->{".vclasses"}{FIRMWARE_UPDATE_MD};
+  my $ret = "";
+  my $calledByHook = undef;
+  if(!$msg)# called by parse hook
+  {
+    $calledByHook = 1;
+    if($cmd =~ m/....(..)(.*)/)
+    {
+      $cmd = $1;
+      $msg = $2;
+    }
+  }
+  if($calledByHook && !defined $hash->{FW_UPDATE_DATA} && $cmd != '02')
+  {
+    return 0;
+  }
+  
+  if(!defined $calledByHook && $cmd != '02')
+  {
+    return;
+  }
+  
+  Log3 $hash, 3, "ZWave_firmwareUpdateParse: CMD: $cmd MSG: $msg Version: $classVersion";
+  if($cmd == '02') 
+  {
+    $ret  = "fwMd: ";
+    $hash->{FW_UPDATE_DATA}->{MAN_ID} = substr($msg,0, 4) if(defined $hash->{FW_UPDATE_DATA});
+    $ret .= " fwMdManId: ".substr($msg,0, 4); $msg = substr($msg, 4);
+    $hash->{FW_UPDATE_DATA}->{FwId_0} = substr($msg,0, 4) if(defined $hash->{FW_UPDATE_DATA});
+    $ret .= ", fwMdFwId_0: ".substr($msg,0, 4); $msg = substr($msg, 4);
+    $ret .= ", fwMdChkSum_0: ".substr($msg,0, 4); $msg = substr($msg, 4);
+    $hash->{FW_UPDATE_DATA}->{FRAG_SIZE} = "0010" if(defined $hash->{FW_UPDATE_DATA}); #for $classVersion < 3
+    
+    
+    if ($classVersion >= 3)
+    {
+      $ret .= ", fwMdUpgradeable: ".substr($msg,0, 2); $msg = substr($msg, 2);
+      my $NrTarget = substr($msg,0, 2); $msg = substr($msg, 2);
+      $ret .= ", fwMdNrTarg: ".$NrTarget;
+      $hash->{FW_UPDATE_DATA}->{FRAG_SIZE} = substr($msg,0, 4) if(defined $hash->{FW_UPDATE_DATA});
+      $ret .= ", fwMdFrqSize: ".substr($msg,0, 4); $msg = substr($msg, 4);
+      
+      for (my $targ = 1; $targ<=int($NrTarget); $targ++)
+      {
+        my $key = "FwId_".$targ;
+        $hash->{FW_UPDATE_DATA}->{$key} = substr($msg,0, 4) if(defined $hash->{FW_UPDATE_DATA});
+        $ret .= ", fwMdFwId_".$targ.": ".substr($msg,0, 4); $msg = substr($msg, 4);
+      }
+    }
+    if ($classVersion >= 5)
+    {
+      $ret .= ", fwMdHwId: ".substr($msg,0, 2); $msg = substr($msg, 2);
+    }
+    
+    if( defined $calledByHook)
+    {
+      #FIRMWARE_UPDATE_MD_REQUEST_GET
+      Log3 $hash, 3, "ZWave_firmwareUpdateParse: Seding FIRMWARE_UPDATE_MD_REQUEST_GET";
+      $hash->{FW_UPDATE_DATA}->{STAGE} = "REQUEST_GET";
+      my $target = $hash->{FW_UPDATE_DATA}->{TARGET};
+      my $FwIdKey = "FwId_".int($target);
+      ZWave_firmwareUpdateFinish($hash, "Device $hash->{NAME} does not support target $target") if (!$hash->{FW_UPDATE_DATA}->{$FwIdKey});
+      my $requestGetCmd = "03".$hash->{FW_UPDATE_DATA}->{MAN_ID}.$hash->{FW_UPDATE_DATA}->{$FwIdKey}.$hash->{FW_UPDATE_DATA}->{CHK_SUM};
+      if($classVersion >= 3)
+      {
+        $requestGetCmd .= sprintf("%02x", $target).$hash->{FW_UPDATE_DATA}->{FRAG_SIZE};
+      }
+      if($classVersion >= 4)
+      {
+        $requestGetCmd .= '0';   #No activation delay
+      }
+      $zwave_parseHook{"$hash->{nodeIdHex}:..7a04.*"} = \&ZWave_firmwareUpdateParse;
+      ZWave_firmwareSendCmd($hash, $requestGetCmd); #send FIRMWARE_UPDATE_MD_REQUEST_GET
+      $hash->{FW_UPDATE_DATA}->{TIMER} = { hash => $hash };
+      InternalTimer(gettimeofday() + 50, "ZWave_firmwareUpdateTimeOut", $hash->{FW_UPDATE_DATA}->{TIMER}, 0);
+      return 0; #no Veto generate readings
+    }
+    else
+    {
+      return $ret; # retun reading
+    }
+  }
+  elsif($cmd == '04')
+  {
+    #FIRMWARE_UPDATE_MD_REQUEST_GET
+    RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
+    delete($hash->{FW_UPDATE_DATA}->{TIMER});
+    if ($msg =~ m/^(..).*/)
+    {
+      my $status = $1;
+      if($status ne "ff")
+      {
+        ZWave_firmwareUpdateFinish($hash, "FIRMWARE_UPDATE_MD_REQUEST_GET returned with Status: $status" );
+        return 1; #Veto
+      }
+      $hash->{FW_UPDATE_DATA}->{STAGE} = "GET";
+      $zwave_parseHook{"$hash->{nodeIdHex}:..7a0[4 5].*"} = \&ZWave_firmwareUpdateParse;
+      $hash->{FW_UPDATE_DATA}->{TIMER} = { hash => $hash };
+      InternalTimer(gettimeofday() + 50, "ZWave_firmwareUpdateTimeOut", $hash->{FW_UPDATE_DATA}->{TIMER}, 0);
+      return 1; #Veto
+    }
+  }
+  elsif($cmd == '05')
+  {
+    #FIRMWARE_UPDATE_MD_GET
+    RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
+    delete($hash->{FW_UPDATE_DATA}->{TIMER});
+    if($msg =~ m/^(..)(....).*/)
+    {
+      my $reports = int($1);
+      my $reportNr = hex($2) & 0x7FFF;
+      Log3 $hash, 3, "ZWave_firmwareUpdateParse: GET reports: $reports reportNr: $reportNr";
+      $hash->{FW_UPDATE_DATA}->{STAGE} = "SEND_REPORT";
+      $hash->{FW_UPDATE_DATA}->{REPORTS_TO_SEND} = $reports;
+      $hash->{FW_UPDATE_DATA}->{NEXT_REPORT} = $reportNr;
+      $hash->{FW_UPDATE_DATA}->{REPORT_TIMER} = { hash => $hash };
+      ZWave_firmwareUpdateSendSingleReport($hash->{FW_UPDATE_DATA}->{REPORT_TIMER});
+      return 1; #Veto
+    }
+    else
+    {
+      ZWave_firmwareUpdateFinish($hash, "Can not parse FIRMWARE_UPDATE_MD_GET" );
+      return 1; #Veto
+    }
+  }
+  elsif($cmd == '07')
+  {
+    #FIRMWARE_UPDATE_MD_STATUS_REPORT
+    RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
+    delete($hash->{FW_UPDATE_DATA}->{TIMER});
+    if($msg =~ m/^(..)(.*)/)
+    {
+      my $status = $1;
+      my $waiteTimeSec = 0;
+      if($classVersion >= 3)
+      {
+        if($2 =~ m/^(....).*/)
+        {
+          $waiteTimeSec = hex($1);
+        }
+      }
+      if( ($status ne "ff") && ($status ne "fe")&& ($status ne "fd"))
+      {
+        ZWave_firmwareUpdateFinish($hash,"FIRMWARE_UPDATE_MD_STATUS_REPORT returned with Status: $status");
+        return 1; #Veto
+      }
+      if($classVersion >= 4 && ($status eq "fd"))
+      {
+        ZWave_firmwareUpdateFinish($hash,"FIRMWARE_UPDATE_MD_STATUS_REPORT returned with Status: $status"); #activation delay not supported
+        return 1; #Veto
+      }
+      if($status eq "fe")
+      {
+        ZWave_firmwareUpdateFinish($hash,"Firmware Update Done please restart the device");
+        return 1; #Veto
+      }
+
+      my $report = "Firmware Update succsessful.";
+      $report .= sprintf(" The device needs %d seconds to reconfigure. Please do not use it within this time span.",$waiteTimeSec) if( $waiteTimeSec > 0);
+      
+      ZWave_firmwareUpdateFinish($hash, $report);
+      return 1; #Veto
+    }
+    else
+    {
+      ZWave_firmwareUpdateFinish($hash, "Can not parse FIRMWARE_UPDATE_MD_GET" );
+      return 1; #Veto
+    }
+  }
+  else
+  {
+    ZWave_firmwareUpdateFinish($hash, "Can not parse FIRMWARE_UPDATE COMMAND");
+    return 1; #Veto
+  }
+}
 1;
 
 =pod
@@ -5485,6 +5975,13 @@ s2Hex($)
     </li>
 
   <br><br><b>Class COLOR_CONTROL</b>
+  <li>color colorComponent level colorComponent level ...<br>
+    Set the colorComponent(s) to level<br>
+    Up to 8 pairs of colorComponent level may be specified.<br>
+    colorComponent is a decimal value from 0 to 8:<br>
+    0 = warm white, 1 = cold white, 2 = red, 3 = green, 4 = blue, 
+    5 = amber,6 = cyan, 7 = purple, 8 = indexed color<br>
+    level is specified with a value from 0 to 255.</li>
   <li>rgb<br>
     Set the color of the device as a 6 digit RGB Value (RRGGBB), each color is
     specified with a value from 00 to ff.</li>
@@ -5533,6 +6030,12 @@ s2Hex($)
       = outside handles 3 and 2 are active, inside handle 1 is active<br>
     timeoutSeconds: time out for timed operation (in seconds) [1-15239].
     </li>
+
+  <br><br><b>Class FIRMWARE_UPDATE_META_DATA</b>
+  <li>fwUpdate  &lt;decimal Target&gt;  &lt;filename&gt;<br>
+  updates specified firmware target with firmware given in filename. The file is searched within 
+  the in the modpath/FHEM/firmware/ folder. The supported targets can be requested with the get fwMetaData command. 
+  FIRMWARE_UPDATE_MD class version &gt 3 untested, feedback welcome. FIRMWARE_UPDATE_MD class version &gt 4 not supported feedback welcome.</li>
 
   <br><br><b>Class INDICATOR</b>
   <li>indicatorOn<br>
@@ -5626,6 +6129,18 @@ s2Hex($)
     Store NAME in the EEPROM. Note: only ASCII is supported.</li>
   <li>location LOCATION<br>
     Store LOCATION in the EEPROM. Note: only ASCII is supported.</li>
+
+  <br><br><b>Class SOUND_SWITCH</b>
+  <li>toneConfiguration VOLUME DEFAULTNR<br>
+     Configure the volume and the default tone. Volume 0 is off, 1..100 is
+     interpreted as 1% to 100%, and 255 restores last volume, if the current is
+     0. If DEFAULTNR is 0, set only the volume.</li>
+  <li>tonePlay TONENUMBER<br>
+     Play tone Number TONENUMBER.</li>
+  <li>tonePlayDefault<br>
+     Play the default tone.</li>
+  <li>toneStop<br>
+     Stop playing.</li>
 
   <br><br><b>Class POWERLEVEL</b>
   <li>Class is only used in an installation or test situation</li>
@@ -6091,6 +6606,13 @@ s2Hex($)
   <li>doorLockOperation<br>
     Request the operconfiguration report from the door lock.
     </li>
+    
+    <br><br><b>Class FIRMWARE_UPDATE_META_DATA</b>
+  <li>fwMetaData<br>
+    Interviews the device about the firmware update capabilities. Generates the reading fwMd which holdes, 
+    dependent on the classversion the data about the manufacturer ids, the firmware ids and check sum of the 
+    upgradeable targets. More over it holdes the informationif the device is upgradeable und the maximum paylod of a data packed.
+  </li>
 
   <br><br><b>Class HRV_STATUS</b>
   <li>hrvStatus<br>
@@ -6182,6 +6704,14 @@ s2Hex($)
     Get the name from the EEPROM. Note: only ASCII is supported.</li>
   <li>location<br>
     Get the location from the EEPROM. Note: only ASCII is supported.</li>
+
+  <br><br><b>Class SOUND_SWITCH</b>
+  <li>toneConfiguration<br>
+     Request the current configuration.</li>
+  <li>toneNumbers<br>
+     Request the number of tones supported.</li>
+  <li>tonePlay<br>
+     Request the tone number being played.</li>
 
   <br><br><b>Class POWERLEVEL</b>
   <li>powerlevel<br>
@@ -6591,6 +7121,9 @@ s2Hex($)
   <br><br><b>Class COLOR_CONTROL</b>
   <li>ccCapability:XY</li>
   <li>ccStatus_X:Y</li>
+  <li>cc&lt;Col&gt;:Y<br>
+    where &lt;col&gt; is one of WarmWhite, ColdWhite, Red, Green, Blue, Amber,
+    Cyan, Purple, Indexed</li>
 
   <br><br><b>Class CONFIGURATION</b>
   <li>config_X:Y<br>
@@ -6641,7 +7174,7 @@ s2Hex($)
   <li>modelConfig:configLocation</li>
 
   <br><br><b>Class METER</b>
-  <li>energy:val [kWh|kVAh|pulseCount|powerFactor]</li>
+  <li>energy:val [kWh|kVAh|pulseCount|powerFactor|kVar|kVarh]</li>
   <li>gas:val [m3|feet3|pulseCount]</li>
   <li>water:val [m3|feet3|USgallons|pulseCount]</li>
   <li>power:val W</li>
@@ -6675,6 +7208,11 @@ s2Hex($)
   <br><br><b>Class NODE_NAMING</b>
   <li>name:NAME</li>
   <li>location:LOCATION</li>
+
+  <br><br><b>Class SOUND_SWITCH</b>
+  <li>toneConfiguration:Volume VOLUME Default DEFAULT</li>
+  <li>toneNumbers:NUMBER</li>
+  <li>tonePlay:NUMBER</li>
 
   <br><br><b>Class POWERLEVEL</b>
   <li>powerlvl:current x remain y<br>

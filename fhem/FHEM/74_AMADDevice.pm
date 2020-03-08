@@ -44,16 +44,135 @@
 #
 #
 
-package main;
+## unserer packagename
+package FHEM::AMADDevice;
 
 use strict;
 use warnings;
+use POSIX;
 use FHEM::Meta;
+use Data::Dumper;    #only for Debugging
+use GPUtils qw(GP_Import GP_Export);
 
-my $modulversion   = '4.4.0';
-my $flowsetversion = '4.4.0';
+main::LoadModule('AMADCommBridge');
 
-sub AMADDevice_Initialize($) {
+my $missingModul = '';
+eval "use Encode qw(encode encode_utf8);1" or $missingModul .= 'Encode ';
+
+# try to use JSON::MaybeXS wrapper
+#   for chance of better performance + open code
+eval {
+    require JSON::MaybeXS;
+    import JSON::MaybeXS qw( decode_json encode_json );
+    1;
+};
+
+if ($@) {
+    $@ = undef;
+
+    # try to use JSON wrapper
+    #   for chance of better performance
+    eval {
+
+        # JSON preference order
+        local $ENV{PERL_JSON_BACKEND} =
+          'Cpanel::JSON::XS,JSON::XS,JSON::PP,JSON::backportPP'
+          unless ( defined( $ENV{PERL_JSON_BACKEND} ) );
+
+        require JSON;
+        import JSON qw( decode_json encode_json );
+        1;
+    };
+
+    if ($@) {
+        $@ = undef;
+
+        # In rare cases, Cpanel::JSON::XS may
+        #   be installed but JSON|JSON::MaybeXS not ...
+        eval {
+            require Cpanel::JSON::XS;
+            import Cpanel::JSON::XS qw(decode_json encode_json);
+            1;
+        };
+
+        if ($@) {
+            $@ = undef;
+
+            # In rare cases, JSON::XS may
+            #   be installed but JSON not ...
+            eval {
+                require JSON::XS;
+                import JSON::XS qw(decode_json encode_json);
+                1;
+            };
+
+            if ($@) {
+                $@ = undef;
+
+                # Fallback to built-in JSON which SHOULD
+                #   be available since 5.014 ...
+                eval {
+                    require JSON::PP;
+                    import JSON::PP qw(decode_json encode_json);
+                    1;
+                };
+
+                if ($@) {
+                    $@ = undef;
+
+                    # Fallback to JSON::backportPP in really rare cases
+                    require JSON::backportPP;
+                    import JSON::backportPP qw(decode_json encode_json);
+                    1;
+                }
+            }
+        }
+    }
+}
+
+## Import der FHEM Funktionen
+#-- Run before package compilation
+BEGIN {
+
+    # Import from main context
+    GP_Import(
+        qw(readingsSingleUpdate
+          readingsBulkUpdate
+          readingsBulkUpdateIfChanged
+          readingsBeginUpdate
+          readingsEndUpdate
+          CommandDeleteReading
+          defs
+          modules
+          readingFnAttributes
+          Log3
+          CommandAttr
+          attr
+          AttrVal
+          ReadingsVal
+          IsDisabled
+          deviceEvents
+          AMADCommBridge_Flowsetversion
+          init_done
+          gettimeofday
+          getUniqueId
+          InternalTimer
+          RemoveInternalTimer
+          IOWrite
+          ReadingsAge
+          urlEncode
+          AssignIoPort)
+    );
+}
+
+#-- Export to main context with different name
+GP_Export(
+    qw(
+      Initialize
+      )
+);
+
+sub Initialize($) {
 
     my ($hash) = @_;
 
@@ -96,62 +215,7 @@ sub AMADDevice_Initialize($) {
       . 'setTakePictureCamera:Back,Front '
       . $readingFnAttributes;
 
-    foreach my $d ( sort keys %{ $modules{AMADDevice}{defptr} } ) {
-
-        my $hash = $modules{AMADDevice}{defptr}{$d};
-        $hash->{VERSIONMODUL}   = $modulversion;
-        $hash->{VERSIONFLOWSET} = $flowsetversion;
-    }
-
     return FHEM::Meta::InitMod( __FILE__, $hash );
-}
-
-## unserer packagename
-package FHEM::AMADDevice;
-
-use strict;
-use warnings;
-use POSIX;
-use FHEM::Meta;
-
-use Data::Dumper;    #only for Debugging
-
-use GPUtils qw(GP_Import)
-  ;    # wird für den Import der FHEM Funktionen aus der fhem.pl benötigt
-
-my $missingModul = '';
-
-eval "use Encode qw(encode encode_utf8);1" or $missingModul .= 'Encode ';
-eval "use JSON;1"                          or $missingModul .= 'JSON ';
-
-## Import der FHEM Funktionen
-BEGIN {
-    GP_Import(
-        qw(readingsSingleUpdate
-          readingsBulkUpdate
-          readingsBulkUpdateIfChanged
-          readingsBeginUpdate
-          readingsEndUpdate
-          CommandDeleteReading
-          defs
-          modules
-          Log3
-          CommandAttr
-          attr
-          AttrVal
-          ReadingsVal
-          IsDisabled
-          deviceEvents
-          init_done
-          gettimeofday
-          getUniqueId
-          InternalTimer
-          RemoveInternalTimer
-          IOWrite
-          ReadingsAge
-          urlEncode
-          AssignIoPort)
-    );
 }
 
 sub Define($$) {
@@ -160,6 +224,8 @@ sub Define($$) {
     my @a = split( '[ \t]+', $def );
 
     return $@ unless ( FHEM::Meta::SetInternals($hash) );
+    use version 0.44; our $VERSION = FHEM::Meta::Get( $hash, 'version' );
+
     return
 'too few parameters: define <name> AMADDevice <HOST-IP> <amad_id> <remoteServer>'
       if ( @a != 5 );
@@ -174,12 +240,11 @@ sub Define($$) {
     my $amad_id      = $a[3];
     my $remoteServer = $a[4];
 
-    $hash->{HOST}           = $host;
-    $hash->{AMAD_ID}        = $amad_id;
-    $hash->{VERSIONMODUL}   = $modulversion;
-    $hash->{VERSIONFLOWSET} = $flowsetversion;
-    $hash->{NOTIFYDEV}      = 'global,' . $name;
-    $hash->{MODEL}          = $remoteServer;
+    $hash->{HOST}      = $host;
+    $hash->{AMAD_ID}   = $amad_id;
+    $hash->{VERSION}   = version->parse($VERSION)->normal;
+    $hash->{NOTIFYDEV} = 'global,' . $name;
+    $hash->{MODEL}     = $remoteServer;
 
     $hash->{PORT} = 8090 if ( $remoteServer eq 'Automagic' );
     $hash->{PORT} = 1817 if ( $remoteServer eq 'Autoremote' );
@@ -211,6 +276,9 @@ sub Define($$) {
     }
 
     $iodev = $hash->{IODev}->{NAME};
+
+#     $hash->{VERSIONFLOWSET} = FHEM::Meta::Get( $defs{$iodev}, 'x_flowsetversion' );
+    $hash->{VERSIONFLOWSET} = $defs{$iodev}->{VERSIONFLOWSET};
 
     my $d = $modules{AMADDevice}{defptr}{$amad_id};
 
@@ -290,6 +358,7 @@ sub Attr(@) {
                     "AMADDevice ($name) - set remoteServer to other" );
             }
 
+            $hash->{MODEL}  = $attrVal;
             $hash->{DEF} =
               $hash->{HOST} . ' ' . $hash->{AMAD_ID} . ' ' . $attrVal;
         }
@@ -715,15 +784,15 @@ sub Set($$@) {
         my $openurl = join( ' ', @args );
         my $browser = AttrVal( $name, 'setOpenUrlBrowser',
             'com.android.chrome|com.google.android.apps.chrome.Main' );
-        my @browserapp = split( /\|/, $browser );
+        my ($bapp,$bappclass) = split( /\|/, $browser );
 
         $path .=
             'openURL?url='
           . $openurl
           . '&browserapp='
-          . $browserapp[0]
+          . $bapp
           . '&browserappclass='
-          . $browserapp[1];
+          . $bappclass;
         $method = 'POST';
     }
 
@@ -749,9 +818,17 @@ sub Set($$@) {
     }
 
     elsif ( lc $cmd eq 'openapp' ) {
-        my $app = join( ' ', @args );
+#         my $app = join( ' ', @args );
+        my ($app,$appclass) = split( /\|/, $args[0] );
 
-        $path .= 'openApp?app=' . $app;
+        $path .=
+            'openApp?app='
+          . $app;
+        $path .=
+            '&appclass='
+          . $appclass
+          if ( defined($appclass) );
+
         $method = 'POST';
     }
 
@@ -1367,7 +1444,7 @@ sub CreateChangeBtDeviceValue($$) {
   <a name="AMADDeviceattribut"></a>
   <b>Attribut</b>
   <ul>
-    <li>setAPSSID - set WLAN AccesPoint SSID to prevent WLAN sleeps (Automagic only)</li>
+    <li>setAPSSID - set WLAN AccesPoint SSID('s) to prevent WLAN sleeps (Automagic only), more than one ssid can comma seperate</li>
     <li>setNotifySndFilePath - set systempath to notifyfile (default /storage/emulated/0/Notifications/</li>
     <li>setTtsMsgSpeed - set speaking speed for TTS (For Automagic: Value between 0.5 - 4.0, 0.5 Step, default: 1.0)(For Tasker: Value between 1 - 10, 1 Step, default: 5)</li>
     <li>setTtsMsgLang - set speaking language for TTS, de or en (default is de)</li>
@@ -1565,7 +1642,7 @@ sub CreateChangeBtDeviceValue($$) {
     <li>setVolMax - setzt die maximale Volume Gr&uoml;e f&uuml;r den Slider</li>
     <li>setNotifyVolMax - setzt den maximalen Lautst&auml;rkewert für Benachrichtigungslautst&auml;rke f&uuml;r den Slider</li>
     <li>setRingSoundVolMax - setzt den maximalen Lautst&auml;rkewert für Klingellautst&auml;rke f&uuml;r den Slider</li>
-    <li>setAPSSID - setzt die AccessPoint SSID um ein WLAN sleep zu verhindern (nur Automagic)</li>
+    <li>setAPSSID - setzt die AccessPoint SSID('s) um ein WLAN sleep zu verhindern (nur Automagic), mehrere SSIDs k&ouml;nnen durch Komma getrennt angegeben werden.</li>
     <li>setTakePictureResolution - welche Kameraauflösung soll verwendet werden? (800x600,1024x768,1280x720,1600x1200,1920x1080)</li>
     <li>setTakePictureCamera - welche Kamera soll verwendet werden (Back,Front).</li>
     <br>
@@ -1612,6 +1689,7 @@ sub CreateChangeBtDeviceValue($$) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
+  "version": "v4.4.7",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],

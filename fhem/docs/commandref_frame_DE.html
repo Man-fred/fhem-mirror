@@ -177,11 +177,11 @@ gesetzte Werte &uuml;berschreiben die Werte aus der Konfigurationsdatei.
 <a name="command"></a>
 <h3>FHEM Befehlstypen</h3>
 <ul>
-Es gibt drei Arten von Befehlen: "fhem" Befehle (werden in diesem Dokument
-beschrieben), SHELL-Befehle (diese m&uuml;ssen von doppelten
-Anf&uuml;hrungszeichen "" eingeschlossen werden) und PERL-Ausdr&uuml;cken (von
-geschwungenen Klammern {} eingeschlossen). SHELL-Befehle oder
-PERL-Ausdr&uuml;cke werden f&uuml;r komplexe <a href="#at">at</a> oder <a
+Es gibt drei Arten von Befehlen: "FHEM" Befehle (werden in diesem Dokument
+beschrieben), Shell-Befehle (diese m&uuml;ssen von doppelten
+Anf&uuml;hrungszeichen "" eingeschlossen werden) und perl-Ausdr&uuml;cken (von
+geschwungenen Klammern {} eingeschlossen). Shell-Befehle oder
+perl-Ausdr&uuml;cke werden f&uuml;r komplexe <a href="#at">at</a> oder <a
 href="#notify">notify</a> Ausdr&uuml;cke ben&ouml;tigt, k&ouml;nnen aber auch
 als "normale" Befehle angewendet werden.
 <br>
@@ -194,18 +194,18 @@ telnet-Prompt eingegeben werden:
   "fhem.pl 7072 "set lamp off""<br>
   {fhem("set lamp off")}<br>
   </ul>
-SHELL-Kommandos werden im Hintergrund ausgef&uuml;hrt, 
-PERL-Ausdr&uuml;cke und FHEM-Kommandos werden im Haupt-"thread" ausgef&uuml;hrt. Um 
-PERL-Ausdr&uuml;cke leichter eingeben zu k&ouml;nnen, sind einige Spezialfunktionen und 
+Shell-Kommandos werden im Hintergrund ausgef&uuml;hrt, 
+perl-Ausdr&uuml;cke und FHEM-Kommandos werden im Haupt-"thread" ausgef&uuml;hrt. Um 
+perl-Ausdr&uuml;cke leichter eingeben zu k&ouml;nnen, sind einige Spezialfunktionen und 
 Variablen verf&uuml;gbar. Lesen Sie sich bitte die Abschnitte <a href="#perl">
 Perl special</a> zum besseren Verst&auml;ndnis durch.</p>
-<p>Um FHEM-Befehle in einen SHELL-Script zu triggern (dies ist 
+<p>Um FHEM-Befehle in einen Shell-Script zu triggern (dies ist 
 eine "andere" M&ouml;glichkeit), benutzen Sie bitte die oben beschriebene Client-Form 
 der fhem.pl.
 <br>
 
 Mehrere FHEM-Kommandos hintereinander werden mittels 
-Semikolon (;) getrennt. Weil Semikola auch in PERL-Code oder SHELL-Programmen 
+Semikolon (;) getrennt. Weil Semikola auch in perl-Code oder Shell-Programmen 
 benutzt werden, m&uuml;ssen sie mittels doppelten Semikola gesch&uuml;tzt werden. Lesen 
 Sie sich bitte die <b>Bermerkungen </b>des <a href="#notify">notify</a>-Abschnittes zu Kommandoparametern und Regeln durch.
 <br>
@@ -236,10 +236,14 @@ werden.
 
 <p>Eine mit einem \ abgeschlossene Zeile wird mit der 
 nachfolgenden Zeile verbunden. Somit k&ouml;nnen lange Befehlszeilen (die z.B. aus 
-mehreren PERL-Befehlen bestehen) auf mehrere Zeilen aufgteilt werden. Einige 
+mehreren perl-Befehlen bestehen) auf mehrere Zeilen aufgteilt werden. Einige 
 Web-Frontends (z.B. webpgm2) erleichtern die Eingabe von sich &uuml;ber mehrere 
 Zeilen erstreckende Befehle, indem man keine \ am Zeilenende eingeben muss.</p>
 <p>&nbsp;</p>
+<br>
+Acthung: das Verwenden unterschiedlicher Befehlsarten (FHEM/Shell/perl) ist
+nicht unterst&uuml;tzt, auch wenn es in manchen F&auml;llen funktioniert.
+
 </ul>
 <!-- command end - diese Zeile nicht entfernen! -->
 
@@ -704,7 +708,8 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
 <a name="attr"></a>
 <h3>attr</h3>
 <ul>
-  <code>attr [-a|-r] &lt;devspec&gt; &lt;attrname&gt; [&lt;value&gt;]</code><br>
+  <code>attr [-a] [-r] &lt;devspec&gt; &lt;attrname&gt; [&lt;value&gt;]</code>
+  <br>
 
   <br>
    Dieser Befehl setzt ein Attribut f&uuml;r ein Ger&auml;t welches mit <a
@@ -757,7 +762,7 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
 <ul>                                         
   <code>cancel [&lt;id&gt; [quiet]]</code>
   <br><br>                                   
-  Entfernt ein benanntes <a href="#sleep">sleep</a>.
+  Listet benannte sleeps oder entfernt ein benanntes <a href="#sleep">sleep</a>.
                                              
 </ul>                                        
 <!-- cancel end -->
@@ -765,7 +770,8 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
 <a name="define"></a>
 <h3>define</h3>
 <ul>
-  <code>define [option] &lt;name&gt; &lt;type&gt; &lt;type-specific&gt;</code><br>
+  <code>define [option] &lt;name&gt; &lt;type&gt; &lt;type-specific&gt;</code>
+  <br>
   <br>
 
   Definiert ein Ger&auml;t. Sie m&uuml;ssen Ger&auml;te einrichten um sie zu
@@ -996,7 +1002,7 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
 <a name="list"></a>
 <h3>list</h3>
 <ul>
-  <code>list [devspec] [value]</code><br>
+  <code>list [devspec] [value ...]</code><br>
   oder<br>
   <code>list {-r|-R} devspec</code><br>
   <br><br>
@@ -1004,11 +1010,14 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
   &quot;at&quot;-Definitionen. Dies ist eines der wenigen Befehle, die im
   Normalfall eine Zeichenkette ausgeben.<br> Siehe den Abschnitt &uuml;ber <a
   href="#devspec">Ger&auml;te-Spezifikation</a> f&uuml;r Details der
-  &lt;devspec&gt;.<br>
+  &lt;devspec&gt;.<br><br>
   
-  <br> Wenn value angegeben ist, der von ( DEF, TYPE, usw) oder reading
-  (actuator, measured-temp) f&uuml;r alle Ger&auml;te die in devspec angegeben
-  sind.  <br><br> Beispiel:
+  Wenn &lt;value&gt; angegeben ist, dann wird dieses Wert (Internal, Reading
+  oder Attribut) ausgegeben, soweit es vorhanden ist. Die Werte k&ouml;nnen mit
+  einem Pr&auml;fix eingeschr&auml;nkt werden: i: f&uuml;r Internals, r:
+  f&uuml;r Readings und a: f&uuml;r Attribute.
+
+  <br><br> Beispiel:
   <pre><code>fhem&gt; list
 
   Type list <name> for detailed info.
@@ -1388,6 +1397,10 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
   <ul>
     setstate lampe An
   </ul>
+  Achtung: setstate wird verwendet, um Readings im statefile zu speichern, in
+  diesem Fall wird vor dem Wert ein Zeitstempel geschrieben. Als Seiteneffekt
+  ist es nicht m&ouml;glich, ein Status, was mit einem Zeitstempel der Form
+  YYYY-MM-DD HH:MM:SS beginnt, korrekt zu speichern.
 </ul>
 <!-- setstate end -->
 
@@ -1444,13 +1457,18 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
 <a name="sleep"></a>
 <h3>sleep</h3>
 <ul>
-  <code>sleep &lt;sec&gt; [&lt;id&gt;] [quiet]</code>
+  <code>sleep &lt;sec|timespec|suchmuster&gt; [&lt;id&gt;] [quiet]</code>
   <br><br>
   sleep gefolgt von weiteren Befehlen ist vergleichbar mit einem namenlosen <a
-  href="#at">at</a> Kommando, es f&uuml;hrt die nachfolgenden Befehle aus,
-  nachdem es die spezifizierte Zeitspanne gewartet hat. Die Einheit ist
-  Sekunde, Millisekunden genau, da man Nachkommastellen spezifizieren
-  kann.<br><br>
+  href="#at">at</a> oder <a href="#notify">notify</a> Kommando, es f&uuml;hrt
+  die nachfolgenden Befehle aus, nachdem es die spezifizierte Zeitspanne
+  gewartet hat bzw. ein Event welches dem &lt;suchmuster&gt; entspricht
+  aufgetreten ist. Die verz&ouml;gerung kann<ul>
+  <li>in Sekunden (Millisekunden genau, da man Nachkommastellen spezifizieren
+      kann)</li>
+  <li> als timespec (HH:MM or HH::MM::SS oder {perlfunc})</li>
+  <li>oder als suchmuster (Ger&auml;tename oder Ger&auml;tename:Event)</li>
+  </ul> angegeben werden.<br>
 
   Ein sleep mit einer &lt;id&gt; ersetzt ein sleep mit der gleichen &lt;id&gt;
   and can mit <a href="#cancel">cancel</a> entfernt werden.
@@ -1638,15 +1656,20 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
     <a name="holiday2we"></a>
     <li>holiday2we<br>
         Wenn dieses Attribut gesetzt wurde, dann wird die <a
-        href="#perl">$we</a> Variable als &quot;true&quot; betrachtet, wenn der
-        Wert der <a href="#holiday">holiday</a> Variable zu diesem Attribut
-        nicht &quot;none&quot; ist.<br>
+        href="#perl">$we</a> Variable als &quot;true&quot; betrachtet, wenn
+        heute entweder Samstag/Sonntag ist, oder der Wert der <a
+        href="#holiday">holiday</a> Variable zu diesem Attribut nicht
+        &quot;none&quot; ist.<br>
         Falls es eine Komma getrennte Liste ist, dann ist es wahr, falls einer
         der referenzierten Instanzen nicht &quot;none&quot; ist.<br>
         Beispiel:<br>
         <ul>
           attr global holiday2we hessen
         </ul>
+        Falls sich einer der Elemente dieser Liste weekEnd nennt, dann wird
+        nicht auf Samstag/Sonntag gepr&uuml;ft. Falls einer der Elemente
+        noWeekEnd ist, und nicht &quot;none&quot; zur&uuml;ckliefert, dann ist
+        $we 0.<br>
     </li><br>
 
     <a name="httpcompress"></a>
@@ -1655,6 +1678,13 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
         aktiviert Komprimierung in der Voreinstellung. Falls man
         httpcompress auf 0 setzt, wird die Komprimierung deaktiviert.
     </li><br>
+
+    <a name="ignoreRegexp"></a>
+    <li>ignoreRegexp<br>
+        Texte, wo dieses Regexp matcht, werden nicht geloggt. ^ und $ wird zum
+        Regexp hinzugef&uuml;gt, wie bei notify und FileLog.
+    </li><br>
+
 
     <a name="keyFileName"></a>
     <li>keyFileName<br>
@@ -1972,21 +2002,14 @@ Die folgenden lokalen Attribute werden von mehreren Ger&auml;ten verwendet:
       define roll_en *08:30:00 { fhem "trigger SwitchAllRoll on" if($we) }<br>
     </ul>
     $we wird mit IsWe() gesetzt, diese Funktion nimmt optional die Argumente
-    "today", "yesterday" und "tomorrow". Achtung: alles andere wird als "today"
-    interpretiert, ohne eine Fehlermeldung zu generieren.<br>
-    <br>
+    "today", "yesterday", "tomorrow", MM-DD oder YYYY-MM-DD. Achtung: alles
+    andere wird als "today" interpretiert, ohne eine Fehlermeldung zu
+    generieren.<br>
+    </li><br>
 
-  </li><li>
-    Die folgenden Hilfsfunktionen sind in der Datei 99_Util.pm definiert (wird 
-    wie jede mit 99_ beginnende Datei automatisch geladen):
-    <ul>
-      <li>min(a,b), max(a,b)</li>
-      <li>time_str2num("YYYY-MM-DD HH:MM:SS") gibt einen numerischen Wert
-        zur&uuml;ck, der die Berechnung von Zeitdifferenzen vereinfacht</li>
-      <li>abstime2rel("HH:MM:SS") wandelt absolute in relative Zeitangaben um
-        </li>
-    </ul>
-    </li>
+  <li>
+    Hilfsfunktionen sind in <a href="#Utils">99_Utils.pm</a> beschrieben.<br>
+    </li><br>
 
   <li>
     Um auf die Ger&auml;testatus/Attribute zuzugreifen benutzen Sie bitte die 

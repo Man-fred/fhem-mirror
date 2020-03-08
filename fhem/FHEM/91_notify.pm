@@ -67,7 +67,8 @@ notify_Define($$)
   $hash->{".COMMAND"} = $command;
 
   my $doTrigger = ($name !~ m/^$re$/);            # Forum #34516
-  readingsSingleUpdate($hash, "state", "active", $doTrigger);
+  readingsSingleUpdate($hash, "state", "active", $doTrigger)
+        if(!$hash->{TEMPORARY});
   InternalTimer(0, sub(){  notifyRegexpChanged($hash, $re); }, $hash);
 
   return undef;
@@ -746,6 +747,12 @@ END
     <li><a href="#disable">disable</a></li>
     <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 
+    <a name="disabledAfterTrigger"></a>
+    <li>disabledAfterTrigger &lt;sekunden&gt;<br>
+      deaktiviert die Ausf&uuml;hrung f&uuml;r &lt;sekunden&gt; nach dem
+      das notify ausgel&ouml;st wurde.
+    </li>
+
     <a name="addStateEvent"></a>
     <li>addStateEvent<br>
       Das mit dem state Reading verkn&uuml;pfte Event ist speziell, da das
@@ -777,8 +784,8 @@ END
     <li>ignoreRegexp regexp<br>
         Es ist nicht immer einfach ein Regexp zu bauen, was etwas _nicht_
         matcht. Dieses Attribu hilft in diesen F&auml;llen: das Event wird
-        ignoriert, falls den angegebenen Regexp. Syntax ist gleich wie in der
-        Definition.
+        ignoriert, falls den angegebenen Regexp matcht. Syntax ist gleich wie
+        in der Definition.
         </li>
 
     <a name="readLog"></a>
