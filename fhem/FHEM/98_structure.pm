@@ -1,4 +1,4 @@
-# $Id$
+# $Id: 98_structure.pm 18182 2019-01-08 18:34:06Z rudolfkoenig $
 ##############################################################################
 #
 #     98_structure.pm
@@ -49,7 +49,6 @@ structure_Initialize($)
     disable
     disabledForIntervals
     evaluateSetResult:1,0
-    propagateAttr
     setStateIndirectly:1,0
     setStructType:0,1
   );
@@ -341,12 +340,13 @@ CommandAddStruct($)
   }
 
   foreach my $d (devspec2array($a[0])) {
+    $hash->{".memberHash"}{$d} = 1;
     $hash->{DEF} .= " $d";
-    CommandAttr($cl, "$d $hash->{ATTR} $hash->{NAME}");
   }
 
-  addStructChange("addstruct", $name, $param);
-  structure_setDevs($hash);
+  @a = ( "set", $hash->{NAME}, $hash->{ATTR}, $hash->{NAME} );
+  structure_Attr(@a);
+  delete $hash->{".cachedHelp"};
   return undef;
 }
 
@@ -368,13 +368,14 @@ CommandDelStruct($)
   }
 
   foreach my $d (devspec2array($a[0])) {
+    delete($hash->{".memberHash"}{$d});
     $hash->{DEF} =~ s/\b$d\b//g;
-    CommandDeleteAttr($cl, "$d $hash->{ATTR}");
   }
   $hash->{DEF} =~ s/  / /g;
 
-  addStructChange("delstruct", $name, $param);
-  structure_setDevs($hash);
+  @a = ( "del", $hash->{NAME}, $hash->{ATTR} );
+  structure_Attr(@a);
+  delete $hash->{".cachedHelp"};
   return undef;
 }
 
@@ -389,11 +390,7 @@ structure_Set($@)
   my %pars;
 
   # see Forum # 28623 for .cachedHelp
-  if(@list > 1 && $list[1] eq "?") {
-    return $hash->{".cachedHelp"} if($hash->{".cachedHelp"});
-  } elsif(IsDisabled($me) =~ m/1|2/) {
-    return undef;
-  }
+  return $hash->{".cachedHelp"} if($list[1] eq "?" && $hash->{".cachedHelp"});
 
   my @devList = @{$hash->{".memberList"}};
   if(@list > 1 && $list[$#list] eq "reverse") {
@@ -479,12 +476,8 @@ structure_Set($@)
         $ret .= $sret;
       }
       if($list[1] eq "?") {
-        if(!defined($sret)) {
-          Log 1, "$me: 'set $d ?' returned undef";
-        } else {
-          $sret =~ s/.*one of //;
-          map { $pars{$_} = 1 } split(" ", $sret);
-        }
+        $sret =~ s/.*one of //;
+        map { $pars{$_} = 1 } split(" ", $sret);
       }
     }
   }
@@ -532,19 +525,17 @@ structure_Attr($@)
     group=>1,
     icon=>1,
     room=>1,
-    propagateAttr=>1,
     setStateIndirectly=>1,
     stateFormat=>1,
     webCmd=>1,
-    userattr=>1
+    userattr=>1,
+	A2=>1
   );
 
-  return undef if(($ignore{$list[1]} && $featurelevel <= 5.9) || !$init_done);
+  return undef if($ignore{$list[1]} || !$init_done);
 
   my $me = $list[0];
   my $hash = $defs{$me};
-  my $pa = AttrVal($me, "propagateAttr", $featurelevel <= 5.9 ? '.*' : '^$');
-  return undef if($list[1] !~ m/$pa/);
 
   if($hash->{INATTR}) {
     Log3 $me, 1, "ERROR: endless loop detected in structure_Attr for $me";
@@ -572,6 +563,7 @@ structure_Attr($@)
       $ret .= "\n" if($ret);
       $ret .= $sret;
     }
+	Log3 $me, 1, "Command: $sret";
   }
   delete($hash->{INATTR});
   Log3 $me, 4, "Stucture attr $type: $ret" if($ret);
@@ -742,18 +734,6 @@ structure_Attr($@)
       different from the set command (like set statusRequest), then you have to
       set this attribute to 1 in order to enable the structure instance to
       compute the new status.
-      </li>
-
-    <li>propagateAttr &lt;regexp&gt;<br>
-      if the regexp matches the name of the attribute, then this attribute will
-      be propagated to all the members. The default is .* (each attribute) for
-      featurelevel <= 5.9, else ^$ (no attribute).
-      Note: the following attibutes were never propagated for featurelevel<=5.9
-      <ul>
-        alias async_delay clientstate_behavior clientstate_priority
-        devStateIcon disable disabledForIntervals group icon room propagateAttr
-        setStateIndirectly stateFormat webCmd userattr
-      </ul>
       </li>
 
     <li>setStateIndirectly<br>
@@ -976,20 +956,6 @@ structure_Attr($@)
       unterschiedliches setzt (wie z.Bsp. beim set statusRequest), dann muss
       dieses Attribut auf 1 gesetzt werden, wenn die Struktur Instanz diesen
       neuen Status auswerten soll.
-      </li>
-
-    <li>propagateAttr &lt;regexp&gt;<br>
-      Falls der Regexp auf den Namen des Attributes zutrifft, dann wird dieses
-      Attribut an allen Mitglieder weitergegeben. F&uuml;r featurelevel <= 5.9
-      ist die Voreinstellung .* (d.h. alle Attribute), sonst ^$ (d.h. keine
-      Attribute).
-      <br>Achtung: folgende Attribute wurden fuer featurelevel<=5.9 nicht
-      weitervererbt:
-      <ul>
-        alias async_delay clientstate_behavior clientstate_priority
-        devStateIcon disable disabledForIntervals group icon room propagateAttr
-        setStateIndirectly stateFormat webCmd userattr
-      </ul>
       </li>
 
     <li>setStateIndirectly<br>

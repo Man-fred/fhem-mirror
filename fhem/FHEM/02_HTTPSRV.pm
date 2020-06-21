@@ -5,7 +5,7 @@
 # e-mail: omega at online dot de
 #
 ##############################################
-# $Id$
+# $Id: 02_HTTPSRV.pm 16874 2018-06-15 17:18:55Z neubert $
 
 package main;
 use strict;
@@ -64,7 +64,7 @@ HTTPSRV_Initialize($) {
     $hash->{UndefFn}   = "HTTPSRV_Undef";
     #$hash->{AttrFn}    = "HTTPSRV_Attr";
     $hash->{AttrList}  = "directoryindex " .
-                         "readings " . $readingFnAttributes;
+                        "readings";
     $hash->{AttrFn}    = "HTTPSRV_Attr";
     #$hash->{SetFn}     = "HTTPSRV_Set";
 
@@ -184,7 +184,8 @@ sub HTTPSRV_CGI() {
       close(INPUTFILE);
       return("$MIMEtype; charset=utf-8", join("", @contents));
     } else {
-      return("text/plain; charset=utf-8", "File not found: $filename");
+      #return("text/plain; charset=utf-8", "File not found: $filename");
+	  return("404 File not found", "File not found: $filename");
     }
 
   } else {
