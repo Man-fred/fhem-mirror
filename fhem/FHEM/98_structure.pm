@@ -48,6 +48,7 @@ structure_Initialize($)
     clientstate_priority
     disable
     disabledForIntervals
+    considerDisabledMembers
     evaluateSetResult:1,0
     setStateIndirectly:1,0
     setStructType:0,1
@@ -235,8 +236,9 @@ structure_Notify($$)
   my $minprio = 99999;
   my $devstate;
 
+  my $cdm = AttrVal($me, "considerDisabledMembers", undef);
   foreach my $d (sort keys %{ $hash->{".memberHash"} }) {
-    next if(!$defs{$d} || IsDisabled($d));
+    next if(!$defs{$d} || (!$cdm && IsDisabled($d)));
 
     if($attr{$d} && $attr{$d}{$devmap}) {
       my @gruppe = attrSplit($attr{$d}{$devmap});
@@ -660,6 +662,12 @@ structure_Attr($@)
     <li><a href="#disable">disable</a></li>
     <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 
+    <a name="structureconsiderDisabledMembers"></a>
+    <li>considerDisabledMembers<br>
+        if set, consider disabled members when computing the overall state of
+        the structure. If not set or set to 0, disabled members are ignored.
+        </li>
+
     <a name="clientstate_behavior"></a>
     <li>clientstate_behavior<br>
         The backward propagated status change from the devices to this structure
@@ -678,7 +686,8 @@ structure_Attr($@)
           clientstate_priority. Needed e.g. for HomeMatic devices.
           </li>
         <li>last<br>
-          The structure state corresponds to the state of the device last changed.
+          The structure state corresponds to the state of the device last
+          changed.
           </li>
         </ul>
         </li>
@@ -864,6 +873,12 @@ structure_Attr($@)
 
     <li><a href="#disable">disable</a></li>
     <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
+
+    <a name="structureconsiderDisabledMembers"></a>
+    <li>considerDisabledMembers<br>
+        wenn gesetzt (auf 1), werden "disabled" Mitglieder bei der Berechnung
+        der Struktur-Status ber&uuml;cksichtigt, sonst werden diese ignoriert.
+        </li>
 
     <a name="clientstate_behavior"></a>
     <li>clientstate_behavior<br>

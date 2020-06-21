@@ -91,6 +91,7 @@ FHEM/11_OWX_TCP.pm           pahenning            1Wire
 FHEM/12_HMS.pm               rudolfkoenig         SlowRF
 FHEM/12_HProtocolGateway.pm  eisler               Sonstige Systeme
 FHEM/12_HProtocolTank.pm     eisler               Sonstige Systeme
+FHEM/12_OilFox.pm            eisler               Sonstige Systeme
 FHEM/13_KS300.pm             rudolfkoenig         SlowRF
 FHEM/14_CUL_MAX.pm           Wzut		  MAX
 FHEM/14_CUL_REDIRECT.pm      dancer0705/bjoernh   Sonstiges
@@ -146,13 +147,9 @@ FHEM/21_OWTHERM.pm           pahenning            1Wire
 FHEM/21_OWVAR.pm             pahenning            1Wire
 FHEM/21_SONOSPLAYER          Reinerlein           Multimedia
 FHEM/21_VBUSDEV.pm           Tobias/pejonp        Sonstige Systeme
-FHEM/22_ALL3076.pm           jeschkec             Sonstiges
 FHEM/22_HOMEMODE.pm          DeeSPe               Automatisierung
-FHEM/23_ALL4027.pm           jeschkec             Sonstiges
 FHEM/23_KOSTALPIKO.pm        john                 CodeSchnipsel
 FHEM/23_LUXTRONIK2.pm        tupol                Heizungssteuerung/Raumklima (link als PM an tupol)
-FHEM/23_WEBIO.pm             jeschkec             Sonstiges
-FHEM/23_WEBIO_12DIGITAL.pm   jeschkec               Sonstiges
 FHEM/24_Iluminize.pm         VolkerKettenbach     Sonstige Systeme
 FHEM/24_NetIO230B.pm         rudolfkoenig/orphan  Sonstiges
 FHEM/24_TPLinkHS110.pm       VolkerKettenbach     Sonstige Systeme
@@ -298,6 +295,8 @@ FHEM/55_PIFACE.pm            klaus.schauer        Einplatinencomputer
 FHEM/56_POKEYS.pm            axelberner           Sonstiges
 FHEM/57_Calendar.pm          neubert              Unterstützende Dienste/Kalendermodule
 FHEM/57_CALVIEW.pm           chris1284            Unterstützende Dienste/Kalendermodule
+FHEM/57_SSCal.pm             DS_Starter           Unterstützende Dienste/Kalendermodule
+FHEM/58_HVAC_DaikinAC.pm     roelb                Heizungssteuerung/Raumklima (preferably in English and a copy as PM)
 FHEM/59_HCS.pm               hjr                  Automatisierung (oder auch PM)
 FHEM/59_LuftdatenInfo        igami                Bastelecke
 FHEM/59_OPENWEATHER.pm       tupol                Unterstützende Dienste/Wettermodule (Link als PM an tupol)
@@ -309,6 +308,7 @@ FHEM/59_WUup.pm              mahowi               Unterstützende Dienste/Wetter
 FHEM/59_WWO.pm               baumrasen            Unterstützende Dienste/Wettermodule
 FHEM/60_allergy.pm           markus-m             Unterstützende Dienste
 FHEM/60_EM.pm                rudolfkoenig         SlowRF
+FHEM/60_Watches.pm           DS_Starter           Sonstiges
 FHEM/61_EMWZ.pm              rudolfkoenig         SlowRF
 FHEM/62_EMEM.pm              rudolfkoenig         SlowRF
 FHEM/63_EMGZ.pm              rudolfkoenig         SlowRF
@@ -414,7 +414,6 @@ FHEM/83_IOhomecontrol.pm     neubert              Sonstige Systeme
 FHEM/84_IOhomecontrolDevice.pm neubert            Sonstige Systeme
 FHEM/86_Robonect.pm          andi291              Sonstige Systeme
 FHEM/87_WS2000.pm            tdressler            Sonstiges
-FHEM/88_ALL4000T.pm          jeschkec             Sonstiges
 FHEM/88_HMCCU.pm             zap                  HomeMatic
 FHEM/88_HMCCUCHN.pm          zap                  HomeMatic
 FHEM/88_HMCCUDEV.pm          zap                  HomeMatic
@@ -422,11 +421,7 @@ FHEM/88_HMCCURPC.pm          zap                  HomeMatic
 FHEM/88_HMCCURPCPROC.pm      zap                  HomeMatic
 FHEM/88_IPWE.pm              tdressler            Sonstiges
 FHEM/88_Itach_IRDevice       ulimaass             Sonstige Systeme
-FHEM/88_Itach_Relay.pm       jeschkec             Automatisierung
-FHEM/88_LINDY_HDMI_SWITCH.pm jeschkec             Multimedia
 FHEM/88_Timer.pm             HomeAuto_User/elektron-bbs        Automatisierung
-FHEM/88_VantagePro2.pm       jeschkec             Sonstiges
-FHEM/88_WEBCOUNT.pm          jeschkec             Sonstiges
 FHEM/88_xs1Bridge.pm         HomeAuto_User        Sonstige Systeme
 FHEM/88_xs1Dev.pm            HomeAuto_User        Sonstige Systeme
 FHEM/89_FULLY.pm             zap                  Frontends
@@ -486,6 +481,7 @@ FHEM/98_DSBMobile 			 KernSani 			  https://forum.fhem.de/index.php/topic,107104
 FHEM/98_expandJSON.pm        dev0                 Unterstützende Dienste
 FHEM/98_feels_like.pm        hotbso               Wettermodule
 FHEM/98_fhemdebug.pm         rudolfkoenig         Sonstiges
+FHEM/98_FhemTestUtils.pm     rudolfkoenig         Development
 FHEM/98_fheminfo.pm          betateilchen         Sonstiges
 FHEM/98_freezemon            KernSani             Unterstützende Dienste
 FHEM/98_FReplacer.pm         StefanStrobel        Sonstiges
@@ -514,7 +510,6 @@ FHEM/98_ModbusElsnerWS.pm    klaus.schauer        Sonstiges
 FHEM/98_ModbusSET.pm         StefanStrobel        Sonstiges
 FHEM/98_ModbusTrovis5576.pm  Reinerlein           Heizungssteuerung/Raumklima
 FHEM/98_monitoring.pm        igami                Automatisierung
-FHEM/98_MSwitch.pm           Byte09               Automatisierung
 FHEM/98_notice.pm            mfr69bs              Sonstiges
 FHEM/98_PHC.pm               StefanStrobel        Sonstiges
 FHEM/98_PID20.pm             John                 Automatisierung
@@ -528,7 +523,6 @@ FHEM/98_readingsWatcher	     Wzut		  Sonstiges
 FHEM/98_restore.pm           rudolfkoenig         Sonstiges
 FHEM/98_rssFeed.pm           Benni                Unterstützende Dienste
 FHEM/98_serviced.pm          DeeSPe               Unterstützende Dienste
-FHEM/98_Siro.pm              Byte09 / Dr. Smag    Sonstige Systeme
 FHEM/98_statistics.pm        tupol                Unterstützende Dienste (Link als PM an tupol)
 FHEM/98_structure.pm         rudolfkoenig         Automatisierung
 FHEM/98_SVG.pm               rudolfkoenig         Frontends/SVG/Plots/logProxy
@@ -603,7 +597,7 @@ FHEM/lib/SHC_packet_layout.xml  rr2000            Sonstige Systeme
 FHEM/lib/SWAP/*              justme1968           Sonstige Systeme
 FHEM/lib/UPnP/*              Reinerlein           Multimedia
 
-contrib/23_WEBTHERM.pm       jeschkec             Sonstiges
+contrib/sacha_gloor/*        jeschkec             Sonstiges
 contrib/70_ONKYO_AVR_PULL.pm loredo               (deprecated)
 contrib/DS_Starter/*         DS_Starter           Sonstiges
 contrib/98_EDIPLUG.pm        Wzut                 Sonstige Systeme
@@ -628,6 +622,7 @@ contrib/PRESENCE/lepresenced PatrickR             Unterstützende Dienste
 contrib/SIP/*                Wzut                 Sonstiges
 contrib/WebViewControl/*     Dirk                 Mobile Devices
 contrib/Widgets/DateTimePicker* Matscher          Frontends
+contrib/Wzut/*		     Wzut		  MAX
 contrib/YAF/*                MarcP                Frontends
 
 www/codemirror/*             rapster              Frontends
@@ -636,7 +631,7 @@ www/gplot/*                  rudolfkoenig         Frontends/SVG/Plots/logProxy
 www/images/*                 Wuppi68              Frontends
 www/jscolor/*                justme1968           Frontends
 www/pgm2/*                   rudolfkoenig         Frontends/FHEMWEB
-www/pgm2/dashboard/*         svenson08            Frontends
+www/pgm2/dashboard*          DS_Starter           Frontends
 www/pgm2/doif.js                     Ellert       Frontends
 www/pgm2/fhemweb_fbcalllist.js       markusbloch  Frontends
 www/pgm2/fhemweb_iconButtons.js      Ellert       Frontends

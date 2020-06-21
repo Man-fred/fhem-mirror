@@ -2,6 +2,34 @@
 #
 ##############################################
 #
+# 2020.05.06 v0.1.8
+# - BUG:     Zu viele Loginfos bei set "NPM_login refresh" 
+#
+# 2020.04.27 v0.1.7
+# - FEATURE: Unterstützung A1WAR447VT003J Yamaha MusicCast 20
+# - BUG:     set "NPM_login refresh"
+# - CHANGE:  get status erweitert
+#
+# 2020.04.22 v0.1.5
+# - CHANGE:  Mehr Loginfos bei set "NPM_login refresh" 
+#
+# 2020.04.20 v0.1.4
+# - CHANGE:  Keepalive aktiviert (cookielogin6)
+#
+# 2020.04.14 v0.1.3
+# - CHANGE:  Mehr Loginfos bei set "NPM_login new" 
+#
+# 2020.04.12 v0.1.2
+# - CHANGE:  Mehr Loginfos bei set "NPM_login new" 
+#
+# 2020.04.08 v0.1.1
+# - CHANGE:  Keepalive aktiviert
+# - BUG:     set "NPM_login new"
+# - FEATURE: Unterstützung A3RBAYBE7VM004 ECHO Studio
+#            Unterstützung A3SSG6GR8UU7SN ECHO SUB
+#            Unterstützung A1HNT9YTOBE735 Telekom Smart Speaker
+#            set sounds: (Sounds gemäß Routine-Übersicht)
+# 
 # 2019.12.24 v0.1.0
 # - FEATURE: Unterstützung A1Z88NGR2BK6A2 ECHO Show 8
 #            Unterstützung A2JKHJ0PX4J3L3 ECHO FireTv Cube 4K
@@ -364,7 +392,7 @@ use Time::Piece;
 use lib ('./FHEM/lib', './lib');
 use MP3::Info;
 
-my $ModulVersion     = "0.1.0";
+my $ModulVersion     = "0.1.8";
 my $AWSPythonVersion = "0.0.3";
 my $NPMLoginTyp		 = "unbekannt";
 
@@ -640,6 +668,7 @@ sub echodevice_Get($@) {
 		$return .= "<tr><td><strong>Beschreibung&nbsp;&nbsp;&nbsp</strong></td><td><strong>Bereich&nbsp;&nbsp;&nbsp</strong></td><td><strong>Wert</strong></td></tr>";
 		$return .= "<tr><td>STATE&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . ReadingsVal( $name, "state", "unbekannt") . "</td></tr>";
 		$return .= "<tr><td>Version&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . ReadingsVal( $name, "version", "unbekannt") . "</td></tr>";
+		$return .= "<tr><td>NPM Cookie Version&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . echodevice_NPMCheckVersion($hash,"cache/alexa-cookie/node_modules/alexa-cookie2/package.json","get status") . "</td></tr>";
 		$return .= "<tr><td>COOKIE_STATE&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . ReadingsVal( $name, "COOKIE_STATE", "unbekannt") . "</td></tr>";
 		$return .= "<tr><td>COOKIE_TYPE&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . ReadingsVal( $name, "COOKIE_TYPE", "unbekannt") . "</td></tr>";
 		$return .= "<tr><td>COOKIE_MODE&nbsp;&nbsp;&nbsp;</td><td>Reading</td><td>" . $hash->{LOGINMODE} . "</td></tr>";
@@ -781,7 +810,7 @@ sub echodevice_Set($@) {
 		}
 		else {
 			$usage .= 'volume:slider,0,1,100 play:noArg pause:noArg next:noArg previous:noArg forward:noArg rewind:noArg shuffle:on,off repeat:on,off dnd:on,off volume_alarm:slider,0,1,100 ';
-			$usage .= 'info:Beliebig_Auf_Wiedersehen,Beliebig_Bestaetigung,Beliebig_Geburtstag,Beliebig_Guten_Morgen,Beliebig_Gute_Nacht,Beliebig_Ich_Bin_Zuhause,Beliebig_Kompliment,Erzaehle_Geschichte,Erzaehle_Was_Neues,Erzaehle_Witz,Kalender_Heute,Kalender_Morgen,Kalender_Naechstes_Ereignis,Nachrichten,Singe_Song,Verkehr,Wetter tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist alarm_normal alarm_repeat reminder_normal reminder_repeat speak speak_ssml tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long ';
+			$usage .= 'info:Beliebig_Auf_Wiedersehen,Beliebig_Bestaetigung,Beliebig_Geburtstag,Beliebig_Guten_Morgen,Beliebig_Gute_Nacht,Beliebig_Ich_Bin_Zuhause,Beliebig_Kompliment,Erzaehle_Geschichte,Erzaehle_Was_Neues,Erzaehle_Witz,Kalender_Heute,Kalender_Morgen,Kalender_Naechstes_Ereignis,Nachrichten,Singe_Song,Verkehr,Wetter sounds:glocken,kirchenglocke,summer,tuerklingel_1,tuerklingel_2,tuerklingel_3,jubelnde_menschenmenge,publikumsapplaus,flugzeug,katastrophenalarm,motoren_an,schilde_hoch,sirenen,zappen,boing_1,boing_2,kamera,lufthupe,quitschende_tuer,tickende_uhr,trompete,hahn,hundegebell,katzenmauzen,loewengebruell,wolfsgeheul,gruselig_quitschende_tuer,weihnachtsglocken tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist alarm_normal alarm_repeat reminder_normal reminder_repeat speak speak_ssml tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long ';
 			
 			$usage .= 'homescreen ' if ($hash->{model} eq "Echo Show 5" || $hash->{model} eq "Echo Show 8" || $hash->{model} eq "Echo Show" || $hash->{model} eq "Echo Show Gen2"); 
 			
@@ -1486,6 +1515,11 @@ sub echodevice_Set($@) {
 		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
 		echodevice_SendCommand($hash,$command,join(' ',@a));
 	}
+
+    elsif($command eq "sounds"){
+		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
+		echodevice_SendCommand($hash,$command,join(' ',@a));
+	}
 	
 	elsif($command eq "info"){
 		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
@@ -1858,6 +1892,16 @@ sub echodevice_SendCommand($$$) {
 		$SendMetode = "POST";		
 	}
 
+    elsif ($type eq "sounds" ) {
+
+		#Allgemeine Veariablen
+		$SendUrl   .= "/api/behaviors/preview";
+		$SendMetode = "POST";	
+		
+		$SendData = echodevice_getsequenceJson($hash,lc($SendData),"");
+		$SendDataL  = $SendData;
+	}
+
 	elsif ($type eq "info" ) {
 
 		#Allgemeine Veariablen
@@ -2054,7 +2098,7 @@ sub echodevice_HandleCmdQueue($) {
 					   header          => $AmazonHeader,
                        timeout         => 10,
                        noshutdown      => 1,
-                       keepalive       => 0,
+                       keepalive       => 1,
 					   method          => $param->{method},
 					   data            => $param->{data},
 					   CL              => $param->{CL},
@@ -2259,6 +2303,7 @@ sub echodevice_SendLoginCommand($$$) {
 		$param->{header}      = 'Cookie: '.$hash->{helper}{".COOKIE"};
 		$param->{callback}    = \&echodevice_ParseAuth;
 		$param->{noshutdown}  = 1;
+		$param->{keepalive}   = 1;
 		$param->{type}        = $type;
 		$param->{hash}        = $hash;
 		$param->{timeout}     = 10;
@@ -4119,6 +4164,8 @@ sub echodevice_getModel($){
 	elsif($ModelNumber eq "A3VRME03NAXFUB" || $ModelNumber eq "Echo Flex")				{return "Echo Flex";}
 	elsif($ModelNumber eq "A3FX4UWTP28V1P" || $ModelNumber eq "Echo")					{return "Echo Gen3";}
 	elsif($ModelNumber eq "A30YDR2MK8HMRV" || $ModelNumber eq "Echo")					{return "Echo Gen3";}
+	elsif($ModelNumber eq "A3RBAYBE7VM004" || $ModelNumber eq "Echo Studio")			{return "Echo Studio";}
+	elsif($ModelNumber eq "A3SSG6GR8UU7SN" || $ModelNumber eq "Echo Sub")				{return "Echo Sub";}
 	elsif($ModelNumber eq "AILBSA2LNTOYL"  || $ModelNumber eq "Reverb")					{return "Reverb";}
 	elsif($ModelNumber eq "A15ERDAKK5HQQG" || $ModelNumber eq "Sonos Display")			{return "Sonos Display";}
 	elsif($ModelNumber eq "A2OSP3UA4VC85F" || $ModelNumber eq "Sonos One")				{return "Sonos One";}
@@ -4144,6 +4191,8 @@ sub echodevice_getModel($){
 	elsif($ModelNumber eq "A21Z3CGI8UIP0F" || $ModelNumber eq "HEOS")                   {return "HEOS";}
 	elsif($ModelNumber eq "AKOAGQTKAS9YB"  || $ModelNumber eq "Echo Connect")			{return "Echo Connect";}
 	elsif($ModelNumber eq "A3NTO4JLV9QWRB" || $ModelNumber eq "Gigaset L800HX")			{return "Gigaset L800HX";}
+	elsif($ModelNumber eq "A1HNT9YTOBE735" || $ModelNumber eq "Telekom Smart Speaker")	{return "Telekom Smart Speaker";}
+	elsif($ModelNumber eq "A1WAR447VT003J" || $ModelNumber eq "Yamaha MusicCast 20")	{return "Yamaha MusicCast 20";}
 	elsif($ModelNumber eq "")               {return "";}
 	elsif($ModelNumber eq "ACCOUNT")        {return "ACCOUNT";}
 	else {return "unbekannt";}
@@ -4312,17 +4361,51 @@ sub echodevice_getsequenceJson($$$) {
 		$BereichValue  = '\"textToSpeak\":\"'.$Parameter.'\",';
 	}
 	
-	elsif(lc($Bereich) eq "erzaehle_geschichte")      {$BereichString = '\"type\":\"Alexa.TellStory.Play\"';}
-	elsif(lc($Bereich) eq "erzaehle_witz")            {$BereichString = '\"type\":\"Alexa.Joke.Play\"';}
-	elsif(lc($Bereich) eq "erzaehle_was_neues")       {$BereichString = '\"type\":\"Alexa.GoodMorning.Play\"';}
-	elsif(lc($Bereich) eq "singe_song")               {$BereichString = '\"type\":\"Alexa.SingASong.Play\"';}
-	elsif(lc($Bereich) eq "beliebig_auf_wiedersehen") {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodbye/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_bestaetigung")    {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-confirmations/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_geburtstag")      {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-birthday/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_gute_nacht")      {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodnight/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_guten_morgen")    {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodmorning/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_ich_bin_zuhause") {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-iamhome/alexa.cannedtts.speak.curatedtts-random\",';}
-	elsif(lc($Bereich) eq "beliebig_kompliment")      {$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-compliments/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "erzaehle_geschichte")		{$BereichString = '\"type\":\"Alexa.TellStory.Play\"';}
+	elsif(lc($Bereich) eq "erzaehle_witz")				{$BereichString = '\"type\":\"Alexa.Joke.Play\"';}
+	elsif(lc($Bereich) eq "erzaehle_was_neues")			{$BereichString = '\"type\":\"Alexa.GoodMorning.Play\"';}
+	elsif(lc($Bereich) eq "singe_song")					{$BereichString = '\"type\":\"Alexa.SingASong.Play\"';}
+	elsif(lc($Bereich) eq "beliebig_auf_wiedersehen")	{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodbye/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_bestaetigung")		{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-confirmations/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_geburtstag")		{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-birthday/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_gute_nacht")		{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodnight/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_guten_morgen")		{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-goodmorning/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_ich_bin_zuhause")	{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-iamhome/alexa.cannedtts.speak.curatedtts-random\",';}
+	elsif(lc($Bereich) eq "beliebig_kompliment")      	{$BereichString = '\"type\":\"Alexa.CannedTts.Speak\"';$BereichValue  = '\"cannedTtsStringId\":\"alexa.cannedtts.speak.curatedtts-category-compliments/alexa.cannedtts.speak.curatedtts-random\",';}
+    #
+    elsif(lc($Bereich) eq "glocken")      				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"bell_02\",';}
+    elsif(lc($Bereich) eq "kirchenglocke")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_church_bell_1x_02\",';}
+    elsif(lc($Bereich) eq "summer")						{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"buzzers_pistols_01\",';}
+    elsif(lc($Bereich) eq "tuerklingel_1")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_doorbell_01\",';}
+    elsif(lc($Bereich) eq "tuerklingel_2")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_doorbell_chime_01\",';}
+    elsif(lc($Bereich) eq "tuerklingel_3")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_doorbell_chime_02\",';}
+    #
+    elsif(lc($Bereich) eq "jubelnde_menschenmenge")		{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_large_crowd_cheer_01\",';}
+    elsif(lc($Bereich) eq "publikumsapplaus")			{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_crowd_applause_01\",';}
+    #
+    elsif(lc($Bereich) eq "flugzeug")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"futuristic_10\",';}
+    elsif(lc($Bereich) eq "katastrophenalarm")			{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_scifi_alarm_04\",';}
+    elsif(lc($Bereich) eq "motoren_an")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_scifi_engines_on_02\",';}
+    elsif(lc($Bereich) eq "schilde_hoch")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_scifi_sheilds_up_01\",';}
+    elsif(lc($Bereich) eq "sirenen")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_scifi_alarm_01\",';}
+    elsif(lc($Bereich) eq "zappen")						{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"zap_01\",';}
+    #
+    elsif(lc($Bereich) eq "boing_1")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"boing_01\",';}
+    elsif(lc($Bereich) eq "boing_2")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"boing_03\",';}
+    elsif(lc($Bereich) eq "kamera")						{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"camera_01\",';}
+    elsif(lc($Bereich) eq "lufthupe")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"air_horn_03\",';}
+    elsif(lc($Bereich) eq "quitschende_tuer")			{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"squeaky_12\",';}
+    elsif(lc($Bereich) eq "tickende_uhr")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"clock_01\",';}
+    elsif(lc($Bereich) eq "trompete")					{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_trumpet_bugle_04\",';}
+    #
+    elsif(lc($Bereich) eq "hahn")						{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_rooster_crow_01\",';}
+    elsif(lc($Bereich) eq "hundegebell")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_dog_med_bark_1x_02\",';}
+    elsif(lc($Bereich) eq "katzenmauzen")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_cat_meow_1x_01\",';}
+    elsif(lc($Bereich) eq "loewengebruell")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_lion_roar_02\",';}
+    elsif(lc($Bereich) eq "wolfsgeheul")				{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"amzn_sfx_wolf_howl_02\",';}
+    #
+    elsif(lc($Bereich) eq "gruselig_quitschende_tuer")	{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"horror_10\",';}
+    elsif(lc($Bereich) eq "weihnachtsglocken")			{$BereichString = '\"type\":\"Alexa.Sound\"';$BereichValue  = '\"soundStringId\":\"christmas_05\",';}
 	
 	$ResultString   = '{"behaviorId":"PREVIEW","sequenceJson":"{\"@type\":\"com.amazon.alexa.behaviors.model.Sequence\",\"startNode\":{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",' . $BereichString . ',\"operationPayload\":{\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\",\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",'.$BereichValue .'\"locale\":\"de-DE\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\"}}}","status":"ENABLED"}';	
 	
@@ -4446,6 +4529,9 @@ sub echodevice_NPMLoginNew($){
 		return $InstallResult;
 	}
 	
+	# Version prüfen;
+	echodevice_NPMCheckVersion($hash,"cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginNew");
+	
 	my $ProxyPort = AttrVal($name,"npm_proxy_port","3002");
 	my $OwnIP     = "127.0.0.1";
 
@@ -4456,8 +4542,15 @@ sub echodevice_NPMLoginNew($){
 	foreach my $ipLine (@ips) {
 		my ($interface, undef, $ipParts) = split(' ', $ipLine);
 		my ($ip) = split('/', $ipParts);
-		if ($interface ne 'lo') {
-			$OwnIP = $ip if (!(index($ip, ":") != -1));
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Check Interface=$interface IP=$ip";
+		if ($interface ne 'lo' and (!(index($interface, "tun") != -1))) {
+			if (!(index($ip, ":") != -1)) {
+				$OwnIP = $ip ;
+				Log3 $name, 3, "[$name] [echodevice_NPMLoginNew]   Result Interface=$interface IP=$ip";
+			}
+		}
+		else {
+			Log3 $name, 3, "[$name] [echodevice_NPMLoginNew]   Ignor Interface=$interface IP=$ip";
 		}
 	}
 
@@ -4582,11 +4675,11 @@ sub echodevice_NPMLoginNew($){
 			
 		if ($line ne "") {Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Result $line"} 
 		else {$LoopCount +=1;}
-		
+
 		$Loop = "2" if (index($line, "Please check credentials") != -1) ;
+		$Loop = "2" if (index($line, "Proxy-Server listening on port") != -1) ;
 		$Loop = "3" if (index($line, "Final Registraton Result") != -1) ;
 		$Loop = "4" if ($line eq "" && $LoopCount > 100);
-	
 	} while ($Loop eq "1");
 	
 	if ($Loop eq "2") {
@@ -4595,6 +4688,7 @@ sub echodevice_NPMLoginNew($){
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
 		$InstallResult =~ s/'/&#x0027/g;
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Result: Bitte den Link anklicken und die Amazonanmeldung durchfuehren.";
 		InternalTimer(gettimeofday() + 3 , "echodevice_NPMWaitForCookie" , $hash, 0);
 		return $InstallResult;
 	}
@@ -4603,6 +4697,8 @@ sub echodevice_NPMLoginNew($){
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
 		$InstallResult =~ s/'/&#x0027/g;
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Result: Refreshtoken wurde erfolgreich erstellt.";
+		InternalTimer(gettimeofday() + 3 , "echodevice_NPMWaitForCookie" , $hash, 0);
 		return $InstallResult;
 	}
 	elsif($Loop eq "4") {
@@ -4610,9 +4706,11 @@ sub echodevice_NPMLoginNew($){
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
 		$InstallResult =~ s/'/&#x0027/g;
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Result: Es ist ein Fehler aufgetreten!! Bitte das FHEM Log pruefen.";
 		return $InstallResult;
 	}
 	else {
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] Result: Es ist ein Fehler aufgetreten!! Bitte das FHEM Log pruefen.!!!!!!";
 		return $InstallResult;
 	}
 	
@@ -4630,6 +4728,7 @@ sub echodevice_NPMLoginRefresh($){
 	$NPMLoginTyp   = "NPM Login Refresh " . localtime();
 	
 	# Prüfen ob npm installiert ist
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check $npm_bin_node" ;
 	if (!(-e $npm_bin_node)) {
 		$InstallResult .= '<p>Das Bin <strong>' . $npm_bin_node . '</strong> wurde nicht gefunden. Bitte zuerst das Linux Paket NPM installieren. Folgenden Befehl koennt Ihr hier verwenden:</p>';
 		$InstallResult .= '<p><strong><font color="blue">sudo apt-get install npm</font></strong></p><br>';
@@ -4642,6 +4741,7 @@ sub echodevice_NPMLoginRefresh($){
 	}
 
 	# Prüfen ob das alexa-cookie Mdoul vorhanden ist
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check alexa-cookie.js" ;
 	if (!(-e "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js")) {
 		$InstallResult .= '<p>Das alexa-cookie Modul wurde nicht gefunden. Bitte fuehrt am Amazon Account Device einen set "<strong>NPM_install</strong>" durch </p>';
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
@@ -4651,7 +4751,11 @@ sub echodevice_NPMLoginRefresh($){
 		return $InstallResult;
 	}
 	
+	# Version prüfen;
+	echodevice_NPMCheckVersion($hash,"cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginRefresh");
+	
 	# Prüfen ob das Refresh Cookie gültig ist!
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check Refresh Cookie String" ;
 	if (substr($RefreshCookie,0,1) ne "{") { 
 		$InstallResult .= '<p>Das angegebene Refreshtoken Cookie ist ungeueltig! Refreshtoken="<strong>' . $RefreshCookie . '</strong>"</p>';
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
@@ -4661,6 +4765,7 @@ sub echodevice_NPMLoginRefresh($){
 		return $InstallResult;
 	}
 	
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] build " . $number . "refresh-cookie.js";
 	my $SkriptContent  = "alexaCookie = require('alexa-cookie2');" . "\n";
 	$SkriptContent    .= "fs = require('fs');" . "\n";
 	$SkriptContent    .= "" . "\n";
@@ -4687,6 +4792,7 @@ sub echodevice_NPMLoginRefresh($){
 	close(FH);
 
 	# Prüfen ob das alexa-cookie Mdoul vorhanden ist
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check " . $number . "refresh-cookie.js";
 	if (!(-e $filename)) {
 		$InstallResult .= '<p>Das Skript zum Amazon Login konnte nicht gefunden werden!</p>';
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
@@ -4696,31 +4802,13 @@ sub echodevice_NPMLoginRefresh($){
 		return $InstallResult;
 	}
 
-	
 	# Skript ausführen
 	close CMD;
-	#Log3 $name, 3, "[$name] [echodevice_NPMLoginRefresh] start" ;
-	open CMD,'-|',$npm_bin_node . ' ./' . $filename . ' &' or die $@;
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] start $npm_bin_node $filename";
+	open CMD,'-|',$npm_bin_node . ' ./' . $filename . ' &';
 	
-	#system("node ./cache/alexa-cookie/refresh-cookie.js &");
-	
-	my $line;
-	my $Loop = "1";
-	do {
-		#Log3 $name, 3, "[$name] [echodevice_NPMLoginRefresh] started" ;
-		$Loop = "2";
-	} while ($Loop eq "1");
-	
-	#Log3 $name, 3, "[$name] [echodevice_NPMLoginRefresh] stop" ;
-	
-	if ($Loop eq "2") {
-		InternalTimer(gettimeofday() + 1 , "echodevice_NPMWaitForCookie" , $hash, 0);
-	}
-
-	#close CMD;
-	
-	#$InstallResult .= "</html>";
-	#$InstallResult =~ s/'/&#x0027/g;
+	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] start InternalTimer echodevice_NPMWaitForCookie";
+	InternalTimer(gettimeofday() + 1 , "echodevice_NPMWaitForCookie" , $hash, 0);
 
 	return ;#$InstallResult;
 
@@ -4733,6 +4821,7 @@ sub echodevice_NPMWaitForCookie($){
 	my $filename    = "cache/alexa-cookie/" . $number . "result.json";
 	my $CanDelete   = 0;
 	my $ExistSkript = "false";
+	my $CookieResult;
 	
 	if ($NPMLoginTyp =~ m/Refresh/) {
 		$ExistSkript = $number . "refresh-cookie.js = true"  if (-e "cache/alexa-cookie/" . $number . "refresh-cookie.js");
@@ -4746,12 +4835,14 @@ sub echodevice_NPMWaitForCookie($){
 		open(MAILDAT, "<$filename") || die "Datei wurde nicht gefunden\n";
 		while(<MAILDAT>){
 			if (index($_, "{") != -1) {
+				$CookieResult = $_;
 				Log3 $name, 3, "[$name] [echodevice_NPMWaitForCookie] [$NPMLoginTyp] write new refreshtoken";
+				# Log3 $name, 3, "[$name] [echodevice_NPMWaitForCookie] [$NPMLoginTyp] $CookieResult";
 				readingsSingleUpdate( $hash, "amazon_refreshtoken", "vorhanden",1 );
-				readingsSingleUpdate( $hash, ".COOKIE", $_,1 );
+				readingsSingleUpdate( $hash, ".COOKIE", $CookieResult,1 );
 				readingsSingleUpdate( $hash, "COOKIE_TYPE", "NPM_Login",1 );
 
-				$hash->{helper}{".COOKIE"} = $_;
+				$hash->{helper}{".COOKIE"} = $CookieResult;
 				$hash->{helper}{".COOKIE"} =~ /"localCookie":".*session-id=(.*)","?/;
 				$hash->{helper}{".COOKIE"} = "session-id=" . $1;
 				$hash->{helper}{".COOKIE"} =~ /csrf=([-\w]+)[;\s]?(.*)?$/ if(defined($hash->{helper}{".COOKIE"}));
@@ -4776,6 +4867,27 @@ sub echodevice_NPMWaitForCookie($){
 		Log3 $name, 4, "[$name] [echodevice_NPMWaitForCookie] [$NPMLoginTyp] wait for refreshtoken exist " . $ExistSkript ;
 		InternalTimer(gettimeofday() + 1 , "echodevice_NPMWaitForCookie" , $hash, 0);
 	}
+}
+
+sub echodevice_NPMCheckVersion ($$$) {
+
+	my ($hash,$filename,$LogBereich) = @_;
+	my $name = $hash->{NAME};
+	my $Modulversion = "unknown";
+
+	if (-e $filename) {
+		open(VERSION, "<$filename");
+		while(<VERSION>){
+			if ($_ =~ m/version/) {
+				my @Result = split(/"/,$_);
+				$Modulversion  = @Result[3];
+				Log3 $name, 4, "[$name] [$LogBereich] Version alexa-cookie.js = $Modulversion";}
+		}
+		close(VERSION);
+	}
+	else {Log3 $name, 4, "[$name] [$LogBereich] Version alexa-cookie.js = unknown";}
+	
+	return $Modulversion;
 }
 
 ##########################

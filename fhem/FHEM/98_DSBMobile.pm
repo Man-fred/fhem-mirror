@@ -54,6 +54,7 @@ sub DSBMobile_Initialize($) {
 
     $hash->{DefFn}   = "DSBMobile_Define";
     $hash->{UndefFn} = "DSBMobile_Undefine";
+
     $hash->{GetFn}   = "DSBMobile_Get";
 
     #$hash->{SetFn}   = "DSBMobile_Set";
@@ -67,7 +68,9 @@ sub DSBMobile_Initialize($) {
             . "dsb_classReading "
             . "dsb_outputFormat:textField-long " );
     $hash->{AttrList} = join( " ", @DSBMobile_attr ) . " " . $readingFnAttributes;
+
     return FHEM::Meta::InitMod( __FILE__, $hash );
+
 }
 
 #####################################
@@ -90,11 +93,19 @@ sub DSBMobile_Define($@) {
 
     $hash->{NAME} = $name;
 
+    #Temporary death of DSBMobile module ###
+
+    #Log3 $name, 3, "[$name] DSBMobile API was changed thus the Module currently can't be used and is disabled";
+    #CommandAttr( undef, $name . " dsb_interval 0" );
+    #$hash->{STATE} = 'Currently unavailable';
+    #return;
+
     #start timer
     if ( AttrNum( $name, "dsb_interval", 0 ) > 0 && $init_done ) {
         my $next = int( gettimeofday() ) + 1;
         InternalTimer( $next, 'DSBMobile_ProcessTimer', $hash, 0 );
     }
+    return;
 }
 ###################################
 sub DSBMobile_Undefine($$) {
@@ -165,7 +176,7 @@ sub DSBMobile_query($) {
         "Device"     => "Nexus 4",
         "AppId"      => $uuid,
         "appversion" => "2.5.9",
-        "OsVersion"  => "27 8.1.0",
+        "OsVersion"  => "28 8.0",
         "PushId"     => "",
         "BundleId"   => "de.heinekingmedia.dsbmobile",
         "Date"       => $date,
@@ -180,7 +191,7 @@ sub DSBMobile_query($) {
     my $body = '{"req": {"Data": "' . $b64 . '","DataType": 1}}';
 
     my $header = {
-        'Host'            => 'app.dsbcontrol.de',
+        #'Host'            => 'app.dsbcontrol.de',
         'Content-Type'    => 'application/json; charset=utf-8',
         'User-Agent'      => 'DSBmobile/9759 (iPhone; iOS 13.3; Scale/3.00)',
         'Connection'      => 'keep-alive',
@@ -215,12 +226,13 @@ sub DSBMobile_getDataCallback($) {
 
     Log3 $name, 5, "[$name] 1st nonblocking HTTP Call returning";
     Log3 $name, 5, "[$name] GetData - received $data";
-    my $j   = decode_json($data);
+    my $j = DSBMobile_safe_decode_json( $hash, $data );
+    return unless defined($j);
     my $d64 = decode_base64( $j->{d} );
     my $json;
     IO::Uncompress::Gunzip::gunzip \$d64 => \$json;
     $json = latin1ToUtf8($json);
-    my $res = decode_json($json);
+    my $res = DSBMobile_safe_decode_json( $hash, $json );
     if ( $res->{Resultcode} == 1 ) {
         readingsSingleUpdate( $hash, "error", $res->{ResultStatusInfo}, 0 );
         return undef;
@@ -323,7 +335,7 @@ sub DSBMobile_processTTPages($) {
     my $name = $hash->{NAME};
 
     my $ttpage = shift @{ $hash->{helper}{tturl} };
-    
+
     if ($ttpage) {
         Log3 $name, 5, "[$name] processing page " . $ttpage;
         my $nparam = {
@@ -625,25 +637,28 @@ sub DSBMobile_simpleHTML($;$) {
     @days = sort { $a cmp $b } @days;
 
     my $date = "";
-    my $class;
+
     my $out = AttrVal( $name, "dsb_outputFormat", undef );
 
     foreach my $day (@days) {
+        my ($y,$m,$d) = split('-',$day);
+        my $pday = sprintf('%02d.%02d.%04d', $d, $m, $y);
+        
         my $row   = 0;
         my $class = "even";
-        $ret .= "</table><table class='block wide'><tr class='$class'><td><b>" . $day . "</b></td></tr>";
+        $ret .= "</table><table class='block wide'><tr class='$class'><td><b>" . $pday . "</b></td></tr>";
         $row++;
         if ($infoDay) {
             foreach my $iline (@idata) {
-                if ( $row % 2 == 0 ) {
-                    $class = "even";
-                }
-                else {
-                    $class = "odd";
-                }
-                $row++;
-
                 if ( $iline->{sdate} eq $day ) {
+                    if ( $row % 2 == 0 ) {
+                        $class = "even";
+                    }
+                    else {
+                        $class = "odd";
+                    }
+                    $row++;
+
                     $ret .= "<tr class='$class'><td>" . $iline->{topic} . ": " . $iline->{text} . "</td></tr>";
                 }
             }
@@ -680,6 +695,23 @@ sub DSBMobile_simpleHTML($;$) {
     $ret .= "</table>";
     return $ret;
 
+}
+
+sub DSBMobile_safe_decode_json($$) {
+    my ( $hash, $data ) = @_;
+    my $name = $hash->{NAME};
+
+    my $json = undef;
+    eval {
+        $json = decode_json($data);
+        1;
+    } or do {
+        my $error = $@ || 'Unknown failure';
+        Log3 $name, 1, "[$name] - Received invalid JSON: $error";
+        return;
+
+    };
+    return $json;
 }
 ###################################
 sub DSBMobile_tableHTML($;$) {

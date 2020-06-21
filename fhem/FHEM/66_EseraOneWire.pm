@@ -84,13 +84,14 @@ EseraOneWire_Initialize($)
 
 
   $hash->{Clients} = ":EseraDigitalInOut:EseraTemp:EseraMulti:EseraAnalogInOut:EseraIButton:EseraCount:EseraShutter:";
-  $hash->{MatchList} = { "1:EseraDigitalInOut" => "^DS2408|^11220|^11228|^11229|^11216|^SYS1|^SYS2",
+  $hash->{MatchList} = { "1:EseraDigitalInOut" => "^DS2408|^11220|^11233|^11228|^11229|^11216|^SYS1|^SYS2",
                          "2:EseraTemp" => "^DS1820",
-                         "3:EseraMulti" => "^DS2438|^11121|^11134|^11135",
+                         "3:EseraMulti" => "^DS2438|^11121|^11132|^11133|^11134|^11135",
                          "4:EseraAnalogInOut" => "^SYS3",
                          "5:EseraIButton" => "^DS2401",
 			 "6:EseraCount" => "^DS2423",
-                         "7:EseraShutter" => "^11231|^11209"};
+                         "7:EseraShutter" => "^11231|^11209",
+                         "8:EseraDimmer" => "^11221|^11222"};
 }
 
 sub
@@ -1043,7 +1044,7 @@ EseraOneWire_Read($)
       }
       else
       {
-        Log3 $name, 5, "EseraOneWire ($name) - readings ignored because controller is not initialized (2)";
+        Log3 $name, 5, "EseraOneWire ($name) - readings ignored because controller is not initialized (3)";
       }
     }
     elsif ($ascii =~ m/^1_SYS(\d+)/)
@@ -1054,7 +1055,7 @@ EseraOneWire_Read($)
       }
       else
       {
-        Log3 $name, 5, "EseraOneWire ($name) - readings ignored because controller is not initialized (2)";
+        Log3 $name, 5, "EseraOneWire ($name) - readings ignored because controller is not initialized (4)";
       }
     }
     else

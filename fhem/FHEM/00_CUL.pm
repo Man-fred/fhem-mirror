@@ -4,6 +4,7 @@ package main;
 
 use strict;
 use warnings;
+use DevIo;
 use Time::HiRes qw(gettimeofday);
 
 sub CUL_Attr(@);
@@ -126,8 +127,6 @@ sub
 CUL_Initialize($)
 {
   my ($hash) = @_;
-
-  require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
 # Provider
   $hash->{ReadFn}  = "CUL_Read";

@@ -17,7 +17,7 @@ eval "use Date::Parse;1" or $missingModule .= "Date::Parse ";
 
 #######################
 # Global variables
-my $version = "1.3.5";
+my $version = "1.3.8";
 
 my $srandUsed;
 
@@ -984,7 +984,7 @@ sub todoist_GetTasksCallback($$$){
       
       # set some internals (project data)
       if ($project) {
-        $hash->{PROJECT_NAME}=$project->{name};
+        $hash->{PROJECT_NAME}=encode_utf8($project->{name});
         $hash->{PROJECT_COLOR}=$project->{color};
         $hash->{PROJECT_ORDER}=$project->{child_order};
         if ($project->{user_id}) {
@@ -1145,15 +1145,14 @@ sub todoist_GetTasksCallback($$$){
       }
     }
   }
-
+  
+  readingsEndUpdate( $hash, 1 );
+  
   ## list Text for TTS, Text-Message...
   if ($param->{completed} != 1) {
     $lText="-" if ($lText eq "");
-    readingsBulkUpdate($hash,"listText",$lText) if ($lText ne "");
+    readingsSingleUpdate($hash,"listText",$lText,1) if ($lText ne "");
   }
-  
-  
-  readingsEndUpdate( $hash, 1 );
     
   RemoveInternalTimer($hash,"todoist_GetTasks");
   InternalTimer(gettimeofday()+$hash->{INTERVAL}, "todoist_GetTasks", $hash, 0); ## loop with Interval
@@ -2197,7 +2196,7 @@ sub todoist_Html(;$$$) {
         my $dueDate = defined($hash->{helper}{DUE_DATE}{$_})?$hash->{helper}{DUE_DATE}{$_}:"";       
         my $responsibleUid = defined($hash->{helper}{RESPONSIBLE_UID}{$_})?$hash->{helper}{RESPONSIBLE_UID}{$_}:"";
         
-        $responsibleUid = $hash->{helper}{USER}{NAME}{$responsibleUid} if ($responsibleUid ne "");
+        $responsibleUid = $hash->{helper}{USER}{NAME}{$responsibleUid} if ($responsibleUid ne "" && defined($hash->{helper}{USER}{NAME}{$responsibleUid}));
         
         my $dueDateClass = $dueDate ne ""?" todoist_dueDate":"";
         my $responsibleUidClass = $responsibleUid ne ""?" todoist_responsibleUid":"";

@@ -694,6 +694,8 @@
     <Product config="fibaro/fgwds221.xml" id="1000" name="FGWDS221 Walli Double Switch" type="1B01"/>
     <Product config="fibaro/fgwd111.xml" id="1000" name="FGWD111 Walli Dimmer" type="1C01"/>
     <Product config="fibaro/fgwr111.xml" id="1000" name="FGWR111 Walli Roller Shutter" type="1d01"/>
+    <Product config="fibaro/fgrgbw442.xml" id="1000" name="FGRGBW-442" type="0902"/>
+    <Product config="fibaro/fgrgbw442.xml" id="2000" name="FGRGBW-442" type="0902"/>
   </Manufacturer>
   <Manufacturer id="0295" name="fifthplay nv"></Manufacturer>
   <Manufacturer id="0138" name="First Alert (BRK Brands Inc)">
@@ -1521,6 +1523,7 @@
     <Product config="steinel/rs-led-d2.xml" id="1a74" name="RS LED D2" type="0001"/>
     <Product config="steinel/xled-home-2.xml" id="1a73" name="XLED HOME 2" type="0001"/>
     <Product config="steinel/l810-led-ihf.xml" id="1a75" name="L810 LED iHF" type="0001"/>
+    <Product config="steinel/MotionSwitch.xml" id="19fb" name="MotionSwitch LED" type="0002" forumNr="111295"/>
   </Manufacturer>
   <Manufacturer id="0239" name="Stelpro">
     <Product config="stelpro/stzw402.xml" id="0001" name="STZW402+ Electronic Thermostat" type="0001"/>

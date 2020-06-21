@@ -1509,7 +1509,8 @@ The following local attributes are used by a wider range of devices:
     <a name="blockingCallMax"></a>
     <li>blockingCallMax<br>
         Limit the number of parallel running processes started by the
-        BlockingCall FHEM helper routine. Useful on limited hardware.
+        BlockingCall FHEM helper routine. Useful on limited hardware, default
+        is 32. If the limit is reached, further calls are delayed.
     </li><br>
 
     <a name="configfile"></a>
@@ -1526,6 +1527,20 @@ The following local attributes are used by a wider range of devices:
         at the beginning, and the module documentation is loaded from FHEM
         dynamically.
     </li><br>
+
+    <a name="globaldisableFeatures"></a>
+    <li>disableFeatures <values><br>
+        comma separated list of values. Currently following values are
+        recognized:
+        <ul>
+          <li>attrTemplate: to avoid loading the AttrTemplates (which currently
+            consumes about 1MB of memory and needs some seconds to load on a
+            slow hardware)</li>
+          <li>securityCheck: to avoid checking if each Server port is secured
+            by password. May make sense to avoid warnings, if you know it
+            better.</li><br>
+        </ul>
+        </li>
 
     <a name="dnsHostsFile"></a>
     <li>dnsHostsFile<br>
@@ -1780,6 +1795,7 @@ The following local attributes are used by a wider range of devices:
     undefined device.</li>
     <li>MODIFIED &lt;defspec&gt;</br> after a device modification.</li>
     <li>UPDATE</br> after an update is completed.</li>
+    <li>CANNOT_FORK</br>if BlockingCall encounters this problem.</li>
   </ul>
 
 

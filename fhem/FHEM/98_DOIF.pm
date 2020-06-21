@@ -12,7 +12,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU General Public License655
 # along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################
@@ -23,7 +23,7 @@ use strict;
 use warnings;
 use Blocking;
 use Color;
-use vars qw($FW_CSRF);
+use vars qw($FW_CSRF $FW_room);
 
 my $hs;
 
@@ -78,6 +78,7 @@ sub DOIF_delAll($)
   delete ($hash->{var});
   delete ($hash->{accu});
   delete ($hash->{Regex});
+  delete ($hash->{defs});
 
   #foreach my $key (keys %{$hash->{Regex}}) {
   #  delete $hash->{Regex}{$key} if ($key !~ "STATE|DOIF_Readings|uiTable");
@@ -102,7 +103,7 @@ sub DOIF_Initialize($)
   $hash->{FW_deviceOverview} = 1;
   $hash->{FW_addDetailToSummary} = 1;
   $hash->{FW_detailFn} = "DOIF_detailFn";
-  $hash->{FW_summaryFn}  = "DOIF_summaryFn";
+  #hash->{FW_summaryFn}  = "DOIF_summaryFn";
   #$hash->{FW_atPageEnd} = 1;
 
   $data{FWEXT}{DOIF}{SCRIPT} = "doif.js";
@@ -210,7 +211,7 @@ sub DOIF_Widget_Update
       } devspec2array("TYPE=FHEMWEB");
   } else {
       map { 
-         FW_directNotify("#FHEMWEB:$_", "doifUpdateCell('$pn','doifId','$doifId','$value','display:inline;$style')","");
+         FW_directNotify("#FHEMWEB:$_", "doifUpdateCell('$pn','doifId','$doifId','$value','display:inline-table;$style')","");
       } devspec2array("TYPE=FHEMWEB") if ($value ne "");
   }
 }
@@ -234,7 +235,7 @@ sub DOIF_Widget_Register
     $cmd = $cmd eq '' ? $reading : $cmd;
     return "<div class='fhemWidget' cmd='$cmd' reading='$reading' dev='$dev' arg='$widget' current='$value' type='$type'></div>";
   } else {
-    return "<div class='dval' doifId='$doifId' style='display:inline;$style'>$value</div>";
+    return "<div class='dval' doifId='$doifId' style='display:inline-table;$style'>$value</div>";
   }
 }
  
@@ -348,6 +349,21 @@ sub DOIF_RegisterCell
   return ""
 }
 
+sub DOIF_DEF_TPL 
+{
+  my ($hash,$table,$tail) =@_;
+  my ($beginning,$currentBlock,$err);
+  while($tail =~ /(?:^|\n)\s*DEF\s*(TPL_[^ ^\t^\(]*)[^\(]*\(/g) {
+    ($beginning,$currentBlock,$err,$tail)=GetBlockDoIf($tail,'[\(\)]');
+    if ($err) {
+        return ("DEF TPL: $err",$currentBlock);
+    } elsif ($currentBlock ne "") {
+      $hash->{$table}{tpl}{$1}=$currentBlock;
+    }
+  }
+  return ("",$tail);
+}
+
 sub parse_tpl
 {
   my ($hash,$wcmd,$table) = @_;
@@ -387,6 +403,7 @@ sub parse_tpl
   $wcmd =~ s/\$SHOWNOSTATE/\$hash->{$table}{shownostate}/;
   $wcmd =~ s/\$SHOWNODEVICELINK/\$hash->{$table}{shownodevicelink}/;
   $wcmd =~ s/\$SHOWNODEVICELINE/\$hash->{$table}{shownodeviceline}/;
+  $wcmd =~ s/\$SHOWNOUITABLE/\$hash->{$table}{shownouitable}/;
   $hash->{$table}{package} = "" if (!defined ($hash->{$table}{package}));
   if ($wcmd=~ /^\s*\{/) { # perl block
     my ($beginning,$currentBlock,$err,$tailBlock)=GetBlockDoIf($wcmd,'[\{\}]');
@@ -406,7 +423,7 @@ sub parse_tpl
     }
   }
   
-  ($err,$wcmd)=DOIF_uiTable_FOR($hash,$wcmd,$table);
+  ($err,$wcmd)=DOIF_FOR($hash,$table,$wcmd);
   if ($err) {
     return($err,"");
   }
@@ -422,14 +439,8 @@ sub parse_tpl
   my $beginning;
   my $currentBlock;
 
-  while($tail =~ /(?:^|\n)\s*DEF\s*(TPL_[^ ^\t^\(]*)[^\(]*\(/g) {
-    ($beginning,$currentBlock,$err,$tail)=GetBlockDoIf($tail,'[\(\)]');
-    if ($err) {
-        return ("error in $table: $err","");
-    } elsif ($currentBlock ne "") {
-      $hash->{$table}{tpl}{$1}=$currentBlock;
-    }
-  }
+  ($err,$tail)=DOIF_DEF_TPL($hash,$table,$wcmd);
+  return ("$err: $tail") if ($err);
   return ("",$tail);
 }
 
@@ -449,9 +460,9 @@ sub import_tpl
   return "";
 }
 
-sub DOIF_uiTable_FOR
+sub DOIF_FOR
 {
-  my ($hash,$wcmd,$table)=@_;
+  my ($hash,$table,$wcmd)=@_;
   my $err="";
   my $tail=$wcmd;
   my $beginning;
@@ -466,7 +477,7 @@ sub DOIF_uiTable_FOR
       if ($tail =~ /^FOR\s*\(/) {
         ($beginning,$currentBlock,$err,$tail)=GetBlockDoIf($tail,'[\(\)]');
         if ($err) {
-          return ("error in $table: $err $currentBlock","");
+          return ("FOR: $err $currentBlock","");
         } elsif ($currentBlock ne "") {
           my ($array,$command) = SplitDoIf(',',$currentBlock);
           my $commandoutput="";
@@ -489,23 +500,13 @@ sub DOIF_uiTable_FOR
   return ("",$output);
 }
 
-sub DOIF_uiTable_def 
-{
-  my ($hash,$wcmd,$table) = @_;
-  return undef if (!$wcmd); 
-  my $err="";
-  delete ($hash->{Regex}{$table});
-  delete ($hash->{$table});
-  ($err,$wcmd)=parse_tpl($hash,$wcmd,$table);
-  return $err if ($err);
+sub DOIF_TPL {
+  my ($hash,$table,$tail) = @_;
   my $beginning;
   my $currentBlock;
   my $output="";
+  my $err;
   
-  #$wcmd=DOIF_uiTable_FOR($wcmd,$table);
-
-  my $tail=$wcmd;
-
   while ($tail ne "") {
     if ($tail =~ /TPL_/g) {
       my $prefix=substr($tail,0,pos($tail));
@@ -517,17 +518,17 @@ sub DOIF_uiTable_def
           my $templ=$hash->{$table}{tpl}{$template};
           ($beginning,$currentBlock,$err,$tail)=GetBlockDoIf($tail,'[\(\)]');
           if ($err) {
-            return "error in $table: $err";
+            return "error: $err";
           } elsif ($currentBlock ne "") {
             my @param = SplitDoIf(',',$currentBlock);
-            for (my $j=0;$j<@param;$j++) {
-              my $p=$j+1;
-              $templ =~ s/\$$p/$param[$j]/g;
+            for (my $j=@param;$j>0;$j--) {
+              my $p=$j;
+              $templ =~ s/\$$p/$param[$j-1]/g;
             }
           }
           $output.=($begin.$templ);
         }  else {
-          return ("no Template $template defined");
+          return ("no Template $template defined",$tail);
         }
       } else {
         $tail=substr($tail,4);
@@ -538,6 +539,27 @@ sub DOIF_uiTable_def
       $tail="";
     }
   }
+  return ("",$output);
+}
+
+
+sub DOIF_uiTable_def 
+{
+  my ($hash,$wcmd,$table) = @_;
+  return undef if (!$wcmd); 
+  my $err="";
+
+  delete ($hash->{Regex}{$table});
+  delete ($hash->{$table});
+
+  ($err,$wcmd)=parse_tpl($hash,$wcmd,$table);
+  return $err if ($err);
+  my $output="";
+  my $tail=$wcmd;
+
+  ($err,$output)=DOIF_TPL($hash,$table,$tail);
+  return ("$err: $output") if ($err);
+
   $wcmd=$output;
 
   my @rcmd = split(/\n/,$wcmd);
@@ -651,9 +673,8 @@ sub DOIF_detailFn ($$$$) {
   my ($FW_wname, $d, $room, $pageHash) = @_; # pageHash is set for summaryFn.
   my $hash = $defs{$d};
   my $ret = "";
-  #Log3 $d,1,"vor DOIF_RegisterEvalAll uiTable";
+  return "" if (defined $hash->{"uiTable"}{shownouitable} and $FW_room =~ /$hash->{"uiTable"}{shownouitable}/);
   $ret=DOIF_RegisterEvalAll($hash,$d,"uiTable");
-  #Log3 $d,1,"nach DOIF_RegisterEvalAll";
   return $ret;
 }
 
@@ -1592,13 +1613,9 @@ sub ReplaceAllReadingsDoIf
           return ($block,$err) if ($err);
           if ($condition >= 0) {
             if ($trigger) {
-              #$hash->{devices}{$condition} = AddItemDoIf($hash->{devices}{$condition},$device);
-              #$hash->{devices}{all} = AddItemDoIf($hash->{devices}{all},$device);
               AddRegexpTriggerDoIf($hash,"cond","",$condition,$device,((defined $reading) ? $reading :((defined $internal) ? ("&".$internal):"&STATE")));
               $event=1;
             }
-            #$hash->{readings}{$condition} = AddItemDoIf($hash->{readings}{$condition},"$device:$reading") if (defined ($reading) and $trigger);
-            #$hash->{internals}{$condition} = AddItemDoIf($hash->{internals}{$condition},"$device:$internal") if (defined ($internal));
             $hash->{readings}{all} = AddItemDoIf($hash->{readings}{all},"$device:$reading") if (defined ($reading) and $trigger);
             $hash->{internals}{all} = AddItemDoIf($hash->{internals}{all},"$device:$internal") if (defined ($internal));
             $hash->{trigger}{all} = AddItemDoIf($hash->{trigger}{all},"$device") if (!defined ($internal) and !defined($reading));
@@ -1609,7 +1626,6 @@ sub ReplaceAllReadingsDoIf
             }
           } elsif ($condition == -3) {
               AddRegexpTriggerDoIf($hash,"itimer","","itimer",$device,((defined $reading) ? $reading :((defined $internal) ? ("&".$internal):"&STATE")));
-              #$hash->{itimer}{all} = AddItemDoIf($hash->{itimer}{all},$device);
           } elsif ($condition == -4) {
             if ($trigger) {
               AddRegexpTriggerDoIf($hash,"DOIF_Readings","",$id,$device,((defined $reading) ? $reading :((defined $internal) ? ("&".$internal):"&STATE")));
@@ -2026,16 +2042,6 @@ sub DOIF_CheckCond($$) {
   if ($eventa) {
     $events=join(",",@{$eventa});
   }
-  #if (defined ($hash->{readings}{$condition})) {
-  #  foreach my $devReading (split(/ /,$hash->{readings}{$condition})) {
-  #    $devReading=~ s/\$DEVICE/$hash->{helper}{triggerDev}/g if ($devReading);
-  #  }
-  #}
-  #if (defined ($hash->{internals}{$condition})) {
-  #  foreach my $devInternal (split(/ /,$hash->{internals}{$condition})) {
-  #    $devInternal=~ s/\$DEVICE/$hash->{helper}{triggerDev}/g if ($devInternal);
-  #  }
-  #}
   my $command=$hash->{condition}{$condition};
   if ($command) {
     my $eventa=$hash->{helper}{triggerEvents};
@@ -2046,19 +2052,11 @@ sub DOIF_CheckCond($$) {
     $command =~ s/\$DEVICE/$hash->{helper}{triggerDev}/g;
     $command =~ s/\$EVENTS/$events/g;
     $command =~ s/\$EVENT/$hash->{helper}{event}/g;
-    #my $idx = 0;
-    #my $evt;
-    #foreach my $part (split(" ", $hash->{helper}{event})) {
-    #   $evt='\$EVTPART'.$idx;
-    #   $command =~ s/$evt/$part/g;
-    #   $idx++;
-    #}
   }
   $cmdFromAnalyze="$hash->{NAME}: ".sprintf("warning in condition c%02d",($condition+1));
   $lastWarningMsg="";
   $hs=$hash;
   my $ret=$hash->{MODEL} eq "Perl" ? eval("package DOIF; $command"):eval ($command);  
-  #my $ret = eval ($command);
   if($@){
     $@ =~ s/^(.*) at \(eval.*\)(.*)$/$1,$2/;
     $err = sprintf("condition c%02d",($condition+1)).": $@";
@@ -2298,6 +2296,26 @@ sub CheckRegexpDoIf
   return undef;
 }
 
+sub DOIF_block 
+{
+  my ($hash,$i)= @_;
+  my $ret;
+  my $err;
+  my $blockname;
+  ($ret,$err)=DOIF_CheckCond($hash,$i);
+  if ($hash->{perlblock}{$i} =~ /^block_/) {
+    $blockname=$hash->{perlblock}{$i};
+  } else {
+    $blockname="block_".$hash->{perlblock}{$i};
+  }
+  if ($err) {
+    Log3 $hash->{NAME},4,"$hash->{NAME}: $err in perl block: $hash->{perlblock}{$i}" if ($ret != -1);
+    readingsSingleUpdate ($hash, $blockname, $err,1);
+  } else {
+    readingsSingleUpdate ($hash, $blockname, "executed",0);
+  }
+}
+
 sub DOIF_Perl_Trigger 
 {
   my ($hash,$device)= @_;
@@ -2332,22 +2350,7 @@ sub DOIF_Perl_Trigger
       next if (!defined (CheckRegexpDoIf($hash,"cond", $device,$i,$hash->{helper}{triggerEvents},$hash->{helper}{triggerEventsState},1)));
       $event="$device";
     }
-    if (($ret,$err)=DOIF_CheckCond($hash,$i)) {
-      if ($err) {
-        Log3 $hash->{NAME},4,"$hash->{NAME}: $err in perl block ".($i+1) if ($ret != -1);
-        if ($hash->{perlblock}{$i}) {
-          readingsSingleUpdate ($hash, "block_$hash->{perlblock}{$i}", $err,1);
-        } else {
-          readingsSingleUpdate ($hash, sprintf("block_%02d",($i+1)), $err,1);
-        }
-      } else {
-        if ($hash->{perlblock}{$i}) {
-          readingsSingleUpdate ($hash, "block_$hash->{perlblock}{$i}", "executed",0);
-        } else {
-          readingsSingleUpdate ($hash, sprintf("block_%02d",($i+1)), "executed",0);
-        }
-      }
-    }
+    DOIF_block($hash,$i); 
   }
   return undef;
 }
@@ -2509,7 +2512,7 @@ DOIF_Notify($$)
   } elsif ($dev->{NAME} !~ /$hash->{helper}{DEVFILTER}/) {
     return "";
   }
-
+  
   $eventa = deviceEvents($dev, AttrVal($pn, "addStateEvent", 0));
   $eventas = deviceEvents($dev, 1);
   delete ($hash->{helper}{DOIF_eventas});
@@ -3136,11 +3139,22 @@ CmdDoIfPerl($$)
 
   return("","") if ($tail =~ /^ *$/);
 
+  ($err,$tail)=DOIF_DEF_TPL($hash,"defs",$tail);
+  return ($tail,$err) if ($err);
+ 
+  ($err,$tail)=DOIF_FOR($hash,"defs",$tail);
+  return($tail,$err) if ($err);    
+ 
+  ($err,$tail)=DOIF_TPL($hash,"defs",$tail);
+  return ($tail,$err) if ($err);
+  
+  $tail =~ s/\$VAR/\$hash->{var}/g;
   $tail =~ s/\$_(\w+)/\$hash->\{var\}\{$1\}/g;
   
   while ($tail ne "") {
     ($beginning,$perlblock,$err,$tail)=GetBlockDoIf($tail,'[\{\}]');
     return ($perlblock,$err) if ($err);
+    next if (!$perlblock);
     if ($beginning =~ /(\w*)[\s]*$/) {
       my $blockname=$1;
       if ($blockname eq "subs") {
@@ -3155,7 +3169,7 @@ CmdDoIfPerl($$)
       ($perlblock,$err)=ReplaceAllReadingsDoIf($hash,$perlblock,$i,0);
       return ($perlblock,$err) if ($err);
       $hash->{condition}{$i}=$perlblock;
-      $hash->{perlblock}{$i}=$blockname;
+      $hash->{perlblock}{$i}=$blockname ? $blockname:sprintf("block_%02d",($i+1));
       if ($blockname eq "init") {
         $hash->{perlblock}{init}=$i;
       }
@@ -3544,48 +3558,61 @@ DOIF_Set($@)
       DOIF_cmd ($hash,$1-1,0,"set_cmd_".$1);
 	}
   } elsif ($arg eq "?") {
-      my $setList = AttrVal($pn, "setList", " ");
-      $setList =~ s/\n/ /g;
+    my $setList = AttrVal($pn, "setList", " ");
+    $setList =~ s/\n/ /g;
 	  my $cmdList="";
     my $checkall="";
     my $initialize="";
+    my $max_cond=keys %{$hash->{condition}};
     if ($hash->{MODEL} ne "Perl") {
       $checkall="checkall:noArg";
       $initialize="initialize:noArg";
-      my $max_cond=keys %{$hash->{condition}};
       $max_cond++ if (defined ($hash->{do}{$max_cond}{0}) or ($max_cond == 1 and !(AttrVal($pn,"do","") or AttrVal($pn,"repeatsame",""))));
       for (my $i=0; $i <$max_cond;$i++) {
-       $cmdList.="cmd_".($i+1).":noArg ";
+        $cmdList.="cmd_".($i+1).":noArg ";
 	    }
+    } else {
+       for (my $i=0; $i <$max_cond;$i++) {
+         $cmdList.=$hash->{perlblock}{$i}.":noArg ";
+	     }
     }
 	  return "unknown argument ? for $pn, choose one of disable:noArg enable:noArg $initialize $checkall $cmdList $setList";
-   } else {
-      my @rl = split(" ", AttrVal($pn, "readingList", ""));
-      my $doRet;
-      eval {
-        if(@rl && grep /\b$arg\b/, @rl) {
-          my $v = shift @a;
-          $v = shift @a;
-          readingsSingleUpdate($hash, $v, join(" ",@a), 1);
-          $doRet = 1;
-        }
-      };
-      return if($doRet);
-	  if (ReadingsVal($pn,"mode","") ne "disabled") {
-      foreach my $i (keys %{$hash->{attr}{cmdState}}) {
-		    if ($arg eq EvalCmdStateDoIf($hash,$hash->{attr}{cmdState}{$i}[0])) {
-          if ($hash->{helper}{sleeptimer} != -1) {
-          RemoveInternalTimer($hash);
-          readingsSingleUpdate ($hash, "wait_timer", "no timer",1);
-          $hash->{helper}{sleeptimer}=-1;
+  } else {
+    my @rl = split(" ", AttrVal($pn, "readingList", ""));
+    my $doRet;
+    eval {
+      if(@rl && grep /\b$arg\b/, @rl) {
+        my $v = shift @a;
+        $v = shift @a;
+        readingsSingleUpdate($hash, $v, join(" ",@a), 1);
+        $doRet = 1;
+      }
+    };
+    return if($doRet);
+    if (ReadingsVal($pn,"mode","") ne "disabled") {
+      if ($hash->{MODEL} ne "Perl") {
+        foreach my $i (keys %{$hash->{attr}{cmdState}}) {
+          if ($arg eq EvalCmdStateDoIf($hash,$hash->{attr}{cmdState}{$i}[0])) {
+            if ($hash->{helper}{sleeptimer} != -1) {
+            RemoveInternalTimer($hash);
+            readingsSingleUpdate ($hash, "wait_timer", "no timer",1);
+            $hash->{helper}{sleeptimer}=-1;
+            }
+            DOIF_cmd ($hash,$i,0,"set_".$arg."_cmd_".($i+1));
+            last;
           }
-          DOIF_cmd ($hash,$i,0,"set_".$arg."_cmd_".($i+1));
-          last;
         }
-		  }
-		}
+      } else {
+        for (my $i=0; $i < keys %{$hash->{condition}};$i++) { 
+          if ($arg eq $hash->{perlblock}{$i}) {
+            DOIF_block ($hash,$i);
+            last;
+          }
+        }
+      }
       #return "unknown argument $arg for $pn, choose one of disable:noArg initialize:noArg enable:noArg cmd $setList";
     }
+  }
   return $ret;
 }
 
@@ -3865,7 +3892,8 @@ sub FW_makeImage {
    $style.="color:$color;" if (defined ($color));
    $style.="font-size:$font_size"."pt;" if (defined ($font_size));
    $style.="font-weight:$font_weight;" if (defined ($font_weight));
-   return ($text,$style);
+   return ('<div style="display:inline-table;'.$style.'">'.$text.'</div>');
+   #return ($text,$style);
 
  }
  
@@ -3876,7 +3904,7 @@ sub FW_makeImage {
     my ($value,$color,$set)=@_;
     $color="DarkOrange" if (!defined $color); 
     $set="set" if (!defined $set);
-    return ($value,"","knob,min:17,max:25,width:40,height:35,step:0.5,fgColor:$color,bgcolor:grey,anglearc:270,angleOffset:225,cursor:15,thickness:.3",$set) 
+    return ($value,"","knob,min:15,max:27,width:40,height:35,step:0.5,fgColor:$color,bgcolor:grey,anglearc:270,angleOffset:225,cursor:15,thickness:.3",$set) 
  }
  
  sub shutter {
@@ -3944,7 +3972,7 @@ sub FW_makeImage {
    $pos_left = -3 if (!defined ($pos_left));
    $pos_top = -8 if (!defined ($pos_top));
    my $pad = (length($text) > 1) ? 2 : 5; 
-   return '<div style="display:inline;">'.::FW_makeImage($icon).'<div style="display:inline;border-radius:20px;color:'.$color.';background-color:'.
+   return '<div style="display:inline-table;">'.::FW_makeImage($icon).'<div style="display:inline;border-radius:20px;color:'.$color.';background-color:'.
           $color_bg.
           ';font-size:14px;font-weight:bold;text-align:center;position:relative;padding-top: 1px;padding-left: '.$pad.'px; padding-right: '.$pad.'px;padding-bottom: 1px;'.
           'left:'.$pos_left.'px;top:'.$pos_top.'px;">'.$text.'</div></div>'
@@ -3953,7 +3981,567 @@ sub FW_makeImage {
  sub hsv {
    return(::DOIF_hsv(@_));
  }
+ 
+ sub temp_hue {
+   #temp->hue   
+   #-20->270
+   #-10->240
+   #0  ->180
+   #10 ->120
+   #20 ->60
+   #40 ->0
+   #70 ->340
+   my($temp)=@_;
+   my $hue;
+   if ($temp < -10) {
+    $hue=-3*$temp+210;
+   } elsif ($temp < 20) {
+    $hue=-6*$temp+180;
+   } elsif ($temp < 40) {
+    $hue=-3*$temp+120;
+   } else {
+    $hue = -2/3*$temp+386;
+   }
+   return (int($hue));  
+ }
+ 
+ sub m_n
+ {
+   my ($x1,$y1,$x2,$y2) =@_;
+   my $m=($y2-$y1)/($x2-$x1);
+   my $y=$y1-$m*$x1;
+   return($m,$y);
+ }
+ 
+  sub hum_hue {
+   my($hum)=@_;
+   my $hue;
+   my $m;
+   my $n;
+   if ($hum > 60) {
+     ($m,$n)=m_n(60,180,100,260);
+   } elsif ($hum > 40) {
+     ($m,$n)=m_n(40,60,60,180);
+   } else {
+     ($m,$n)=m_n(0,40,40,60);
+   }
+   $hue = $m*$hum+$n;
+   return (int($hue));  
+ }
 
+sub format_value {
+  my ($val,$min,$dec)=@_;
+  my $format;
+  my $value=$val;
+
+  if ($val eq "") {
+    $val="N/A";
+    $format='%s';
+    $value=$min;
+  } elsif ($val  !~ /(-?\d+(\.\d+)?)/) {
+    $format='%s';
+    $value=$min;
+  } else {
+    $format='%1.'.$dec.'f';
+  }
+  return($format,$value,$val);
+}
+
+sub bar
+{
+  my ($val,$min,$max,$header,$minColor,$maxColor,$unit,$bwidth,$bheight,$size,$func,$dec) = @_;
+  my $out;
+  my $trans=0;
+  my ($format,$value);
+  
+  $unit="" if (!defined $unit);
+  $bheight=70 if (!defined $bheight);
+  my $height=$bheight-10;
+ 
+  if (!defined $header or $header eq "") {
+    $trans = -1;
+  } else {
+    $bwidth= 75 if (!defined $bwidth);
+    $trans = 16;
+    $bheight += 16;
+  }
+  
+  $bwidth=75 if (!defined $bwidth);
+  $min=0 if (!defined $min);
+  $max=100 if (!defined $max);
+  
+  $dec=1 if (!defined $dec);
+
+  ($format,$value,$val)=format_value($val,$min,$dec);
+
+  if (defined $func) {
+    $minColor=&{$func}($min);
+    $maxColor=&{$func}($max);
+  } else {
+    $minColor=120 if (!defined $minColor);
+    $maxColor=0 if (!defined $maxColor);
+  }
+  $max=$value if($value>$max);
+  $min=$value if ($value<$min);
+  $size=100 if (!defined $size);
+  
+  my $prop=($value-$min)/($max-$min);
+  my $val1=int($prop*$height+0.5);
+  my $y=$height+6-$val1;
+  my $currColor;
+
+  if (defined $func) {
+    $currColor=&{$func}($value);
+  } else {
+    if ($minColor < $maxColor) {
+      $currColor=$prop*($maxColor-$minColor);
+    } else {
+      $currColor=(1-$prop)*($minColor-$maxColor);
+    }
+  }
+  $out.= sprintf ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 0 %d %d" style="width:%dpx; height:%dpx;">',$bwidth,$bheight,$size/100*$bwidth,$size/100*$bheight);
+  $out.= '<defs>';
+  $out.= '<linearGradient id="gradbarfont" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:white;stop-opacity:0.3"/><stop offset="1" style="stop-color:rgb(255, 255, 255);stop-opacity:0.1"/></linearGradient>';
+  $out.= '<linearGradient id="gradbackg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(255,255,255);stop-opacity:0.3"/><stop offset="1" style="stop-color:rgb(32, 32, 32);stop-opacity:0"/></linearGradient>';
+  $out.= '<linearGradient id="gradbackbar" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(32,32,32);stop-opacity:1"/><stop offset="1" style="stop-color:rgb(64, 64, 64);stop-opacity:0.7"/></linearGradient>';
+  $out.= sprintf('<linearGradient id="gradbar_%d_%d" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:%s;stop-opacity:1"/><stop offset="1" style="stop-color:%s;stop-opacity:1"/></linearGradient>',$currColor,$minColor,color($currColor),color($minColor));
+  $out.= '</defs>';
+  $out.= sprintf('<rect x="10" y="0" width="%d" height="%d" rx="5" ry="5" fill="url(#gradbackbar)"/>',$bwidth,$bheight);
+  $out.= sprintf('<text text-anchor="middle" x="%d" y="16" style="fill:white; font-size:14px">%s</text>',$bwidth/2+10,$header) if (defined $header and $header ne ""); 
+  $out.= sprintf('<g transform="translate(0,%d)">',$trans);
+  my $nullColor;
+  my $null;
+  if ($min < 0 and $max > 0) {
+    $null=$max/($max-$min)*$height+7 if ($min <0);
+    if (defined $func) {
+      $nullColor=&{$func}(0);
+    } else {
+      if ($minColor < $maxColor) {
+        $nullColor=-$min/($max-$min)*($maxColor-$minColor);
+      } else {
+        $nullColor=(1+$min/($max-$min))*($minColor-$maxColor);
+      }
+    }
+  }
+
+  $out.= sprintf('<text x="28" y="15" style="fill:%s;font-size:12px;">%d</text>',color($maxColor),$max);
+  $out.= sprintf('<text x="28" y="%d" style="fill:%s;font-size:12px;">%d</text>',$height+6,color($minColor),$min);
+  $out.= sprintf('<rect x="15" y="%d" width="10" height="%d" rx="2" ry="2" fill="url(#gradbar_%d_%d)"/>',$y,$val1,$currColor,$minColor);
+  $out.= sprintf('<rect x="15" y="6" width="10" height="%d" rx="2" ry="2" fill="url(#gradbackg)"/>',$height);
+  $out.= sprintf('<rect x="15" y="6" width="10" height="%d" rx="2" ry="2" fill="none" stroke="rgb(160, 160, 160)" stroke-width="0.5"/>',$height);
+  $out.= sprintf('<line  x1="15.5"  y1="%d" x2="24.5" y2="%d" fill="none" stroke="rgb(192,192,192)" stroke-width="1"/>',$null,$null) if ($min < 0 and $max > 0);;
+
+  $out.= sprintf('<text text-anchor="end" x="%d" y="%d" style="fill:%s"><tspan style="font-size:18px;font-weight:bold;">%s</tspan><tspan dx="2" style="font-size:10px">%s</tspan></text>',$bwidth+6, $height/2+13,color($currColor),sprintf($format,$val),$unit);
+
+  $out.= '</g>';
+ 	$out.= '</svg>';
+return ($out);
+}
+ 
+sub temp_bar {
+  my ($value,$min,$max,$header,$width,$height,$size) = @_;
+  $min=-20 if (!defined $min or $min eq "");
+  $max=60  if (!defined $max or $max eq "");
+  return(bar($value,$min,$max,$header,undef,undef,"°C",$width,$height,$size,\&temp_hue,1));
+} 
+
+sub hum_bar {
+  my ($value,$header,$width,$height,$size) = @_;
+  
+  $width=60 if (!defined $width);
+  return(bar($value,0,100,$header,undef,undef,"%",$width,$height,$size,\&hum_hue,0));
+} 
+
+
+sub  polarToCartesian {
+  my ($centerX,$centerY,$radius,$angleInDegrees)=@_;
+  my $angleInRadians = ($angleInDegrees-230) * ::pi() / 180.0;
+  my $x= sprintf('%1.1f',$centerX + ($radius * cos($angleInRadians)));
+  my $y= sprintf('%1.1f',$centerY + ($radius * sin($angleInRadians)));
+  return($x,$y);
+}
+
+sub describeArc {
+  my ($x, $y, $radius, $startAngle, $endAngle)=@_;
+  my ($start_x,$start_y) = polarToCartesian($x, $y, $radius, $endAngle);
+  my ($end_x,$end_y) = polarToCartesian($x, $y, $radius, $startAngle);
+  my $largeArcFlag = $endAngle - $startAngle <= 180 ? "0" : "1";
+  return ('<path d="M '.$start_x." ".$start_y." A ".$radius." ".$radius." 0 ".$largeArcFlag." 0 ".$end_x." ".$end_y.'" />');
+}
+
+sub color {
+
+  my ($hue)=@_;
+  if (substr($hue,0,1) eq "#") {
+   return ($hue);
+  }
+  my $l;
+  if ($hue>180 and $hue<290) {
+    $l=65;
+  } else {
+    $l=50;
+  }
+  return ("hsl($hue,100%,".$l."%)");
+}
+
+
+sub temp_ring {
+  my ($value,$min,$max,$size) = @_;
+  $min=-20 if (!defined $min);
+  $max=60  if (!defined $max);
+  $size=80 if (!defined $size);
+  return(ring($value,$min,$max,undef,undef,"°C",$size,\&temp_hue,1));
+} 
+
+sub hum_ring {
+  my ($value,$size) = @_;
+  $size=80 if (!defined $size);
+  return(ring($value,0,100,undef,undef,"%",$size,\&hum_hue,0));
+} 
+
+sub temp_hum_ring {
+  my ($value,$value2,$min,$max,$size) = @_;
+  $min=-20 if (!defined $min);
+  $max=60  if (!defined $max);
+  $size=90 if (!defined $size);
+  return(ring2($value,$min,$max,undef,undef,"°C",$size,\&temp_hue,1,$value2,0,100,0,0,"%",\&hum_hue,0));
+} 
+
+sub temp_temp_ring {
+  my ($value,$value2,$min,$max,$size) = @_;
+  $min=-20 if (!defined $min);
+  $max=60  if (!defined $max);
+  $size=90 if (!defined $size);
+  return(ring2($value,$min,$max,undef,undef,"°C",$size,\&temp_hue,1,$value2,$min,$max,undef,undef,"°C",\&temp_hue,1));
+} 
+
+
+
+
+sub ring
+{
+  my ($val,$min,$max,$minColor,$maxColor,$unit,$size,$func,$dec) = @_;
+  my $out;
+  my ($format,$value);
+  
+  $min=0 if (!defined $min);
+  $max=100 if (!defined $max);
+  
+  $dec=1 if (!defined $dec);
+  
+  ($format,$value,$val)=format_value($val,$min,$dec);
+
+  if (defined $func) {
+    $minColor=&{$func}($min);
+    $maxColor=&{$func}($max);
+  } else {
+    $minColor=120 if (!defined $minColor);
+    $maxColor=0 if (!defined $maxColor);
+  }
+  $max=$value if($value>$max);
+  $min=$value if ($value<$min);
+  $size=100 if (!defined $size);
+  my $prop=($value-$min)/($max-$min);
+  my ($x1,$y1,$x2,$y2);
+  ($x1,$y1,$x2,$y2)=($prop*100,0,0,(1-$prop)*100);
+  my $val1=int($prop*100)+20;
+  my $y=125-$val1;
+  my $currColor;
+  if (defined $func) {
+    $currColor=&{$func}($value);
+  } else {
+    if ($minColor < $maxColor) {
+      $currColor=$prop*($maxColor-$minColor);
+    } else {
+      $currColor=(1-$prop)*($minColor-$maxColor);
+    }
+  }    
+  $out.= sprintf('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 0 60 55" style="width:%dpx; height:%dpx;">',$size/100*60,$size/100*55);
+  $out.= '<defs>';
+  $out.= '<linearGradient id="gradbackring" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(64,64,64);stop-opacity:0.8"/><stop offset="1" style="stop-color:rgb(32, 32, 32);stop-opacity:0.9"/></linearGradient>';
+  $out.= sprintf('<linearGradient id="gradtemp_ring1_%d_%d" x1="%d%%" y1="%d%%" x2="%d%%" y2="%d%%"><stop offset="0" style="stop-color:%s; stop-opacity:1"/>\
+  <stop offset="1" style="stop-color:%s;stop-opacity:0.4"/></linearGradient>',$currColor,$minColor,$x1,$y1,$x2,$y2,color($currColor),color($minColor));
+  
+  $out.= '<linearGradient id="gradtemp_ring2" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(64,64,64); stop-opacity:0.6"/>\
+  <stop offset="1" style="stop-color:rgb(32,32,32); stop-opacity:0.8"/><linearGradient>';
+  $out.='</defs>';
+
+  
+  $out.='<circle cx="40" cy="30" r="23" fill="url(#gradbackring)" />';
+  $out.=sprintf('<g stroke="url(#gradtemp_ring2)" fill="none" stroke-width="6">');
+  $out.=describeArc(40, 30, 26, 0, 280);
+  $out.='</g>';
+  $out.=sprintf('<g stroke="rgb(96,96,96)" fill="none" stroke-width="0.5">');
+  $out.=describeArc(40, 30, 29, 0, 280);
+  $out.='</g>';
+  $out.=sprintf('<g stroke="rgb(96,96,96)" fill="none" stroke-width="0.5">');
+  $out.=describeArc(40, 30, 23, 0, 280);
+  $out.='</g>';
+  $out.=sprintf('<g stroke="%s" fill="none" stroke-width="6">',color($minColor));
+  $out.=describeArc(40, 30, 26, 0, 10);
+  $out.='</g>';
+  $out.=sprintf('<g stroke="%s" fill="none" stroke-width="6">',color ($maxColor));
+  $out.=describeArc(40, 30, 26, 270, 280);
+  $out.='</g>';
+  $out.=sprintf('<g stroke="url(#gradtemp_ring1_%d_%d)" fill="none" stroke-width="6">',$currColor,$minColor);
+  $out.=describeArc(40, 30, 26, 0, int($prop*280));
+  $out.='</g>';
+
+  $out.= sprintf('<text text-anchor="middle" x="40" y="35" style="fill:%s;font-size:18px;font-weight:bold;">%s</text>',color($currColor),sprintf($format,$val));
+  $out.= sprintf('<text text-anchor="middle" x="40" y="47" style="fill:%s;font-size:10px;">%s</text>',color($currColor),$unit) if (defined $unit);
+  $out.= '</svg>';
+  return ($out);
+}
+
+sub ring2
+{
+  my ($val,$min,$max,$minColor,$maxColor,$unit,$size,$func,$dec,$val2,$min2,$max2,$minColor2,$maxColor2,$unit2,$func2,$dec2) = @_;
+  my $out;
+  my ($format,$value);
+  my ($format2,$value2);
+  
+  $min=0 if (!defined $min);
+  $max=100 if (!defined $max);
+  $dec=1 if (!defined $dec);
+
+  ($format,$value,$val)=format_value($val,$min,$dec);
+
+  if (defined $func) {
+    $minColor=&{$func}($min);
+    $maxColor=&{$func}($max);
+  } else {
+    $minColor=120 if (!defined $minColor);
+    $maxColor=0 if (!defined $maxColor);
+  }
+  $max=$value if($value>$max);
+  $min=$value if ($value<$min);
+  $size=100 if (!defined $size);
+  
+  my $prop=($value-$min)/($max-$min);
+  my ($x1,$y1,$x2,$y2)=($prop*100,0,0,(1-$prop)*100);
+  my $val1=int($prop*100)+20;
+  my $y=125-$val1;
+  my $currColor;
+  if (defined $func) {
+    $currColor=&{$func}($value);
+  } else {
+    if ($minColor < $maxColor) {
+      $currColor=$prop*($maxColor-$minColor);
+    } else {
+      $currColor=(1-$prop)*($minColor-$maxColor);
+    }
+  }   
+  
+  $min2=0 if (!defined $min2);
+  $max2=100 if (!defined $max2);
+  $dec2=1 if (!defined $dec2);
+  
+  ($format2,$value2,$val2)=format_value($val2,$min2,$dec2);
+
+  if (defined $func2) {
+    $minColor2=&{$func2}($min2);
+    $maxColor2=&{$func2}($max2);
+  } else {
+    $minColor2=120 if (!defined $minColor2);
+    $maxColor2=0 if (!defined $maxColor2);
+  }
+  $max2=$value2 if($value2>$max2);
+  $min2=$value2 if ($value2<$min2);
+  my $prop2=($value2-$min2)/($max2-$min2);
+  my ($x12,$y12,$x22,$y22);
+  ($x12,$y12,$x22,$y22)=($prop2*100,0,0,(1-$prop2)*100);
+  my $val12=int($prop2*100)+20;
+  $y2=125-$val12;
+  my $currColor2;
+  if (defined $func2) {
+    $currColor2=&{$func2}($value2);
+  } else {
+    if ($minColor2 < $maxColor2) {
+      $currColor2=$prop2*($maxColor2-$minColor2);
+    } else {
+      $currColor2=(1-$prop2)*($minColor2-$maxColor2);
+    }
+  }    
+
+  $out.= sprintf('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 0 60 54" style="width:%dpx; height:%dpx;">',$size/100*60,$size/100*54);
+  $out.= '<defs>';
+  $out.= '<linearGradient id="gradbackring2" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(64,64,64);stop-opacity:0.8"/><stop offset="1" style="stop-color:rgb(32, 32, 32);stop-opacity:0.9"/></linearGradient>';
+  $out.= sprintf('<linearGradient id="grad_ring1_%d_%d" x1="%d%%" y1="%d%%" x2="%d%%" y2="%d%%"><stop offset="0" style="stop-color:%s; stop-opacity:1"/>\
+  <stop offset="1" style="stop-color:%s;stop-opacity:0.4"/></linearGradient>',$currColor,$minColor,$x1,$y1,$x2,$y2,color($currColor),color($currColor));
+  
+  $out.= sprintf('<linearGradient id="grad_ring2_%d_%d" x1="%d%%" y1="%d%%" x2="%d%%" y2="%d%%"><stop offset="0" style="stop-color:%s; stop-opacity:1"/>\
+  <stop offset="1" style="stop-color:%s;stop-opacity:0.4"/></linearGradient>',$currColor2,$minColor2,$x12,$y12,$x22,$y22,color($currColor2),color($currColor2));
+ 
+  $out.= '<linearGradient id="grad_ring3" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(64,64,64); stop-opacity:0.6"/>\
+  <stop offset="1" style="stop-color:rgb(32,32,32); stop-opacity:0.8"/><linearGradient>';
+  $out.='</defs>';
+  
+  $out.='<circle cx="40" cy="30" r="22" fill="url(#gradbackring2)" />';
+  $out.=sprintf('<g stroke="url(#grad_ring3)" fill="none" stroke-width="7">');
+  $out.=describeArc(40, 30, 25.5, 0, 280);
+  $out.='</g>';
+  
+  $out.=sprintf('<g stroke="rgb(96,96,96)" fill="none" stroke-width="0.5">');
+  $out.=describeArc(40, 30, 28.5, 0, 280);
+  $out.='</g>';
+ 
+  $out.=sprintf('<g stroke="rgb(96,96,96)" fill="none" stroke-width="0.5">');
+  $out.=describeArc(40, 30, 22, 0, 280);
+  $out.='</g>';
+ 
+ 
+  $out.=sprintf('<g stroke="url(#grad_ring1_%d_%d)" fill="none" stroke-width="3">',$currColor,$minColor);
+  $out.=describeArc(40, 30, 27, 0, int($prop*280));
+  $out.='</g>';
+
+  $out.=sprintf('<g stroke="url(#grad_ring2_%d_%d)" fill="none" stroke-width="3">',$currColor2,$minColor2);
+  $out.=describeArc(40, 30, 23.5, 0, int($prop2*280));
+  $out.='</g>';
+
+  $out.=sprintf('<g stroke="%s" fill="none" stroke-width="3">',color($maxColor));
+  $out.=describeArc(40, 30, 27, 273, 280);
+  $out.='</g>';
+
+  $out.=sprintf('<g stroke="%s" fill="none" stroke-width="3">',color($maxColor2));
+  $out.=describeArc(40, 30, 23.5, 273, 280);
+  $out.='</g>';
+    
+  $out.= sprintf('<text text-anchor="middle" x="40" y="30" style="fill:%s;font-size:16px;font-weight:bold;">%s</text>',color($currColor),sprintf($format,$val));
+  $out.= sprintf('<text text-anchor="middle" x="40" y="17" style="fill:%s;font-size:8px;">%s</text>',color($currColor),$unit) if (defined $unit);
+  
+  $out.= sprintf('<text text-anchor="middle" x="40" y="43.5" style="fill:%s;font-size:14px;font-weight:bold;">%s</text>',color($currColor2),sprintf($format2,$val2));
+  $out.= sprintf('<text text-anchor="middle" x="40" y="50" style="fill:%s;font-size:7px;">%s</text>',color($currColor2),$unit2) if (defined $unit2);
+
+  $out.= '</svg>';
+  return ($out);
+}
+
+sub y_h
+{
+  my ($value,$min,$max,$height) = @_;
+
+  if ($value > $max) {
+    $value=$max;
+  } elsif ($value < $min) {
+    $value=$min;
+  }
+  
+  if ($min > 0 and $max > 0) {
+    $max-=$min;
+    $value-=$min;
+    $min=0;
+  } elsif ($min < 0 and $max < 0) {
+    $min-=$max;
+    $value-=$max;
+    $max=0;
+  }
+  
+  my $prop=$value/($max-$min);
+  my $h=int(abs($prop*($height))+4.5);
+  my $y;
+  my $null;
+ 
+  $null=$max/($max-$min)*$height;
+  if ($value <= 0) {
+    $y=$null;
+  } else {
+    $y=int($null+4.5-$h);
+  }
+  $null=undef if ($max == 0 or $min == 0);
+  return ($y,$h,$null);
+}
+
+
+sub cylinder
+{
+  my ($header,$min,$max,$unit,$bwidth,$height,$size,$dec,@values) = @_;
+
+  my $out;
+  my $ybegin;
+  my $bheight;
+  my $trans=0;
+ 
+  $size=100 if (!defined $size or $size eq "");
+  $dec=1 if (!defined $dec);
+  my $format='%1.'.$dec.'f';  
+  
+  $height=12+@values*12 if (!defined $height or $height eq "");
+  
+  if (!defined $header or $header eq "") {
+    $trans=5;
+    $bheight=$height-26;
+  } else {
+    $trans=21;
+    $bheight=$height-10;
+  }
+  my $width=30;
+  if (!defined $bwidth or $bwidth eq "") {
+    my $lenmax=0;
+    for (my $i=0;$i<@values;$i+=3){
+      $lenmax=length($values[$i+2]) if (length($values[$i+2]) > $lenmax);
+    }
+    $bwidth=90+$lenmax*4.3;
+  }
+  
+  my ($y,$val1,$null);
+   
+  $out.= sprintf ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 0 %d %d" style="width:%dpx; height:%dpx;">',$bwidth,$bheight+40,$size/100*$bwidth,$size/100*($bheight+40));
+  $out.= '<defs>';
+  $out.= '<linearGradient id="grad0" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:grey;stop-opacity:0.5"/><stop offset="1" style="stop-color:rgb(64, 64, 64);stop-opacity:0.5"/></linearGradient>';
+  $out.= '<linearGradient id="grad3" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:grey;stop-opacity:0.2"/><stop offset="1" style="stop-color:rgb(0, 0, 0);stop-opacity:0.2"/></linearGradient>';
+  for (my $i=0;$i<@values;$i+=3){  
+    my $color=$values[$i+1];
+    $out.= sprintf('<linearGradient id="grad1_%d" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:hsl(%d,100%%,50%%);stop-opacity:1"/><stop offset="1" style="stop-color:hsl(%d,100%%, 50%%);stop-opacity:0.5"/></linearGradient>',$color,$color,$color);
+    $out.= sprintf('<linearGradient id="grad2_%d" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:hsl(%d,100%%,70%%);stop-opacity:0"/><stop offset="1" style="stop-color:hsl(%d,100%%, 60%%);stop-opacity:0.3"/></linearGradient>',$color,$color,$color);
+  }
+  $out.= '<linearGradient id="gradbackcyl" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(32,32,32);stop-opacity:0.9"/><stop offset="1" style="stop-color:rgb(64, 64, 64);stop-opacity:0.6"/></linearGradient>';
+  $out.= '</defs>';
+
+  $out.= sprintf('<rect x="10" y="0" width="%d" height="%d" rx="5" ry="5" fill="url(#gradbackcyl)"/>',$bwidth, $bheight+40);  
+  $out.= sprintf('<text text-anchor="middle" x="%d" y="15" style="fill:white; font-size:16px">%s</text>',$bwidth/2+11,$header) if ($header ne "");  
+  
+  $out.= sprintf('<g transform="translate(0,%d)">',$trans);
+  
+	$out.= sprintf('<rect x="15" y="0"  width="%d" height="%d" rx="20" ry="2" fill="url(#grad3)"/>',$width,$height+4);
+  $out.= sprintf('<rect x="15" y="%d" width="%d" height="4" rx="20" ry="2" fill="url(#grad0)"/>',$height,$width);
+ 
+  $out.= sprintf('<rect x="15" y="0"  width="%d" height="4" rx="20" ry="2" fill="url(#grad0)"/>',$width);
+  $out.= sprintf('<rect x="15" y="0"  width="%d" height="%d" rx="20" ry="2" fill="none" stroke="rgb(137, 137, 137)" stroke-width="0.5"/>',$width,$height+4);
+ 
+  $out.= sprintf('<rect x="15" y="%d" width="%d" height="4" rx="20" ry="2" fill="none" stroke="rgb(137, 137, 137)" stroke-width="0.5"/>',$height,$width);
+ # $out.= sprintf('<rect x="15" y="%d" width="%d" height="4" rx="20" ry="2" fill="none" stroke="rgb(137, 137, 137)" stroke-width="0.5"/>',$null,$width) if (defined $null);
+	
+  
+  $out.= sprintf('<rect x="15" y="0"  width="%d" height="4" rx="20" ry="2" fill="url(#grad0)"/>',$width);
+
+  ($y,$val1,$null)=y_h(0,$min,$max,$height);
+  $out.= sprintf('<text x="48" y="%d" style="fill:white; font-size:10px">%s</text>',$height+3,$min);
+  $out.= sprintf('<text x="48" y="%d" style="fill:white; font-size:10px">%s</text>',$null+6,0) if (defined $null);
+  $out.= sprintf('<text x="48" y="%d" style="fill:white; font-size:10px">%s</text>',8,$max);  
+
+  my $yBegin=14+($height-@values*12)/2;
+  for (my $i=0;$i<@values;$i+=3){
+    my $yValue=$yBegin+12;
+    my $value=$values[$i];
+    my $color=$values[$i+1];
+    my $text=$values[$i+2];
+    
+   ($y,$val1,$null)=y_h($value,$min,$max,$height);
+    $out.= sprintf('<rect x="15" y="%d" width="%d" height="%d" rx="20" ry="2" fill="url(#grad1_%d)"/>',$y,$width,$val1,$color);
+  #  $out.= sprintf('<rect x="15" y="%d" width="%d" height="4" rx="20" ry="2" fill="url(#grad2_%d)"/>',$y,$width,$color);
+    $out.= sprintf('<rect x="15" y="%d" width="%d" height="4" rx="20" ry="2" fill="none" stroke="rgb(137, 137, 137)" stroke-width="0.5"/>',$y,$width);
+    if (defined $text and $text ne "") {
+      $out.= sprintf('<text x="60" y="%d" style="fill:%s; font-size:12px">%s</text>',$yBegin+$i*12,color($color),$text.":");
+      $yValue+=7;
+    }
+    $out.= sprintf('<text text-anchor="end" x="%d" y="%d" style="fill:%s";><tspan style="font-size:16px;font-weight:bold;">%s</tspan><tspan dx="2" style="font-size:10px">%s</tspan></text>',$bwidth+5, $yValue+$i*12,color ($color),sprintf($format,$value),$unit);
+  }  
+
+  $out.= sprintf('<rect x="15" y="0"  width="%d" height="4" rx="20" ry="2" fill="none" stroke="rgb(137, 137, 137)" stroke-width="0.5"/>',$width);
+  $out.= '</g>';
+  $out.= '</svg>';
+  return ($out);
+}
 
 1;
 
@@ -4797,10 +5385,6 @@ Zeitintervalle über Mitternacht:<br>
 <br>
 <code>define di_light DOIF ([22:00-07:00]) (set light on) DOELSE (set light off) </code><br>
 <br>
-in Verbindung mit Wochentagen (einschalten am Freitag ausschalten am Folgetag):<br>
-<br>
-<code>define di_light DOIF ([22:00-07:00|5]) (set light on) DOELSE (set light off) </code><br>
-<br>
 Zeitintervalle über mehrere Tage müssen als Zeitpunkte angegeben werden.<br>
 <br>
 Einschalten am Freitag ausschalten am Montag:<br>
@@ -5534,14 +6118,15 @@ Beispiel:<br>
 <a name="disable"></a>
 Mit dem set-Befehl <code>disable</code> wird ein DOIF-Modul inaktiviert. Hierbei bleiben alle Timer aktiv, sie werden aktualisiert - das Modul bleibt im Takt, allerdings werden keine Befehle ausgeführt.
 Das Modul braucht mehr Rechenzeit, als wenn es komplett über das Attribut <code>disable</code> deaktiviert wird. Ein inaktiver Zustand bleibt nach dem Neustart erhalten.
-Ein inaktives Modul kann über set-Befehle <code>enable</code> bzw. <code>initialize</code> wieder aktiviert werden.<br>
+Ein inaktives Modul kann über set-Befehle <code>enable</code> bzw. <code>initialize</code> (im FHEM-Modus) wieder aktiviert werden.<br>
 <br>
 </li><li><a name="DOIF_setenable"></a>
 <b>Aktivieren des Moduls</b>&nbsp;&nbsp;&nbsp;<a href="#DOIF_Inhaltsuebersicht">back</a><br>
 <br>
 <a name="enable"></a>
-Mit dem set-Befehl <code>enable</code> wird ein inaktives DOIF-Modul wieder aktiviert. Im Gegensatz zum set-Befehl <code>initialize</code> wird der letzte Zustand vor der Inaktivierung des Moduls wieder hergestellt.<br>
+Mit dem set-Befehl <code>enable</code> wird ein inaktives DOIF-Modul wieder aktiviert. Im FHEM-Modus: Im Gegensatz zum set-Befehl <code>initialize</code> wird der letzte Zustand vor der Inaktivierung des Moduls wieder hergestellt.<br>
 <br>
+</li><li><a name="DOIF_setinitialize"></a>
 <a name="DOIF_Initialisieren_des_Moduls"></a>
 <b>Initialisieren des Moduls</b>&nbsp;&nbsp;&nbsp;<a href="#DOIF_Inhaltsuebersicht">back</a><br>
 <br>
@@ -5589,7 +6174,7 @@ Zusätzlich führt die Definition von <code>setList</code> zur Ausführung von <
 <br>
 Zweipunktregler a la THRESHOLD<br>
 <br>
-<code>define di_threshold DOIF ([sensor:temperature]<([$SELF:desired]-1))<br>
+<code>define di_threshold DOIF ([sensor:temperature] <  [$SELF:desired]-1)<br>
   (set heating on)<br>
 DOELSEIF ([sensor:temperature]>[$SELF:desired])<br>
   (set heating off)<br>
@@ -6014,14 +6599,24 @@ Hier passiert das nicht mehr, da die ursprünglichen Zustände cmd_1 und cmd_2 j
 <b>Perl Modus</b><br>
 <br>
 Der Perl-Modus ist sowohl für einfache, als auch für komplexere Automatisierungsabläufe geeignet. Der Anwender hat mehr Einfluss auf den Ablauf der Steuerung als im FHEM-Modus.
-Die Abläufe lassen sich, wie in höheren Programmiersprachen üblich, strukturiert programmieren. Zum Zeitpunkt der Definition werden alle DOIF-spezifischen Angaben in Perl übersetzt, zum Zeitpunkt der Ausführung wird nur noch Perl ausgeführt, dadurch wird maximale Performance gewährleistet.<br>
+Die Abläufe lassen sich, wie in höheren Programmiersprachen üblich, strukturiert programmieren. Mit Hilfe von Templates können generalisiert DOIFs definiert werden.
+Zum Zeitpunkt der Definition werden alle DOIF-spezifischen Angaben in Perl übersetzt, zum Zeitpunkt der Ausführung wird nur noch Perl ausgeführt, dadurch wird maximale Performance gewährleistet.<br>
 <br>
 Syntax Perl-Modus:<br>
 <br>
-<ol><code>define &lt;name&gt; DOIF &lt;Blockname&gt; {&lt;Ereignisblock: Perlcode mit Ereignis-/Zeittriggern in eckigen Klammern&gt;}</code></ol>
+<ol><code>define &lt;name&gt; DOIF &lt;Template-Definitionen (optional)&gt; &lt;DOIF-Blöcke&gt;</code></ol><br>
+Syntax Template-Definition:<br>
 <br>
-Ein Ereignisblock wird ausgeführt, wenn dieser bedingt durch <a href="#DOIF_Operanden">Ereignis- und Zeittrigger in eckigen Klammern</a> innerhalb des Blocks, getriggert wird.
-Es wird die vollständige Perl-Syntax unterstützt. Es können beliebig viele Ereignisblöcke innerhalb eines DOIF-Devices definiert werden. Sie werden unabhängig voneinander durch passende Trigger ausgeführt. Der Name eines Ereignisblocks ist optional.<br>
+<code>DEF TPL_&lt;Template-Name&gt;(&ltDOIF-Block-Definition mit Platzhaltern: $1,$2,...&gt;)</code><br>
+<br>
+<u><a href="https://forum.fhem.de/index.php/topic,111266.msg1054775.html#msg1054775">Anwendungsbeispiel zu DOIF-Templates</a></u><br>
+<br>
+Syntax DOIF-Block:<br>
+<br>
+<code>&lt;Blockname (optional)&gt; {&lt;Perlcode mit Ereignis-/Zeittriggern in eckigen Klammern&gt;}</code><br>
+<br>
+Ein DOIF-Block wird ausgeführt, wenn dieser bedingt durch <a href="#DOIF_Operanden">Ereignis- und Zeittrigger in eckigen Klammern</a> innerhalb des Blocks, getriggert wird.
+Es wird die vollständige Perl-Syntax unterstützt. Es können beliebig viele Blöcke innerhalb eines DOIF-Devices definiert werden. Sie werden unabhängig voneinander durch passende Trigger ausgeführt. Der Name eines Blocks ist optional.<br>
 <br>
 Der Status des Moduls wird nicht vom Modul gesetzt, er kann vom Anwender mit Hilfe der Funktion <code>set_State</code> verändert werden, siehe <a href="#DOIF_Spezifische_Perl-Funktionen_im_Perl-Modus">spezifische Perl-Funktionen im Perl-Modus</a>.
 FHEM-Befehle werden durch den Aufruf der Perlfunktion <code>fhem("...")</code> ausgeführt. Für den häufig genutzten fhem-Befehl <b>set</b> wurde eine kompatible Perlfunktion namens <b>fhem_set</b> definiert.
@@ -6109,6 +6704,7 @@ Bemerkung: Innerhalb eines Ereignisblocks muss mindestens ein Trigger definiert 
   <a href="#DOIF_Device-Variablen">Device-Variablen</a><br>
   <a href="#DOIF_Blockierende_Funktionsaufrufe">Blockierende Funktionsaufrufe</a><br>
   <a href="#DOIF_Attribute_Perl_Modus">Attribute im Perl-Modus</a><br>
+  <a href="#DOIF_set_Perl_Modus">set-Befehle im Perl-Modus</a><br>
   <a href="#DOIF_Anwendungsbeispiele_im_Perlmodus">Anwendungsbeispiele im Perl-Modus</a><br>
 </ul>
 <a name="DOIF_Eigene_Funktionen"></a><br>
@@ -6306,6 +6902,19 @@ Wenn <i>&lt;blocking function&gt;</i>, <i>&lt;finish function&gt;</i> und <i>&lt
   <a href="#DOIF_weekdays">weekdays</a> &nbsp;
   <br><a href="#readingFnAttributes">readingFnAttributes</a> &nbsp;
 </ul>
+<br>
+<a name="DOIF_set_Perl_Modus"></a><br>
+<u>set-Befehle im Perlmodus</u>&nbsp;&nbsp;&nbsp;<a href="#DOIF_Inhaltsuebersicht_Perl-Modus">back</a><br>
+<dl>
+        <dt><code><b> set </b>&lt;name&gt;<b> disable</b></code></dt>
+                <dd>blockiert die Befehlsausf&uuml;hrung</dd>
+<br>
+        <dt><code><b> set </b>&lt;name&gt;<b> enable</b></code></dt>
+                <dd>aktiviert die Befehlsausf&uuml;hrung</dd>
+<br>
+        <dt><code><b> set </b>&lt;name&gt;<b> &lt;Blockname&gt;</b></code></dt>
+                <dd>führt den entsprechenden DOIF-Block aus</dd>
+</dl>
 <a name="DOIF_Anwendungsbeispiele_im_Perlmodus"></a><br>
 <b>Anwendungsbeispiele im Perlmodus:</b>&nbsp;&nbsp;&nbsp;<a href="#DOIF_Inhaltsuebersicht_Perl-Modus">back</a><br>
 <a name="DOIF_Treppenhauslicht mit Bewegungsmelder"></a><br>

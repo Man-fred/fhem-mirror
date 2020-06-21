@@ -10,18 +10,18 @@ use configDB;
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-sub CommandConfigdb($$);
+sub CommandConfigdb;
 sub _cfgDB_readConfig();
 
 my @pathname;
 
-sub configdb_Initialize($$) {
+sub configdb_Initialize {
   my %hash = (  Fn => "CommandConfigdb",
                Hlp => "help     ,access additional functions from configDB" );
   $cmds{configdb} = \%hash;
 }
 
-sub CommandConfigdb($$) {
+sub CommandConfigdb {
 	my ($cl, $param) = @_;
 
 	my @a = split("[ \t][ \t]*", $param);
@@ -51,10 +51,13 @@ sub CommandConfigdb($$) {
 			# delete attribute
 				delete $configDB{attr}{$param1};
 				$ret = " attribute $param1 deleted";
+				addStructChange('configdb attr',undef,"$param1 (deleted)");
+
 			} else {
 			# set attribute
 				$configDB{attr}{$param1} = $param2;
 				$ret = " attribute $param1 set to value $param2";
+                addStructChange('configdb attr',undef,"$param1 $param2 (set)");
 			}
 		}
 
@@ -106,7 +109,7 @@ sub CommandConfigdb($$) {
 					Log3 (4,undef,"configDB: exporting $f");
 					my ($path,$file) = $f =~ m|^(.*[/\\])([^/\\]+?)$|;
 					$path = "/tmp/$path";
-					eval qx(mkdir -p $path) unless (-e "$path");
+					eval { qx(mkdir -p $path) } unless (-e "$path");
 					$ret .= _cfgDB_Fileexport $f; 
 					$ret .= "\n";
 				}
@@ -241,17 +244,20 @@ sub CommandConfigdb($$) {
 }
 
 sub _cfgDB_readConfig() {
-	if(!open(CONFIG, 'configDB.conf')) {
+	my ($conf,@config);
+	if(!open($conf, '<', 'configDB.conf')) {
 		Log3('configDB', 1, 'Cannot open database configuration file configDB.conf');
 		return 0;
 	}
-	my @config=<CONFIG>;
-	close(CONFIG);
+	@config=<$conf>;
+	close($conf);
 
 	use vars qw(%configDB);
 
 	my %dbconfig;
-	eval join("", @config);
+## no critic
+	eval join("", @config) ;
+## use critic
 
 	my $cfgDB_dbconn	= $dbconfig{connection};
 	my $cfgDB_dbuser	= $dbconfig{user};
@@ -439,6 +445,7 @@ sub _cfgDB_readConfig() {
 			<ul><b>maxversions</b> set the maximum number of configurations stored in database. <br/>
 			    The oldest version will be dropped in a "save config" if it would exceed this number.</ul><br/>
 			<ul><b>private</b> if set to 0 the database user and password info will be shown in 'configdb info' output.</ul><br/>
+			<ul><b>dumpPath</b> define a path for database dumps<br/></ul><br/>
 			<br/>
 
 		<li><code>configdb diff &lt;device&gt; &lt;version&gt;</code></li><br/>

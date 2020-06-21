@@ -22,7 +22,7 @@
 #  This copyright notice MUST APPEAR in all copies of the script!
 #
 ################################################################
-#	$Id$
+#	$Id: 88_LINDY_HDMI_SWITCH.pm 19716 2019-06-26 17:04:05Z jeschkec $
 
 ##############################################
 package main;

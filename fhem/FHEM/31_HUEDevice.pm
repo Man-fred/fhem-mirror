@@ -344,6 +344,8 @@ HUEDevice_moveToBridge($$$) {
     my $name = $hash->{NAME};
     my $old = AttrVal( $name, 'IODev', '<unknown>' );
 
+    next if( $old eq $new );
+
     Log3 $name, 2, "moving $name [$serial] from $old to $new";
 
     HUEDevice_IODevChanged($hash, undef, $new, $new_id);
@@ -351,7 +353,7 @@ HUEDevice_moveToBridge($$$) {
 
     $found = 1;
     last;
-    }
+  }
 
   return $found;
 }
@@ -1251,9 +1253,12 @@ HUEDevice_Get($@)
     $list = ' devStateIcon:noArg' if( $subtype eq 'blind' );
   }
 
-  if( $hash->{IODev} && $hash->{IODev}{helper}{apiversion} && $hash->{IODev}{helper}{apiversion} >= (1<<16) + (26<<8) ) {
+  if( !$hash->{helper}->{devtype}
+      && $hash->{IODev} && $hash->{IODev}{helper}{apiversion} && $hash->{IODev}{helper}{apiversion} >= (1<<16) + (26<<8) ) {
     $list .= " startup:noArg";
   }
+
+  return "Unknown argument $cmd" if( !$list );
 
   return "Unknown argument $cmd, choose one of $list";
 }
@@ -1524,6 +1529,8 @@ HUEDevice_Parse($$)
       $hash->{sensitivity} = $config->{sensitivity} if( defined($config->{sensitivity}) );
 
       $readings{battery} = $config->{battery} if( defined($config->{battery}) );
+      $readings{batteryPercent} = $config->{battery} if( defined($config->{battery}) );
+
       $readings{reachable} = $config->{reachable} if( defined($config->{reachable}) );
       $readings{temperature} = $config->{temperature} * 0.01 if( defined($config->{temperature}) );
 
@@ -1597,6 +1604,7 @@ HUEDevice_Parse($$)
       $readings{fire} = $state->{fire} if( defined($state->{fire}) );
       $readings{tampered} = $state->{tampered} if( defined($state->{tampered}) );
       $readings{battery} = $state->{battery} if( defined($state->{battery}) );
+      $readings{batteryPercent} = $state->{battery} if( defined($state->{battery}) );
       $readings{batteryState} = $state->{lowbattery}?'low':'ok' if( defined($state->{lowbattery}) );
 
       #Xiaomi Aqara Vibrationsensor (lumi.vibration.aq1)
@@ -1772,6 +1780,7 @@ HUEDevice_Parse($$)
   if( defined($rgb) && $rgb ne $hash->{helper}{rgb} ) {readingsBulkUpdate($hash,"rgb",$rgb);}
 
   if( defined($battery) && $battery ne $hash->{helper}{battery} ) {readingsBulkUpdate($hash,"battery",$battery);}
+  if( defined($battery) && $battery ne $hash->{helper}{battery} ) {readingsBulkUpdate($hash,'batteryPercent',$battery);}
 
   if( defined($mode) && $mode ne $hash->{helper}{mode} ) {readingsBulkUpdate($hash,"mode",$mode);}
 

@@ -970,9 +970,9 @@ FW_answerCall($)
     return -1;
   }
 
-  if($FW_lastWebName ne $FW_wname || $FW_lastHashUpdate != $lastDefChange) {
+  if($FW_lastWebName ne $FW_cname || $FW_lastHashUpdate != $lastDefChange) {
     FW_updateHashes();
-    $FW_lastWebName = $FW_wname;
+    $FW_lastWebName = $FW_cname;
     $FW_lastHashUpdate = $lastDefChange;
   }
 
@@ -1133,9 +1133,10 @@ FW_answerCall($)
       $srVal = FW_showRoom(); 
 
     } else {
-      my $motd = AttrVal("global","motd","none");
-      if($motd ne "none") {
-        FW_addContent("><pre class='motd'>$motd</pre></div");
+      my $motd = AttrVal("global", "motd", "");
+      my $gie = $defs{global}{init_errors};
+      if($motd ne "none" && ($motd || $gie)) {
+        FW_addContent("><pre class='motd'>$motd\n$gie</pre></div");
       }
     }
   }
@@ -1422,7 +1423,7 @@ FW_doDetail($)
   my ($d) = @_;
 
   return if($FW_hiddenroom{detail});
-  return if(!defined($defs{$d}));
+  return if(!defined($defs{$d}) || !devspec2array($d,$FW_chash));#check allowed
   my $h = $defs{$d};
   my $t = $h->{TYPE};
   $t = "MISSING" if(!defined($t));
@@ -3180,11 +3181,11 @@ FW_devState($$@)
     $txt = $v if(defined($v));
 
   } elsif(!$dsi && $allSets =~ m/\bdesired-temp:/) {
-    $txt = "$1 &deg;C" if($txt =~ m/^measured-temp: (.*)/);      # FHT fix
+    $txt = "$1 &deg;C" if($txt =~ m/^measured-temp: (.*)/);
     $cmdList = "desired-temp" if(!$cmdList);
 
   } elsif(!$dsi && $allSets =~ m/\bdesiredTemperature:/) {
-    $txt = ReadingsVal($d, "temperature", "");  # ignores stateFormat!!!
+    $txt = ReadingsVal($d, "temperature", ""); 
     $txt =~ s/ .*//;
     $txt .= "&deg;C";
     $cmdList = "desiredTemperature" if(!$cmdList);

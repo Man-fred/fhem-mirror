@@ -1,7 +1,7 @@
 ################################################################
 # $Id$
 #
-#  Release 2020-01-19 
+#  Release 2020-04-12
 #
 #  Copyright notice
 #
@@ -536,6 +536,17 @@ sub hwMapping {
 	$hwMap{'2.0'}{'emeter'}{'get_realtime'}{'err_code'}{'name'} = 'err_code';
 	$hwMap{'2.0'}{'emeter'}{'get_realtime'}{'err_code'}{'factor'} = 1;
 
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'power_mw'}{'name'} = 'power';
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'power_mw'}{'factor'} = 0.001;
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'voltage_mv'}{'name'} = 'voltage';
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'voltage_mv'}{'factor'} = 0.001;
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'current_ma'}{'name'} = 'current';
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'current_ma'}{'factor'} = 0.001;
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'total_wh'}{'name'} = 'total';
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'total_wh'}{'factor'} = 0.001;
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'err_code'}{'name'} = 'err_code';
+	$hwMap{'4.0'}{'emeter'}{'get_realtime'}{'err_code'}{'factor'} = 1;
+	
 	return %hwMap;
 }
 

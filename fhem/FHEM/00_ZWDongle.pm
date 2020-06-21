@@ -5,6 +5,7 @@ package main;
 use strict;
 use warnings;
 use Time::HiRes qw(gettimeofday);
+use DevIo;
 use ZWLib;
 use vars qw($FW_ME);
 
@@ -80,8 +81,6 @@ sub
 ZWDongle_Initialize($)
 {
   my ($hash) = @_;
-
-  require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
 # Provider
   $hash->{ReadFn}  = "ZWDongle_Read";
@@ -390,7 +389,7 @@ ZWDongle_Set($@)
       $_ =~ s/^UNKNOWN_//;
       $_ = hex($defs{$_}{nodeIdHex})
         if($defs{$_} && $defs{$_}{nodeIdHex});
-      return "$_ is neither a device nor a decimal id" if($_ !~ m/\d+/);
+      return "$_ is neither a device nor a decimal id" if($_ !~ m/^\d+$/);
     }
   }
 
@@ -472,6 +471,7 @@ ZWDongle_Get($@)
 
     $a[0] = hex($defs{$a[0]}{nodeIdHex})
      if($defs{$a[0]} && $defs{$a[0]}{nodeIdHex});
+    return "$a[0] is neither a device nor a decimal id" if($a[0] !~ m/^\d+$/);
   }
 
   my $out = sprintf($gets{$cmd}, @a);
@@ -652,7 +652,7 @@ ZWDongle_NUCheck($$$$)
     return 0 if($msg !~ m/^0048/ || $hash->{calledFromNuCheck});
     push @nuStack, "$fn/$msg";
     if(@nuStack == 1) {
-      InternalTimer(gettimeofday+20, sub { # ZME timeout is 9-11s
+      InternalTimer(gettimeofday+80, sub { # ZME timeout is 9-11s, #111794
         ZWDongle_NUCheck($hash, undef, "0048xx23", 0); # simulate fail
       }, \@nuStack, 0);
     }
@@ -668,7 +668,7 @@ ZWDongle_NUCheck($$$$)
     $hash->{calledFromNuCheck} = 1;
     ZWDongle_Write($hash, $a[0], $a[1]);
     delete($hash->{calledFromNuCheck});
-    InternalTimer(gettimeofday+20, sub {
+    InternalTimer(gettimeofday+80, sub {
       ZWDongle_NUCheck($hash, undef, "0048xx23", 0); # simulate fail
     }, \@nuStack, 0);
   }

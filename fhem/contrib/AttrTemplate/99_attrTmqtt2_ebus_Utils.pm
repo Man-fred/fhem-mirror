@@ -6,18 +6,18 @@ package main;
 
 use strict;
 use warnings;
-use POSIX;
 
 sub
-attrTmqtt2_ebus_Utils_Initialize($$)
+attrTmqtt2_ebus_Utils_Initialize
 {
-  my ($hash) = @_;
+  my $hash = shift;
+  return;
 }
 
 # Enter you functions below _this_ line.
 
 sub
-attrTmqtt2_ebus_createBarView($;$$) {
+attrTmqtt2_ebus_createBarView {
   my ($val,$maxValue,$color) = @_;
   $maxValue = $maxValue//100;
   $color = $color//"red";

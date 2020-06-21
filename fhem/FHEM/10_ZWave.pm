@@ -1090,6 +1090,11 @@ ZWave_Cmd($$@)
     return "$type $cmd needs $parTxt" if($nArg != int(@a));
   }
 
+  if($cmd eq "returnRouteAdd") {
+    $a[0] = hex($defs{$a[0]}{nodeIdHex})
+      if($defs{$a[0]} && $defs{$a[0]}{nodeIdHex});
+  }
+
   if($cmdFmt !~ m/%s/ && $cmd !~ m/^config/) {
     for(my $i1 = 0; $i1<int(@a); $i1++) {
       return "Error: $a[$i1] is not a decimal number"
@@ -2657,26 +2662,26 @@ ZWave_ccsParse($$)
 {
   my ($t, $p) = @_;
 
-  return "ccsChanged:$p" if($t == "05");
+  return "ccsChanged:$p" if($t eq '05');
 
-  if($t == "08" && $p =~ m/^(..)(..)$/) {
-    my $ret = ($1 eq "00" ? "no" : ($1 eq "01" ? "temporary" : "permanent"));
-    $ret .= ", ". ($2 eq "79" ? "frost protection" :
-                  ($2 eq "7a" ? "energy saving" : "unused"));
+  if($t eq '08' && $p =~ m/^(..)(..)$/) {
+    my $ret = ($1 eq '00' ? 'no' : ($1 eq '01' ? 'temporary' : 'permanent'));
+    $ret .= ", ". ($2 eq "79" ? 'frost protection' :
+                  ($2 eq "7a" ? 'energy saving' : 'unused'));
     return "ccsOverride:$ret";
   }
 
-  if($t == "03") {
+  if($t eq '03') {
     $p =~ /^(..)(.*$)/;
-    my $n = "ccs_".$zwave_wd[hex($1)];
+    my $n = 'ccs_'.$zwave_wd[hex($1)];
     $p = $2;
     my @v;
     while($p =~ m/^(..)(..)(..)(.*)$/) {
-      last if($3 eq "7f"); # unused
+      last if($3 eq '7f'); # unused
       $p = $4;
       my $t = hex($3);
-      $t = ($t == 0x7a ? "energySave" : $t >= 0x80 ? -(255-$t)/10 : $t/10);
-      push @v, sprintf("%02d:%02d %0.1f", hex($1), hex($2), $t);
+      $t = ($t == 0x7a ? 'energySave' : $t >= 0x80 ? -(255-$t)/10 : $t/10);
+      push @v, sprintf('%02d:%02d %0.1f', hex($1), hex($2), $t);
     }
     return "$n:".(@v ? join(" ",@v) : "N/A");
   }
@@ -2983,28 +2988,74 @@ my %zwave_alarmType = (
   "0a"=>"Emergency",
   "0b"=>"Clock",
   "0c"=>"Appliance",
-  "0d"=>"HomeHealth"
+  "0d"=>"HomeHealth",
+  "0e"=>"Siren",
+  "0f"=>"WaterValve",
+  "10"=>"WeatherAlarm",
+  "11"=>"Irrigation",
+  "12"=>"GasAlarm",
+  "13"=>"PestControl",
+  "14"=>"LightSensor",
+  "15"=>"WaterQualityMonitoring",
+  "16"=>"HomeMonitoring"
 );
 
 my %zwave_alarmEvent = ( # no comma allowed in strings
+  "0100"=>"State idle",
   "0101"=>"detected",
   "0102"=>"detected - Unknown Location",
   "0103"=>"Alarm Test",
+  "0104"=>"Replacement required",
+  "0105"=>"Replacement required - End-of-Life",
+  "0106"=>"Alarm silenced",
+  "0107"=>"Maintenance required - planned periodic inspection",
+  "0108"=>"Maintenance required - dust in device",
+  "01fe"=>"Unknown event/state",
+  "0200"=>"State idle",
   "0201"=>"detected",
   "0202"=>"detected - Unknown Location",
+  "0203"=>"test",
+  "0204"=>"Replacement required",
+  "0205"=>"Replacement required - End-of-Life",
+  "0206"=>"Alarm silenced",
+  "0207"=>"Maintenance required - planned periodic inspection",
+  "02fe"=>"Unknown event/state",
+  "0300"=>"State idle",
   "0301"=>"detected",
   "0302"=>"detected - Unknown Location",
+  "0303"=>"test",
+  "0304"=>"Replacement required",
+  "0305"=>"Replacement required - End-of-Life",
+  "0306"=>"Alarm silenced",
+  "0307"=>"Maintenance required - planned periodic inspection",
+  "03fe"=>"Unknown event/state",
+  "0400"=>"State idle",
   "0401"=>"Overheat detected",
   "0402"=>"Overheat detected - Unknown Location",
   "0403"=>"Rapid Temperature Rise",
   "0404"=>"Rapid Temperature Rise - Unknown Location",
   "0405"=>"Underheat detected",
   "0406"=>"Underheat detected - Unknown Location",
+  "0407"=>"test",
+  "0408"=>"Replacement required - End-of-Life",
+  "040a"=>"Maintenance required - dust in device",
+  "040b"=>"Maintenance required - planned periodic inspection",
+  "040c"=>"Rapid Temperature fall",
+  "040d"=>"Rapid Temperature fall - Unknown Location",
+  "04fe"=>"Unknown event/state",
+  "0500"=>"State idle",
   "0501"=>"Leak detected",
   "0502"=>"Leak detected - Unknown Location",
   "0503"=>"Level Dropped",
   "0504"=>"Level Dropped - Unknown Location",
   "0505"=>"Replace Filter",
+  "0506"=>"Flow alarm",
+  "0507"=>"Temperature alarm",
+  "0508"=>"Level alarm",
+  "050A"=>"Sump pump active",
+  "050B"=>"Sump pump failure",
+  "05FE"=>"Unknown event/state",
+  "0600"=>"State idle",
   "0601"=>"Manual Lock Operation",
   "0602"=>"Manual Unlock Operation",
   "0603"=>"RF Lock Operation",
@@ -3028,6 +3079,9 @@ my %zwave_alarmEvent = ( # no comma allowed in strings
   "0615"=>"Locked by RF with invalid user codes",
   "0616"=>"Window/Door is open",
   "0617"=>"Window/Door is closed",
+  "0618"=>"Window/Door handle is open",
+  "0619"=>"Window/Door handle is closed",
+  "0620"=>"Messaging User Code entered via keypad",
   "0640"=>"Barrier performing Initialization process",
   "0641"=>"Barrier operation (Open / Close) force has been exceeded.",
   "0642"=>"Barrier motor has exceeded manufacturer's operational time limit",
@@ -3041,6 +3095,7 @@ my %zwave_alarmEvent = ( # no comma allowed in strings
   "064a"=>"Barrier Sensor Low Battery Warning",
   "064b"=>"Barrier detected short in Wall Station wires",
   "064c"=>"Barrier associated with non-Z-wave remote control.",
+  "06fe"=>"Unknown event/state",
   "0700"=>"Previous Events cleared",
   "0701"=>"Intrusion",
   "0702"=>"Intrusion - Unknown Location",
@@ -3050,6 +3105,9 @@ my %zwave_alarmEvent = ( # no comma allowed in strings
   "0706"=>"Glass Breakage - Unknown Location",
   "0707"=>"Motion Detection",
   "0708"=>"Motion Detection - Unknown Location",
+  "0709"=>"Tampering - product moved",
+  "070a"=>"Impact detected",
+  "07fe"=>"Unknown event/state",
   "0800"=>"Previous Events cleared",
   "0801"=>"Power has been applied",
   "0802"=>"AC mains disconnected",
@@ -3066,16 +3124,27 @@ my %zwave_alarmEvent = ( # no comma allowed in strings
   "080d"=>"Battery is fully charged",
   "080e"=>"Charge battery soon",
   "080f"=>"Charge battery now!",
+  "0810"=>"Back-up battery is low",
+  "0811"=>"Battery fluid is low",
+  "0900"=>"State Idle",
   "0901"=>"hardware failure",
   "0902"=>"software failure",
   "0903"=>"hardware failure with OEM proprietary failure code",
   "0904"=>"software failure with OEM proprietary failure code",
+  "0905"=>"Heartbeat",
+  "0906"=>"Tampering - product cover removed",
+  "0907"=>"Emergency shutoff",
+  "09fe"=>"Unknown event/state",
+  "0a00"=>"State idle",
   "0a01"=>"Contact Police",
   "0a02"=>"Contact Fire Service",
   "0a03"=>"Contact Medical Service",
+  "0afe"=>"Unkown event/state",
+  "0b00"=>"State idle",
   "0b01"=>"Wake Up Alert",
   "0b02"=>"Timer Ended",
   "0b03"=>"Time remaining",
+  "0bfe"=>"Unknown event/state",
   "0c01"=>"Program started",
   "0c02"=>"Program in progress",
   "0c03"=>"Program completed",
@@ -3097,13 +3166,85 @@ my %zwave_alarmEvent = ( # no comma allowed in strings
   "0c13"=>"Drying failure",
   "0c14"=>"Fan failure",
   "0c15"=>"Compressor failure",
+  "0cfe"=>"Unkown event/state",
   "0d00"=>"Previous Events cleared",
   "0d01"=>"Leaving Bed",
   "0d02"=>"Sitting on bed",
   "0d03"=>"Lying on bed",
   "0d04"=>"Posture changed",
   "0d05"=>"Sitting on edge of bed",
-  "0d06"=>"Volatile Organic Compound level"
+  "0d06"=>"Volatile Organic Compound level",
+  "0d07"=>"Sleep apnea detected",
+  "0d08"=>"Sleep stage 0 detected (Dreaming/REM)",
+  "0d09"=>"Sleep stage 1 detected (Light sleep - non-REM 1)",
+  "0d0a"=>"Sleep stage 2 detected (Medium sleep - non-REM 2)",
+  "0d0b"=>"Sleep stage 3 detected (Deep sleep - non-REM 3)",
+  "0dfe"=>"Unknown event/state",
+  "0e00"=>"State idle",
+  "0e01"=>"Siren active",
+  "0efe"=>"Unknown event/state",
+  "0f00"=>"State idle",
+  "0f01"=>"Valve operation",
+  "0f02"=>"Master valve operation",
+  "0f03"=>"Valve short circuit",
+  "0f04"=>"Master valve short circuit",
+  "0f05"=>"Valve current alarm",
+  "0f06"=>"Master valve current alarm",
+  "0ffe"=>"Unknown event/state",
+  "1000"=>"State idle",
+  "1001"=>"Rain alarm",
+  "1002"=>"Moisture alarm",
+  "1003"=>"Freeze alarm",
+  "10fe"=>"Unknown event/state",
+  "1100"=>"State idle",
+  "1101"=>"Schedule started",
+  "1102"=>"Schedule finished",
+  "1103"=>"Valve table run started",
+  "1104"=>"Valve table run finished",
+  "1105"=>"Device is not configured",
+  "11fe"=>"Unknown event/state",
+  "1200"=>"State idle",
+  "1201"=>"Combustible gas detected (location provided)",
+  "1202"=>"Combustible gas detected",
+  "1203"=>"Toxic gas detected (location provided)",
+  "1204"=>"Toxic gas detected",
+  "1205"=>"Gas alarm test",
+  "1206"=>"Replacement required",
+  "12fe"=>"Unknown event/state",
+  "1300"=>"State idle",
+  "1301"=>"Trap armed (location provided)",
+  "1302"=>"Trap armed",
+  "1303"=>"Trap re-arm required (location provided)",
+  "1304"=>"Trap re-arm required",
+  "1305"=>"Pest detected (location provided)",
+  "1306"=>"Pest detected",
+  "1307"=>"Pest exterminated (location provided)",
+  "1308"=>"Pest exterminated",
+  "13fe"=>"Unknown event/state",
+  "1400"=>"State idle",
+  "1401"=>"Light detected",
+  "1402"=>"Light color transition detected",
+  "1500"=>"State idle",
+  "1501"=>"Chlorine alarm",
+  "1502"=>"Acidity (pH) alarm",
+  "1503"=>"Water Oxidation alarm",
+  "1504"=>"Chlorine empty ",
+  "1505"=>"Acidity (pH) empty ",
+  "1506"=>"Waterflow measuring station shortage detected",
+  "1507"=>"Waterflow clear water shortage detected",
+  "1508"=>"Disinfection system error detected",
+  "1509"=>"Filter cleaning ongoing",
+  "150a"=>"Heating operation ongoing",
+  "150b"=>"Filter pump operation ongoing",
+  "150c"=>"Freshwater operation ongoing",
+  "150d"=>"Dry protection operation active",
+  "150e"=>"Water tank is empty",
+  "150f"=>"Water tank level is unknown",
+  "1510"=>"Water tank is full",
+  "1511"=>"Collective disorder",
+  "1600"=>"State idle",
+  "1601"=>"Home occupied (location provided)",
+  "1602"=>"Home occupied"
 );
 
 sub
@@ -3331,9 +3472,9 @@ ZWave_battery($) # Forum #87575
   my ($val) = @_;
   my @ret;
 
-  push @ret, "battery:".($val eq "ff" ? "low":hex($val)." %");
-  push @ret, "batteryState:".($val eq "ff" ? "low":"ok");
-  push @ret, "batteryPercent:".hex($val) if($val ne "ff");
+  push @ret, "battery:".       ($val eq "ff" ? "low" : hex($val)." %");
+  push @ret, "batteryState:" .(($val eq "ff" || $val eq "00") ? "low":"ok");
+  push @ret, "batteryPercent:".hex($val) if($val ne "ff"); #110964
   return @ret;
 }
 
@@ -5659,7 +5800,7 @@ ZWave_firmwareUpdateParse($$$)
   }
   
   Log3 $hash, 3, "ZWave_firmwareUpdateParse: CMD: $cmd MSG: $msg Version: $classVersion";
-  if($cmd == '02') 
+  if($cmd eq '02') 
   {
     $ret  = "fwMd: ";
     $hash->{FW_UPDATE_DATA}->{MAN_ID} = substr($msg,0, 4) if(defined $hash->{FW_UPDATE_DATA});
@@ -5718,7 +5859,7 @@ ZWave_firmwareUpdateParse($$$)
       return $ret; # retun reading
     }
   }
-  elsif($cmd == '04')
+  elsif($cmd eq '04')
   {
     #FIRMWARE_UPDATE_MD_REQUEST_GET
     RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
@@ -5738,7 +5879,7 @@ ZWave_firmwareUpdateParse($$$)
       return 1; #Veto
     }
   }
-  elsif($cmd == '05')
+  elsif($cmd eq '05')
   {
     #FIRMWARE_UPDATE_MD_GET
     RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
@@ -5761,7 +5902,7 @@ ZWave_firmwareUpdateParse($$$)
       return 1; #Veto
     }
   }
-  elsif($cmd == '07')
+  elsif($cmd eq '07')
   {
     #FIRMWARE_UPDATE_MD_STATUS_REPORT
     RemoveInternalTimer($hash->{FW_UPDATE_DATA}->{TIMER});
