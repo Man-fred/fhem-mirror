@@ -27,11 +27,16 @@ use feature qw( lexical_subs );
 use strict;
 use warnings;
 use utf8;
+use FHEM::Scheduler::Cron;
 use HttpUtils;
 use List::Util qw( any );
-use Text::Balanced qw ( extract_codeblock extract_delimited );
+use Text::Balanced qw ( extract_codeblock extract_delimited extract_bracketed );
 use Time::Local qw( timelocal timegm );
 use Unicode::Normalize qw( NFD );
+# support system://'curl '
+use IPC::Open3;
+use Symbol 'gensym'; 
+
 
 #use Memory::Usage;
 
@@ -58,7 +63,7 @@ sub JsonMod_Initialize {
 	$hash->{'DeleteFn'}				= 'JsonMod_Delete';
 	$hash->{'SetFn'}				= 'JsonMod_Set';
 	$hash->{'AttrFn'}				= 'JsonMod_Attr';
-	$hash->{'NotifyFn'}				= 'JsonMod_Notify';
+	#$hash->{'NotifyFn'}				= 'JsonMod_Notify';
 	$hash->{'AttrList'}				= join(' ', @attrList)." $readingFnAttributes ";
 
 	return undef;
@@ -74,14 +79,14 @@ sub JsonMod_Define {
 	$hash->{'SVN'} = $cvsid;
 	$hash->{'CONFIG'}->{'IN_REQUEST'} = 0;
 	$hash->{'CONFIG'}->{'CRON'} = \'0 * * * *';
-	$hash->{'CRON'} = JsonMod::Cron->new();
+	# $hash->{'CRON'} = JsonMod::Cron->new();
 
 	return "no FUUID, is fhem up to date?" if (not $hash->{'FUUID'});
-	return "wrong source definition" if ($source !~ m/^(https:|http:|file:)/);
+	return "wrong source definition" if ($source !~ m/^(https:|http:|file:|system:)/);
 
 	$hash->{'CONFIG'}->{'SOURCE'} = $source;
-	($hash->{'NOTIFYDEV'}) = devspec2array('TYPE=Global');
-	InternalTimer(0, \&JsonMod_Run, $hash) if ($init_done);
+	#($hash->{'NOTIFYDEV'}) = devspec2array('TYPE=Global');
+	InternalTimer(0, \&JsonMod_Run, $hash);
 	return;
 };
 
@@ -111,15 +116,23 @@ sub JsonMod_Run {
 
 	my $cron = AttrVal($name, 'interval', '0 * * * *');
 	$hash->{'CONFIG'}->{'CRON'} = \$cron;
-	JsonMod_StartTimer($hash);
-	JsonMod_ApiRequest($hash) if AttrVal($name, 'update-on-start', 0);
+	my $err;
+	($hash->{'CRON'}, $err) = FHEM::Scheduler::Cron->new($cron);
+	if ($err) {
+		$hash->{'NEXT'} = sprintf('NEVER (%s)', $err);
+		JsonMod_Logger($hash, 2, 'cron returned error: %s', $err);
+	} else {
+		JsonMod_StartTimer($hash);
+		JsonMod_ApiRequest($hash) if AttrVal($name, 'update-on-start', 0);
+	}
 	return;
 };
 
 sub JsonMod_Set {
 	my ($hash, $name, $cmd, @args) = @_;
 
-	return "Unknown argument $cmd, choose one of secret" if ($cmd eq '?');
+	my @cmds = qw( reread secret );
+	return sprintf ("Unknown argument $cmd, choose one of %s", join(' ', @cmds)) unless (any {$cmd eq $_} @cmds);
 
 	if ($cmd eq 'secret') {
 		if (not $args[1] and (exists($hash->{'CONFIG'}->{'SECRET'}->{$args[0]}))) {
@@ -130,34 +143,10 @@ sub JsonMod_Set {
 			JsonMod_WritePvtConfig($hash);
 		};
 		return;
-	};
-
-	if ($cmd eq 'test') {
-		my $filename = './log/goessner.json';
-		my $data;
-		open(my $fh, '<', $filename) or return "cannot open file $filename";
-		{
-			local $/;
-			$data = <$fh>;
-		}
-		close($fh);
-		my @test = qw (
-			$..*
-			$.store.book[*].author
-			$..author
-			$.store..price
-			$..book[2]
-			);
-		my $json = JsonMod::JSON::StreamReader->new()->parse($data);
-		my $path = JsonMod::JSON::Path->new($json);
-		foreach my $q (@test) {
-			print "****************************************************\n";
-			my $query = $path->get($q);
-			$query->getResultNormVal();
-			print "****************************************************\n";
-		};
-		my $query = $path->get('$.store.book[?(@.price < 10)]');
-		$query->getResultNormVal();
+	} elsif ($cmd eq 'reread') {
+		return 'request already pending' if ($hash->{'CONFIG'}->{'IN_REQUEST'});
+		JsonMod_ApiRequest($hash);
+		return;
 	};
 
 	return;
@@ -167,7 +156,6 @@ sub JsonMod_Attr {
 	my ($cmd, $name, $attrName, $attrValue) = @_;
 	my $hash = $defs{$name};
 	$attrValue //= '';
-	#my $result;
 
 	if ($cmd eq 'set') {
 		if ($attrName eq 'disable') {
@@ -175,62 +163,66 @@ sub JsonMod_Attr {
 				JsonMod_StopTimer($hash);
 			} else {
 				JsonMod_StopTimer($hash);
-				JsonMod_StartTimer($hash); # unless IsDisabled($name);
+				JsonMod_StartTimer($hash);
 			};
 		};
 		if ($attrName eq 'interval') {
 			if (split(/ /, $attrValue) == 5) {
-				if ($hash->{'CRON'}->validate($attrValue)) {
+				my $err;
+				($hash->{'CRON'}, $err) = FHEM::Scheduler::Cron->new($attrValue);
+				unless ($err) {
 					$hash->{'CONFIG'}->{'CRON'} = \$attrValue;
-					return if (!$init_done);
 					JsonMod_StopTimer($hash);
-					JsonMod_StartTimer($hash) unless IsDisabled($name);
+					JsonMod_StartTimer($hash);
 					return;
 				} else {
-					return "wrong interval expression (cron)"
+					$hash->{'NEXT'} = sprintf('NEVER (%s)', $err);
+					JsonMod_Logger($hash, 2, 'cron returned error: %s', $err);
+					return $err;
 				};
 			};
 			return "wrong interval expression";
 		};
 	};
 	if ($cmd eq 'del') {
+		if ($attrName eq 'disable') {
+			JsonMod_StartTimer($hash);
+		};
 		if ($attrName eq 'interval') {
 			$hash->{'CONFIG'}->{'CRON'} = \'0 * * * *';
 			JsonMod_StopTimer($hash);
-			JsonMod_StartTimer($hash); # unless IsDisabled($name);
+			JsonMod_StartTimer($hash);
 			return;
 		};
-		if ($attrName eq 'disable') {
-			JsonMod_StartTimer($hash); # unless IsDisabled($name);
-		};
 	};
 };
 
-sub JsonMod_Notify {
-	my ($hash, $dev) = @_;
-	my $name = $hash->{'NAME'};
-	return undef if(IsDisabled($name));
+# sub JsonMod_Notify {
+# 	my ($hash, $dev) = @_;
+# 	my $name = $hash->{'NAME'};
+# 	return undef if(IsDisabled($name));
 
-	my $events = deviceEvents($dev, 1);
-	return if(!$events);
+# 	my $events = deviceEvents($dev, 1);
+# 	return if(!$events);
 
-	foreach my $event (@{$events}) {
-		my @e = split /\s/, $event;
-		JsonMod_Logger($hash, 5, 'event:[%s], device:[%s]', $event, $dev->{'NAME'});
-		if ($dev->{'TYPE'} eq 'Global') {
-			if ($e[0] and $e[0] eq 'INITIALIZED') {
-				JsonMod_Run($hash);
-			};
-		};
-	};
-	return;
-};
+# 	foreach my $event (@{$events}) {
+# 		my @e = split /\s/, $event;
+# 		JsonMod_Logger($hash, 5, 'event:[%s], device:[%s]', $event, $dev->{'NAME'});
+# 		if ($dev->{'TYPE'} eq 'Global') {
+# 			if ($e[0] and $e[0] eq 'INITIALIZED') {
+# 				JsonMod_Run($hash);
+# 			};
+# 		};
+# 	};
+# 	return;
+# };
 
 # retrieve secrets
 sub JsonMod_ReadPvtConfig {
 	my ($hash) = @_;
 
-	my sub clean {
+	# my sub clean {
+	local *clean = sub {
 		$hash->{'CONFIG'}->{'SECRET'} = {};
 		return;
 	};
@@ -261,7 +253,7 @@ sub JsonMod_WritePvtConfig {
 	};
 	$hash->{'SECRETS'} = join ", ", keys (%{$hash->{'CONFIG'}->{'SECRET'}});
 	my $key = $hash->{'FUUID'};
-	my $val = MIME::Base64::encode(JsonMod::JSON::StreamWriter->new()->parse($data));
+	my $val = MIME::Base64::encode(JsonMod::JSON::StreamWriter->new()->parse($data), '');
 	my $error = setKeyValue($key, $val);
 	return;
 };
@@ -270,6 +262,7 @@ sub JsonMod_DoReadings {
 	my ($hash, $data) = @_;
 	my $name = $hash->{'NAME'};
 
+	JsonMod_Logger($hash, 5, 'start JsonPath');
 	my $path = JsonMod::JSON::Path->new($data);
 
 	my $newReadings = {};
@@ -277,167 +270,28 @@ sub JsonMod_DoReadings {
 	foreach my $key (keys %{$hash->{'READINGS'}}) {
 		$oldReadings->{$key} = 0;
 	};
-	
-	my sub jsonPathf {
-		# https://forum.fhem.de/index.php/topic,109413.msg1034685.html#msg1034685
-		no if $] >= 5.022, 'warnings', qw( redundant missing );
-		#eval 'no warnings qw( redundant missing )' if ($] >= 5.22);
-		my ($jsonPathExpression, $format) = @_;
-		$format //= '%s';
-		my $value = $path->get($jsonPathExpression)->getResultValue();
-		#$path->get($jsonPathExpression)->getResultNormVal();
-		$value = $value->[0] if (ref($value) eq 'ARRAY' and scalar(@{$value}));
-		if (defined($value)) {
-			return sprintf($format, $value);
-		} else {
-			return undef;
-		};
-	};
 
-	my sub jsonPath {
-		my ($jsonPathExpression) = @_;
-		return $path->get($jsonPathExpression)->getResultValue();
-	};
+	# lexical subs are supected to cause segv under rare conditions, see forum #133135
+	# changed to localized globs
 
-	my sub concat {
-		my @args = @_;
-		return sub {
-			my ($o) = @_;
-			my $result = '';
-			foreach my $arg (@args) {
-				if (ref($arg) eq 'CODE') {
-					$result .= $arg->($o);
-				} elsif (ref($arg) eq 'ARRAY' and @{$arg}) {
-					$result .= $arg->[0];
-				} else {
-					$result .= $arg;
-				};
-			};
-			return $result;
-		};
-	};
-
-	# my sub propertyf {
-	# 	my ($p, $default, $format) = @_;
-	# 	$default //= '';
-	# 	$format //= '';
-	# 	return sub {
-	# 		my ($o) = @_;
-	# 		if (ref($o) eq 'CODE') {
-	# 			return $o->($p, $default);
-	# 		} elsif (ref($o) eq 'HASH') {
-	# 			my $result = $o->{$p} if (exists($o->{$p}));
-	# 			if (defined($result)) {
-	# 				if (ref($result) eq '') {
-	# 					return sprintf ($format, $result);
-	# 				} else {
-	# 					return $result;
-	# 				};
-	# 			} else {
-	# 				return $default;
-	# 			};
-	# 		} elsif (ref($o) eq 'ARRAY') {
-	# 			my $result = $o->[$p] if ((scalar @{$o}) > ($p + 0));
-	# 			if (defined($result)) {
-	# 				if (ref($result) eq '') {
-	# 					return sprintf ($format, $result);
-	# 				} else {
-	# 					return $result;
-	# 				};
-	# 			} else {
-	# 				return $default;
-	# 			};
-	# 		} elsif (ref($o) eq '') {
-	# 			return $o;
-	# 		} else {
-	# 			die('syntax');
-	# 		};
-	# 	};
-	# };
-
-	my sub propertyf {
-		my ($propertyPath, $default, $format) = @_;
-		$default //= '';
-		$format //= '%s';
-		return sub {
-			my ($o) = @_;
-			$propertyPath = $propertyPath->($o) if (ref($propertyPath) eq 'CODE');
-			$default = $default->($o) if (ref($default) eq 'CODE');
-			$format = $format->($o) if (ref($format) eq 'CODE');
-
-			if (ref($o) eq 'HASH' or ref($o) eq 'ARRAY') {
-				my $presult = JsonMod::JSON::Path->new($o)->get($propertyPath)->getResultValue();
-				if (defined($presult)) {
-					if (ref($presult) eq 'ARRAY') {
-						if (scalar(@{$presult})) {
-							no if $] >= 5.022, 'warnings', qw( redundant missing );
-							return sprintf($format, $presult->[0]); # the first element if multiple. be gentle ;)
-						} else {
-							return $default;
-						};
-					} else {
-						return $presult;
-					};
-				};
-		 	} else {
-		 		no if $] >= 5.022, 'warnings', qw( redundant missing );
-		 		return sprintf($format, $o);
-		 		# die("something went wrong while processing the JsonMod property '$propertyPath'. pls report it");
-		 	};
-		};
-	};
-
-	my sub property {
-		my ($propertyPath, $default) = @_;
-		$default //= '';
-		return sub {
-			my ($o) = @_;
-			$propertyPath = $propertyPath->($o) if (ref($propertyPath) eq 'CODE');
-			$default = $default->($o) if (ref($default) eq 'CODE');
-
-			if (ref($o) eq 'HASH' or ref($o) eq 'ARRAY') {
-				my $presult = JsonMod::JSON::Path->new($o)->get($propertyPath)->getResultValue();
-				if (defined($presult)) {
-					if (ref($presult) eq 'ARRAY') {
-						if (scalar(@{$presult})) {
-							return $presult->[0]; # the first hit if many. be gentle ;)
-						} else {
-							return $default;
-						};
-					} else {
-						return $presult;
-					};
-				};
-		 	} else {
-		 		return $o;
-		 		# die("something went wrong while processing the JsonMod property '$propertyPath'. pls report it");
-		 	};
-		};
-	};
-
-
-	my $_index = 0;
-	my sub index {
-		#my $index = 0;
-		return sub {
-			return $_index;
-		};
-	};
-
-	# sanitize reading names to comply with the rules
+	# sanitize reading names to comply with fhem naming conventions
 	# (allowed chars: A-Za-z/\d_\.-)
-	my sub sanitizedSetReading {
+	# my sub sanitizedSetReading {
+	local *sanitizedSetReading = sub {
 		my ($r, $v) = @_;
 
 		# convert into valid reading
-		#printf "0 %s %s %s %s\n", $r, length($r), $v, length($v);
+		# special treatment of "umlaute"
+		my %umlaute = ("ä" => "ae", "Ä" => "Ae", "ü" => "ue", "Ü" => "Ue", "ö" => "oe", "Ö" => "Oe", "ß" => "ss" );
+		my $umlautkeys = join ("|", keys(%umlaute));
+		$r =~ s/($umlautkeys)/$umlaute{$1}/g;
+		# normalize remaining special chars
 		$r = Unicode::Normalize::NFD($r);
 		utf8::encode($r) if utf8::is_utf8($r);
 		$r =~ s/\s/_/g;	# whitespace 
 		$r =~ s/([^A-Za-z0-9\/_\.-])//g;
-		# prevent a totally stripped reading name
-		# todo, log it?
-		$r = "_Identifier_$_index" unless($r);
+		# prevent a totally stripped reading name / todo, log it?
+		$r = "__CONVERSATION_ERROR__" unless($r);
 		$v //='';
 		utf8::encode($v) if utf8::is_utf8($v);
 		$newReadings->{$r} = $v;
@@ -445,71 +299,278 @@ sub JsonMod_DoReadings {
 		#printf "1 %s %s %s %s\n", $r, length($r), $v, length($v);
 	};
 
-	my sub multi {
-		my ($value, @refs) = @_;
-		die ('jsonPath result not a list') if (ref($value) ne 'ARRAY');
+	# my sub concat {
+	local *concat = sub {
+		my @args = @_;
+		my $result = '';
+		foreach my $arg (@args) {
+			$result .= $arg;
+		};
+		return $result;
+	};
 
-		# if ($name eq 'irantest') {
-		# 	use Data::Dumper;
-		# 	print Dumper $value;
-		# }
+	# processing attr readingList
+	my $readingList = AttrVal($name, 'readingList', '');
+	$readingList =~ s/\s+$//s; # rtrim
+	utf8::decode($readingList); # data from "ouside"
 
-		$_index = 0;
-		foreach my $element (@{$value}) {
-			#use Data::Dumper;
-			#print Dumper $element;
-			my @reading;
-			foreach my $ref (@refs) {
-				push @reading, $ref->($element);
+	while ($readingList) {
+
+		my ($args, $cmd);
+
+		next if ($readingList =~ s/^\s*#.*\R*//); # remove comments
+		$readingList =~ s/\//\\\//g; # escape slash forum 122166
+		($args, $readingList, $cmd) = extract_codeblock ($readingList, '()', '(?m)[^(]*');
+		$readingList =~ s/\\\//\//g; # revert escaped slash
+		$args =~ s/\\\//\//g if defined($args); # revert escaped slash
+		# say 'A:'.$args;
+		# say 'R:'.$readingList;
+		# say 'C:'.$cmd;
+		if (not $cmd or $@) {
+			JsonMod_Logger($hash, 2, 'syntax error in readingList statement: \'%s%s\' %s', $readingList);
+			last;
+		};
+		$cmd =~ s/^\s+|\s+$//g; # chomp
+		$readingList =~ s/\s*;//;
+
+		# control warnings, required in multi()
+		my $warnings = 1;
+		# my sub logWarnings {
+		local *logWarnings = sub {
+			return unless ($warnings);
+			my ($msg) = @_;
+			$msg =~ s/at \(eval.*$//;
+			JsonMod_Logger($hash, 3, 'warning: %s in \'%s%s\'', $msg, $cmd, $args);
+		};
+
+		if ($cmd eq 'single') {
+
+			# my sub jsonPath {
+			local *jsonPath = sub {
+				my ($propertyPath) = @_;
+				my $presult = $path->get($propertyPath)->getResultValue();
+				
+				if (defined($presult)) {
+					if ((ref($presult) eq 'ARRAY') and (scalar(@{$presult}))) {
+						return $presult->[0]; # the first hit if many. be gentle ;)
+					} elsif ((ref($presult) eq 'HASH') or (ref($presult) eq '')) {
+						return $presult;
+					};
+				};
+				return undef;
 			};
-			$_index++;
-			sanitizedSetReading($reading[0], $reading[1]);
-			# $newReadings->{$reading[0]} = $reading[1];
-			# $oldReadings->{$reading[0]} = 1;
+
+			# my sub jsonPathf {
+			local *jsonPathf = sub {
+				my ($propertyPath, $format) = @_;
+				$format //= '%s';
+				my $presult = jsonPath($propertyPath);
+				if (defined($presult)) {
+					return sprintf($format, $presult);
+				};
+				return undef;
+			};
+
+			# my sub s1 {
+			local *s1 = sub {
+				my ($readingValue, $readingName, $default) = @_;
+				$readingValue //= $default;
+				die ('missing reading name') unless ($readingName);
+				sanitizedSetReading($readingName, $readingValue) if (defined($readingValue));
+			};
+
+			{
+				local $SIG{__WARN__} = \&logWarnings;
+				eval 's1'.$args;
+				if ($@) {
+					my $msg = $@;
+					if ($msg =~ m/^(.*)(?:at.*(?:eval|98_JsonMod).*)line (\d+)?/m) {
+						JsonMod_Logger($hash, 2, 'error: %s (#%s) in %s%s', $1, $2, $cmd, $args);
+					} else {
+						JsonMod_Logger($hash, 2, 'error: %s in %s%s', $msg, $cmd, $args);
+					};
+				};
+			};
+
+		} elsif ($cmd eq 'multi') {
+
+			my $resultSet;
+			my $resultNode;
+			my $resultObject;
+			my $index = 0;
+
+			local *node = sub {
+				return $resultNode;
+			};
+
+			local *count = sub {
+				return $index;
+			};
+
+			# my sub index {
+			# 	my @args = @_;
+			# 	if (scalar @args > 1) {
+			# 		return CORE::index($args[0], $args[1], $args[2]);
+			# 	} else {
+			# 		JsonMod_Logger($hash, 1, 'use of \'index()\' as item counter is depraced in \'%s%s\'. Replace with \'count\'.', $cmd, $args);
+			# 		return $index;
+			# 	};
+			# };
+
+			# my sub property {
+			local *property = sub {
+				my ($propertyPath, $default) = @_;
+				#$default //= '';
+				return unless (defined($resultObject));
+				
+				if (ref($resultObject) eq 'HASH' or ref($resultObject) eq 'ARRAY') {
+					my $presult = JsonMod::JSON::Path->new($resultObject)->get($propertyPath)->getResultValue();
+					if (defined($presult)) {
+						if ((ref($presult) eq 'ARRAY') and (scalar(@{$presult}))) {
+							return $presult->[0]; # the first hit if many. be gentle ;)
+						} elsif ((ref($presult) eq 'HASH') or (ref($presult) eq '')) {
+							return $presult;
+						};
+					};
+				};
+				return $default if (defined($default));
+				return undef;
+			};
+
+			# my sub propertyf {
+			local *propertyf = sub {
+				my ($propertyPath, $default, $format) = @_;
+				$format //= '%s';
+				my $presult = property($propertyPath, $default);
+				if (defined($presult)) {
+					return sprintf($format, $presult);
+				};
+				return undef;
+			};
+
+			# my sub jsonPath {
+			local *jsonPath = sub {
+				my ($jsonPathExpression) = @_;
+				# $resultSet = $path->get($jsonPathExpression)->getResultValue() unless (defined($resultSet));
+				$resultSet = $path->get($jsonPathExpression)->getResultList() unless (defined($resultSet));
+				return $jsonPathExpression;
+			};
+
+			# my sub m2 {
+			local *m2 = sub {
+				my ($jsonPathExpression, $readingName, $readingValue) = @_;
+				# print "in m2 $jsonPathExpression, $readingName, $readingValue\n";
+				sanitizedSetReading($readingName, $readingValue);
+				# $index++;
+			};
+
+			# my sub m1 {
+			local *m1 = sub {
+				my ($jsonPathExpression, $readingName, $readingValue, $defaultReading, $defaultValue) = @_;
+
+				$warnings = 1;
+
+				if (ref($resultSet) eq 'ARRAY' and scalar @$resultSet) {
+					foreach my $res (@{$resultSet}) {
+						$resultNode = $res->[0];
+						$resultObject = $res->[1]; # value
+						# print "array: $resultNode $resultObject \n";
+						# use Data::Dumper;
+						# print Dumper $resultObject;
+						eval 'm2'.$args; warn $@ if $@;
+						$index++;
+					};
+				} elsif($defaultReading) {
+					JsonMod_Logger($hash, 4, '%s is empty or missing: use defaults (%s:%s)', $jsonPathExpression, $defaultReading, $defaultValue);
+					sanitizedSetReading($defaultReading, $defaultValue);
+				} else {
+					JsonMod_Logger($hash, 4, '%s is empty or missing: discarded', $jsonPathExpression);
+				};
+			};
+
+			{
+				local $SIG{__WARN__} = \&logWarnings;
+				$warnings = 0;
+				eval 'm1'.$args;
+				if ($@) {
+					my $msg = $@;
+					if ($msg =~ m/^(.*)(?:at.*(?:eval|98_JsonMod).*)line (\d+)?/m) {
+						JsonMod_Logger($hash, 2, 'error: %s (#%s) in %s%s', $1, $2, $cmd, $args);
+					} else {
+						JsonMod_Logger($hash, 2, 'error: %s in %s%s', $msg, $cmd, $args);
+					};
+				};
+			};
+		} elsif ($cmd eq 'complete') {
+
+			my $index = 0;
+
+			# my sub c1 {
+			local *c1 = sub {
+				my ($jsonPathExpression) = @_;
+				$jsonPathExpression //= '$..*';
+
+				my $resultSet = $path->get($jsonPathExpression)->getResultList();
+				#use Data::Dumper;
+				#print Dumper $resultSet;
+				if (ref($resultSet) eq 'ARRAY') {
+					foreach my $res (@{$resultSet}) {
+						my $k = $res->[0];
+						my $v = $res->[1];
+						# we are only interested in the values, not objects or arrays
+						if (ref($v) eq '') {
+							my @r;
+							$k =~ s/^\$//;
+					    	while (my $part = (extract_bracketed($k), '[]')[0]) { push @r, $part };
+							my $readingName = join('.', @r);
+							sanitizedSetReading($readingName, $v) if length($readingName);
+						};
+					};
+				};
+			};
+
+			{
+				local $SIG{__WARN__} = \&logWarnings;
+				eval 'c1'.$args;
+				if ($@) {
+					my $msg = $@;
+					if ($msg =~ m/^(.*)(?:at.*(?:eval|98_JsonMod).*)line (\d+)?/m) {
+						JsonMod_Logger($hash, 2, 'error: %s (#%s) in %s%s', $1, $2, $cmd, $args);
+					} else {
+						JsonMod_Logger($hash, 2, 'error: %s in %s%s', $msg, $cmd, $args);
+					};
+				};
+			};
 		};
 	};
 
-	# value  (mostly jsonPath) / reading name / default if value is not available
-	my sub single {
-		my ($value, $reading, $default) = @_;
-		$value = $value->() if (ref($value) eq 'CODE');
-		$reading = $reading->() if (ref($reading) eq 'CODE');
-		$default = $default->() if (ref($default) eq 'CODE');
-
-		$value = $value->[0] if (ref($value) eq 'ARRAY' and scalar(@{$value}));
-		$value //= $default;
-		sanitizedSetReading($reading, $value);
-		# $newReadings->{$reading} = $value;
-		# $oldReadings->{$reading} = 1;
-		return;
-	};
-
-	if (my $readingList = AttrVal($name, 'readingList', '')) {
-		# data from "ouside"
-		utf8::decode($readingList);
-		#JsonMod_Logger ($hash, 1, 'readingList: %s', $readingList);
-		# support for perl expressions within
-		my $NAME = $name; 
-		if (not eval $readingList and $@) {
-			JsonMod_Logger($hash, 2, 'error while evaluating readingList: %s', $@);
-			return;
+	# update readings
+	if (keys %{$newReadings}) {
+		my @newReadings;
+		my @oldReadings = split ',', ReadingsVal($name, '.computedReadings', '');
+		readingsBeginUpdate($hash);
+		foreach my $k (keys %{$newReadings}) {
+			#sanitizedSetReading($reading, $value);
+			readingsBulkUpdate($hash, $k, $newReadings->{$k});
+			push @newReadings, $k;
 		};
-		if (keys %{$newReadings}) {
-			my @newReadings;
-			my @oldReadings = split ',', ReadingsVal($name, '.computedReadings', '');
-			readingsBeginUpdate($hash);
-			foreach my $k (keys %{$newReadings}) {
-				#sanitizedSetReading($reading, $value);
-				readingsBulkUpdate($hash, $k, $newReadings->{$k});
-				push @newReadings, $k;
+		# reading is not used anymore
+		foreach my $k (keys %{$oldReadings}) {
+			if ($oldReadings->{$k} == 0 and any { $_ eq $k} @oldReadings) {
+				readingsDelete($hash, $k);
+				DoTrigger($name, ".readingsDelete $k");
 			};
-			# reading is not used anymore
-			foreach my $k (keys %{$oldReadings}) {
-				readingsDelete($hash, $k) if ($oldReadings->{$k} == 0 and any { $_ eq $k} @oldReadings);
-			};
-			readingsBulkUpdate($hash, '.computedReadings', join ',', @newReadings);
-			readingsEndUpdate($hash, 1);
 		};
+		readingsBulkUpdate($hash, '.computedReadings', join ',', @newReadings);
+		readingsEndUpdate($hash, 1);
+	} else {
+		# in case all readings removed
+		for (split ',', ReadingsVal($name, '.computedReadings', '')) {
+			readingsDelete($hash, $_);
+			DoTrigger($name, ".readingsDelete $_");
+		};
+		DoTrigger($name, ".computedReadingsNone");
+		readingsSingleUpdate($hash, '.computedReadings', '', 1);
 	};
 };
 
@@ -517,15 +578,23 @@ sub JsonMod_StartTimer {
 	my ($hash) = @_;
 	my $name = $hash->{'NAME'};
 
+	return if (!$init_done);
+
 	my $cron = ${$hash->{'CONFIG'}->{'CRON'}};
 	my @t = localtime(Time::HiRes::time());
 	$t[4] += 1;
 	$t[5] += 1900;
-	my @r = $hash->{'CRON'}->next($cron, @t);
-	my $ts = timelocal(0, $r[0], $r[1], $r[2], $r[3] -1, $r[4] -1900);
-	$hash->{'NEXT'} = sprintf('%04d-%02d-%02d %02d:%02d:%02d', $r[4], $r[3], $r[2], $r[1], $r[0], 0);
-	JsonMod_Logger($hash, 4, 'next request: %04d.%02d.%02d %02d:%02d:%02d', $r[4], $r[3], $r[2], $r[1], $r[0], 0);
-	InternalTimer($ts, \&JsonMod_DoTimer, $hash);
+	my ($r, $err) = $hash->{'CRON'}->next(sprintf('%04d%02d%02d%02d%02d%02d', $t[5], $t[4], $t[3], $t[2], $t[1], $t[0]));
+	if ($err) {
+		$hash->{'NEXT'} = sprintf('NEVER (%s)', $err);
+		JsonMod_Logger($hash, 2, 'cron returned error: %s', $err);
+	} else {
+		my @u = ($r =~ m/([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})/);
+		my $ts = timelocal($u[5], $u[4], $u[3], $u[2], $u[1] -1, $u[0] -1900);
+		$hash->{'NEXT'} = sprintf('%04d-%02d-%02d %02d:%02d:%02d', @u);
+		JsonMod_Logger($hash, 4, 'next request: %04d.%02d.%02d %02d:%02d:%02d', @u);
+		InternalTimer($ts, \&JsonMod_DoTimer, $hash);
+	}
 	return;
 };
 
@@ -555,6 +624,109 @@ sub JsonMod_ApiRequest {
 	return if ($hash->{'CONFIG'}->{'IN_REQUEST'});
 	$hash->{'CONFIG'}->{'IN_REQUEST'} = 1;
 
+	my $source = $hash->{'CONFIG'}->{'SOURCE'};
+
+	# abs: file:/// or file:/
+	# rel: file:
+	# non-comform file:// -> rel file:
+	if ($source =~ m/^file:[\/]{2}(.+)|^file:(.+)/) {
+		$hash->{'CONFIG'}->{'IN_REQUEST'} = 0;
+		$hash->{'API_LAST_RES'} = Time::HiRes::time();
+		
+		my $filename = $1//$2;
+		# say "filename: $filename";
+		if (-e $filename) {
+			my $data;
+			open(my $fh, '<', $filename) or do {
+				$hash->{'SOURCE'} = sprintf('%s (%s)', $filename,  (stat $filename)[7]);
+				$hash->{'API_LAST_MSG'} = $!;
+				return;
+			};
+			{
+				local $/;
+				$data = <$fh>;
+			};
+			close($fh);
+			my $json = JsonMod::JSON::StreamReader->new()->parse($data);
+			JsonMod_DoReadings($hash, $json);
+			$hash->{'SOURCE'} = sprintf('%s (%s)', $filename,  (stat $filename)[7]);
+			$hash->{'API_LAST_MSG'} = 200;
+			return;
+		} else {
+			$hash->{'SOURCE'} = sprintf('%s', $filename);
+			$hash->{'API_LAST_MSG'} = 404;
+			return;
+		};
+	};
+
+	# system: e.g. system://curl https://www.google.de
+	# must return valid json via pipe
+	if ($source =~ m/^system:\/\/(.+)/) {
+		my $cmd = $1;
+		my ($wtr, $rdr);  # pipes r+w
+		my $err = gensym();  # err
+
+		my $pid = open3($wtr, $rdr, $err, $cmd);
+		my $name = "JsonMod-System-$hash->{NAME}";
+
+		my ($data, $error);
+
+		my $select_rdr = {
+			FD => fileno($rdr),
+			NAME => $hash->{NAME}, # required in case fhem.pl executes delete
+			directReadFn => sub {
+				my $r = @_;
+				my $res;
+        		my $len = sysread $rdr, $res, 8192;
+				if ($len == 0) {
+					# reap zombie and retrieve exit status
+    				waitpid( $pid, 0 );
+    				my $child_exit_status = $?;
+					# my $child_exit_status = $? >> 8;
+					delete $selectlist{$name};
+					# delete $selectlist{$name.'-err'};
+					my $param = {
+						hash => $hash,
+						cron =>	$hash->{'CONFIG'}->{'CRON'},
+						code => $child_exit_status,
+					};
+					return JsonMod_ApiResponse($param, $error, $data);
+				} else {
+					$data .= $res;
+				}
+			}
+		};
+		$selectlist{$name} = $select_rdr;
+
+		# my $select_err = {
+		# 	FD => fileno($err),
+		# 	directReadFn => sub {
+		# 		my $r = @_;
+		# 		my $res;
+        # 		my $len = sysread $err, $res, 8192;
+		# 		# EOF
+		# 		if ($len == 0) {
+		# 			# reap zombie and retrieve exit status
+    	# 			waitpid( $pid, 0 );
+    	# 			my $child_exit_status = $?;
+		# 			# my $child_exit_status = $? >> 8;
+		# 			delete $selectlist{$name.'-rdr'};
+		# 			delete $selectlist{$name.'-err'};
+		# 			my $param = {
+		# 				hash => $hash,
+		# 				cron =>	$hash->{'CONFIG'}->{'CRON'},
+		# 				code => $child_exit_status,
+		# 			};
+		# 			JsonMod_ApiResponse($param, $e, $data);
+		# 		} else {
+		# 			$e .= $res;
+		# 		}
+		# 	}
+		# };
+		# $selectlist{$name.'-err'} = $select_err;
+		return;
+	}
+
 	my $param = {
 		'hash'		=>		$hash,
 		'cron'		=>		$hash->{'CONFIG'}->{'CRON'},
@@ -562,7 +734,6 @@ sub JsonMod_ApiRequest {
 	};
 
 	my @sec;
-	my $source = $hash->{'CONFIG'}->{'SOURCE'};
 	# fill in SECRET if available
 	$source =~ s/(\[.+?\])/(exists($hash->{'CONFIG'}->{'SECRET'}->{substr($1,1,length($1)-2)}) and push @sec, $hash->{'CONFIG'}->{'SECRET'}->{substr($1,1,length($1)-2)})?${$hash->{'CONFIG'}->{'SECRET'}->{substr($1,1,length($1)-2)}}:$1/eg and 
 		$param->{'hideurl'} = 1;
@@ -601,13 +772,14 @@ sub JsonMod_ApiResponse {
 	};
 
 	$hash->{'SOURCE'} = sprintf('%s (%s)', $url, $param->{'code'} //= '');
-	$hash->{'API__LAST_MSG'} = $param->{'code'} //= 'failed';
+	$hash->{'API_LAST_MSG'} = $param->{'code'} //= 'failed';
 
-	my sub doError {
+	# my sub doError {
+	local *doError = sub {
 		my ($msg) = @_;
-		$hash->{'API__LAST_MSG'} = $msg;
+		$hash->{'API_LAST_MSG'} = $msg;
 		my $next = Time::HiRes::time() + 600;
-		#$hash->{'API__NEXT_REQ'} = $next;
+		#$hash->{'API_NEXT_REQ'} = $next;
 		return InternalTimer($next, \&JsonMod_ApiRequest, $hash);
 	};
 
@@ -617,7 +789,7 @@ sub JsonMod_ApiResponse {
 	};
 
 	my ($content, $encoding);
-	foreach my $header (split /\r\n/, $param->{'httpheader'}) {
+	foreach my $header (split /\r\n/, $param->{'httpheader'} //= '') {
 		last if (($content, $encoding) = $header =~ m/^Content-Type:\s([^;]+).*charset=(.+)/);
 	};
 
@@ -647,14 +819,19 @@ sub JsonMod_ApiResponse {
 		$data = $1;
 	};
 
+	JsonMod_Logger($hash, 5, 'start json decoding');
 	my $rs = JsonMod::JSON::StreamReader->new()->parse($data);
 	if (not $rs or ((ref($rs) ne 'HASH') and ref($rs) ne 'ARRAY')) {
 		return doError('invalid server response');
 	};
+	JsonMod_Logger($hash, 5, 'finished json decoding');
 
+	#use Memory::Usage;
 	#my $mu = Memory::Usage->new();
 	#$mu->record('before');
+	JsonMod_Logger($hash, 5, 'start do readings');
 	JsonMod_DoReadings($hash, $rs);
+	JsonMod_Logger($hash, 5, 'finished do readings');
 	#$mu->record('after');
 	#$mu->dump();
 
@@ -690,9 +867,9 @@ use B;
 my ($escape, $reverse);
 
 BEGIN {
-	eval "use JSON::XS;1;" or do {
+	eval "use Cpanel::JSON::XS;1;" or do {
 		if (not $main::_JSON_PP_WARN) {
-			main::Log3 (undef, 3, sprintf('json [%s] is PP. Consider installing JSON::XS', __PACKAGE__));
+			main::Log3 (undef, 3, sprintf('json [%s] is pure perl. Consider installing Cpanel::JSON::XS', __PACKAGE__));
 			$main::_JSON_PP_WARN = 1;
 		};			
 	};
@@ -729,8 +906,8 @@ sub parse {
 	my ($self, $data) = @_;
 	my $stream;
 
-	# use JSON::XS if available
-	my $xs = eval 'JSON::XS::encoode_json($data)';
+	# use Cpanel::JSON::XS if available
+	my $xs = eval 'Cpanel::JSON::XS::encode_json($data)';
 	return $xs if ($xs);
 
 	if (my $ref = ref $data) {
@@ -786,18 +963,29 @@ use warnings;
 use utf8;
 
 BEGIN {
-	eval "use JSON::XS;1;" or do {
+	eval "use Cpanel::JSON::XS;1;" or do {
 		if (not $main::_JSON_PP_WARN) {
-			main::Log3 (undef, 3, sprintf('json [%s] is PP. Consider installing JSON::XS', __PACKAGE__));
+			main::Log3 (undef, 3, sprintf('json [%s] is pure perl. Consider installing Cpanel::JSON::XS', __PACKAGE__));
 			$main::_JSON_PP_WARN = 1;
 		};			
 	};
 };
 
-
 sub new {
 	my $class = shift;
 	my $self = {};
+	$self->{'ESCAPE'} = {
+		'"'     => '"',
+		'\\'    => '\\',
+		'/'     => '/',
+		'b'     => "\x08",
+		'f'     => "\x0c",
+		'n'     => "\x0a",
+		'r'     => "\x0d",
+		't'     => "\x09",
+		'u2028' => "\x{2028}",
+		'u2029' => "\x{2029}"
+	};
 	bless $self, $class;
 	return $self;
 };
@@ -950,11 +1138,11 @@ sub parse {
 		return $@;
 	};
 
-	# use JSON::XS if available
-	my $xs = eval 'JSON::XS::decode_json($in)';
+	# use Cpanel::JSON::XS if available
+	my $xs = eval 'Cpanel::JSON::XS::decode_json($in)';
 	return $xs if ($xs);
 
-	my $err = _decode(\my $value, $in, 1);
+	my $err = _decode(\my $value, $in, 0);
 	return defined $err ? $err : $value;
 };
 
@@ -996,88 +1184,6 @@ sub DESTROY {
 	$self->{'root'}->release() if defined($self->{'root'});
 	delete $self->{'root'};	
 };
-
-# package JsonMod::Unicode::Node;
-
-# use strict;
-# use warnings;
-# use utf8;
-# use Scalar::Util qw( blessed );
-
-# sub new {
-# 	my ($class, $o, $direction, $encoding) = @_;
-# 	# special case for JSON 'true' / 'false'
-# 	$o = "$o" if (blessed($o) and blessed($o) eq 'JSON::PP::Boolean');
-# 	my $t = ref($o);
-# 	if ($t eq 'HASH') {
-# 		return JsonMod::Unicode::HNode->new($o, $direction, $encoding);
-# 	} elsif ($t eq 'ARRAY') {
-# 		return JsonMod::Unicode::ANode->new($o, $direction, $encoding);
-# 	} elsif ($t eq '') {
-# 		return JsonMod::Unicode::VNode->new($o, $direction, $encoding);
-# 	};
-# };
-
-# package JsonMod::Unicode::HNode;
-
-# use strict;
-# use warnings;
-# use utf8;
-# use parent -norequire, qw( JsonMod::Unicode::Node );
-
-# sub new {
-# 	my ($class, $o, $direction, $encoding) = @_;
-# 	my $self = bless {}, $class;
-# 	$encoding //= 'UTF-8';
-# 	my $converter = Encode::find_encoding($encoding);
-# 	my $result = {};
-# 	my $dec;
-# 	foreach my $k (keys %{$o}) {
-# 		$dec = $converter->decode($k) if (not $direction and ref($converter)); # outside to Unicode
-# 		$dec = $converter->encode($k) if ($direction and ref($converter)); # Unicode to outside
-# 		$dec //= $k; # in case of en- decoding failure
-# 		$result->{$dec} = JsonMod::Unicode::Node->new($o->{$k}, $direction, $encoding);
-# 	};
-# 	return $result;
-# };
-
-# package JsonMod::Unicode::ANode;
-
-# use strict;
-# use warnings;
-# use utf8;
-# use parent -norequire, qw( JsonMod::Unicode::Node );
-
-# sub new {
-# 	my ($class, $o, $direction, $encoding) = @_;
-# 	my $self = bless {}, $class;
-# 	#$encoding //= 'UTF-8';
-# 	#my $converter = Encode::find_encoding($encoding);
-# 	my $result = [];
-# 	for my $i (0 .. scalar(@{$o}) -1) {
-# 		push @{$result}, JsonMod::Unicode::Node->new($o->[$i], $direction, $encoding);
-# 	};
-# 	return $result;
-# };
-
-# package JsonMod::Unicode::VNode;
-
-# use strict;
-# use warnings;
-# use utf8;
-# use parent -norequire, qw( JsonMod::Unicode::Node );
-
-# sub new {
-# 	my ($class, $o, $direction, $encoding) = @_;
-# 	my $self = bless {}, $class;
-# 	$encoding //= 'UTF-8';
-# 	my $converter = Encode::find_encoding($encoding);
-# 	printf "value %s %s\n", $o, $converter;
-# 	$o = $converter->decode($o) if (not $direction and ref($converter)); # outside to Unicode
-# 	$o = $converter->encode($o) if ($direction and ref($converter)); # Unicode to outside
-# 	printf "value2 %s %s\n", $o, length($o);
-# 	return $o;
-# };
 
 package JsonMod::JSON::Path::Node;
 
@@ -1254,8 +1360,10 @@ sub get {
 		foreach my $child (@childList) {
 			$self->getSingle($child, $property, $deep, $path, $normalized, $query);
 		};
-	} elsif ($property =~ /^\d+$/) {
+	} elsif ($property =~ m/^\d+$/) {
 		$self->getSingle($property, $property, $deep, $path, $normalized, $query);
+	} elsif ($property =~ m/^\s*\d+\s*,\s*\d+\s*(?:,\s*\d+\s*)*$/) {	# [n,n(,n)]
+
 	} else {
 		die ("JsonPath filter property $property failure");
 	};
@@ -1352,7 +1460,6 @@ sub getResultNormalized {
 	foreach my $e (@{$self->{'nList'}}) {
 		print "$e\n";
 	};
-
 };
 
 sub getResultValue {
@@ -1398,25 +1505,73 @@ sub get {
 	my $filter;
 	$filter = extract_codeblock($filterText, '()', '\?') 
 		and $filter = substr($filter, 1, (length($filter)-2));
+	die('wrong syntax for JsonPath filter: '.$filterText) unless length($filter);
 
 	my ($delim, $list, $idx) = (0, 0, 0);
 	my @parts;
-	foreach my $c (split '', $filter) {
-		$delim ^= 1 if (ord($c) == ord(q{'}));
-		$list += 1 if (ord($c) == ord('[') and $delim == 0);
-		$list -= 1 if (ord($c) == ord(']') and $delim == 0);
+	# foreach my $c (split '', $filter) {
+	# 	$delim ^= 1 if (ord($c) == ord(q{'}));
+	# 	$list += 1 if (ord($c) == ord('[') and $delim == 0);
+	# 	$list -= 1 if (ord($c) == ord(']') and $delim == 0);
+	# 	die('unbalanced square brackets in JsonPath filter: '.$filterText) if ($list < 0);
+	# 	$idx++ if (any {$c eq $_)} (' ', '')) and $delim == 0 and $list == 0);
+	# 	$parts[$idx] .= $c if (ord($c) != ord(' ') or $list != 0 or $delim == 1);
+	# };
+
+	my @operators = (
+		'\s*==\s*',
+		'\s*!=\s*',
+		'\s*<=\s*',
+		'\s*<\s*',
+		'\s*>=\s*',
+		'\s*>\s*',
+		'\s+in\s+',
+		'\s*=~\s*',
+	);
+	my $rex = join('|', @operators);
+	$rex = qr/^($rex)/;
+
+	while (defined(my $c = substr($filter, 0, 1))) {
+		if ($c eq q{'}) {
+			$delim ^= 1;
+			#substr($filter, 0, 1, '');
+			#$c = '';
+		};
+		if ($c eq '[' and $delim == 0) {
+			$list += 1;
+			#substr($filter, 0, 1, '');
+			#$c = '';
+		};
+		if ($c eq ']' and $delim == 0) {
+			$list -= 1;
+			#substr($filter, 0, 1, '');
+			#$c = '';
+		};
 		die('unbalanced square brackets in JsonPath filter: '.$filterText) if ($list < 0);
-		$idx++ if (ord($c) == ord(' ') and $delim == 0 and $list == 0);
-		$parts[$idx] .= $c if (ord($c) != ord(' ') or $list != 0 or $delim == 1);
+		#next unless (length($c));
+
+		if ($delim == 0 and $list == 0 and $filter =~ m/$rex/sip) {
+			$parts[2] = substr($filter, length($1));
+			$parts[1] = $1;
+			$parts[1] =~ s/^\s+|\s+$//g;
+			last;
+		};
+
+		$parts[0] .= substr($filter, 0, 1, '');
+
 	};
 	die('unbalanced square brackets in JsonPath filter: '.$filterText) if ($list != 0);
-	return $self->filter($parts[0], $parts[1], $parts[2]);
+	die('wrong filter expression in JsonPath filter: '.$filterText) if (scalar(@parts) != 3 
+		or not defined($parts[0])
+		or not defined($parts[1])
+		or not defined($parts[2]));
 
+	return $self->filter($parts[0], $parts[1], $parts[2]);
 };
 
 sub filter {
 	my ($self, $left, $operater, $right) = @_;
-	
+
 	my $result = [];
 
 	# fn ref as test for: numeric, string, list
@@ -1429,11 +1584,13 @@ sub filter {
 		'>'			=>	[sub {$a > $b}, sub {$a gt $b}, undef],
 		'>='		=>	[sub {$a >= $b}, sub {$a ge $b}, undef],
 		'in'		=>	[undef, undef, sub {any {$_ eq $a} @b}],
+		'=~'		=>	[undef, sub {$a =~ m/$b/}, undef],
 	};
 
 	# todo: test if right is filter!!!
 
 	# right type == numeric, string, list / operater as string / function pointer
+	#printf("l:[%s], o:[%s], r:[%s]\n", $left, $operater, $right);
 	my ($fnt, $fn);
 	($right =~ m/([+-]?\d+(?:[,.]\d+)?)/ and $fnt = 0) or 	# numeric
 		($right =~ m/^(?:['](.*)['])$/ and $fnt = 1) or 						# string
@@ -1444,7 +1601,7 @@ sub filter {
 		# run query
 		my $filterpath = $left;
 		my $queryNode;
-		if ($filterpath =~ s/^([\$\@])\./[*]/) {
+		if ($filterpath =~ s/^([\$\@])/[*]/) {
 			$queryNode = $self->{'node'} if ($1 eq '@');
 			$queryNode = $self->{'node'}->{'root'} if ($1 eq '$');
 		} else {
@@ -1489,264 +1646,10 @@ sub DESTROY {
 	delete $self->{'node'};
 };
 
-package JsonMod::Cron;
-
-use strict;
-use warnings;
-use utf8;
-use Time::Local qw ( timelocal );
-
-no warnings qw( experimental::lexical_subs );
-
-# static and helper
-sub normalizeTime {
-	my ($m, $h, $d) = @_;
-	$d //= 0;
-	if ($m > 59) { $h += int($m / 60); $m %= 60; };
-	if ($h > 23) { $d += int($h / 24); $h %= 24; };
-	return ($m, $h, $d);
-};
-
-sub normalizeDate {
-	my ($d, $m, $y, $o) = @_;
-	$o //= 0;
-	my $time = timelocal(0, 0, 12, $d, $m -1, $y -1900);
-	$time += $o * 86400;
-	my @t = localtime($time);
-	# plus DST, wday (SUN=0..6), yday (0..364|5)
-	return ($t[3], $t[4] +1, $t[5] +1900, $t[8], $t[6], $t[7]); 
-};
-
-# class
-sub new {
-	my ($class) = @_;
-	my $self = {};
-	
-	bless $self, $class;
-	return $self;
-};
-
-sub setCron {
-	my ($self, $cron) = @_;
-	@{$self->{'CRONLIST'}} = split / /, $cron //= '';
-	return if (scalar @{$self->{'CRONLIST'}} != 5);
-
-};
-
-sub parseMinuteEntry {
-	my ($self, $in, $now) = @_;
-	my ($res, $start, $stop, $step);
-
-	($step) = ($in =~ m/\/([0-9]|[0-5][0-9])$/);
-	($start, $stop) = ($in =~ m/^([*]|[0-9]|[0-5][0-9])(?:-([0-9]|[0-5][0-9]))?(?:\/(?:[0-9]|[0-5][0-9]))?$/);
-	return if (not defined($start) or ($start eq '*' and defined($stop))); # syntax error
-
-	$stop = (defined($step) or ($start eq '*'))?59:$start if (not defined($stop));
-	$start = 0 if $start eq '*';
-	return if ($start > $stop); # syntax error
-	return $start if ($now  < $start); # literal start
-
-	$res = $step //= 1;
-	$res = $res - (((($now - $start) % 60) + $res) % $res);
-	$res = $now + $res;
-	
-	return $start + 60 if ($res > $stop); # carry over
-	return $res; # regular next
-};
-
-sub parseHourEntry {
-	my ($self, $in, $now) = @_;
-	my ($res, $start, $stop, $step);
-
-	($step) = ($in =~ m/\/([0-9]|[0,1][0-9]|2[0-3])$/);
-	($start, $stop) = ($in =~ m/^([*]|[0-9]|[0,1][0-9]|2[0-3])(?:-([0-9]|[0,1][0-9]|2[0-3]))?(?:\/(?:[*]|[0-9]|[0,1][0-9]|2[0-3]))?$/);
-	return if (not defined($start) or ($start eq '*' and defined($stop))); # syntax error
-
-	$stop = (defined($step) or ($start eq '*'))?23:$start if (not defined($stop));
-	$start = 0 if $start eq '*';
-	return if ($start > $stop); # syntax error
-	return $start if ($now  < $start); # literal start
-	
-	$res = $step //= 1;
-	$res = ($now - $start) % $res;
-	
-	return $now if ($res == 0) and ($now <= $stop); # current hour
-	$res = $now + $step - $res;
-	return $start + 24 if ($res > $stop); # carry over
-	return $res; # regular next
-};
-
-sub parseDateEntry {
-	my ($self, $in, $now) = @_;
-	my ($res, $start, $stop, $step);
-
-	($step) = ($in =~ m/\/([0-9]|[0-2][0-9]|3[0,1])$/);
-	($start, $stop) = ($in =~ m/^([*]|[0-9]|[0-2][0-9]|3[0,1])(?:-([0-9]|[0-2][0-9]|3[0,1]))?(?:\/(?:[*]|[0-9]|[0-2][0-9]|3[0,1]))?$/);
-	return if (not defined($start) or ($start eq '*' and defined($stop))); # syntax error
-	
-	$stop = (defined($step) or ($start eq '*'))?31:$start if (not defined($stop));
-	$start = 1 if $start eq '*';
-	return if ($start > $stop); # syntax error
-	return $start if ($now  < $start); # literal start
-	
-	$res = $step //= 1;
-	$res = ($now - $start) % $res;
-
-	return $now if ($res == 0) and ($now <= $stop); # current
-	$res = $now + $step - $res;
-	return $start + 32 if ($res > $stop); # carry over
-	return $res; # regular next
-};
-
-sub next {
-	my ($self, $cron, @t) = @_;
-
-	my $inDay = sprintf('%04d%02d%02d', $t[5], $t[4], $t[3]);
-	my ($cronMin, $cronHour, $cronDay, $cronMonth, $cronWeekDay) = split / /, $cron;
-	my ($time, $dst, $weekday);
-
-	# m h d(carry)
-	$time = $self->nextTime($t[1], $t[2], $cronMin, $cronHour);
-	return if (not $time);
-	($t[3], $t[4], $t[5], $dst, $weekday) = normalizeDate($t[3], $t[4], $t[5], $time->[2]);
-	my $calcDay = sprintf('%04d%02d%02d', $t[5], $t[4], $t[3]);
-
-	# date unchanged and known
-	if ($calcDay eq $inDay) {
-		return ($time->[0], $time->[1], $t[3], $t[4], $t[5], $dst);
-	};
-
-	# m h d(carry)
-	$time = $self->nextTime(0, 0, $cronMin, $cronHour);
-	#($t[3], $t[4], $t[5], $dst, $weekday) = normalizeDate($t[3], $t[4], $t[5], $time->[2]);
-
-	# yyyy mm dd
-	my $date = $self->nextDate($t[3], $t[4], $t[5], $cronDay, $cronMonth);
-	return if (not $date);
-	($t[3], $t[4], $t[5], $dst, $weekday) = normalizeDate($date->[2], $date->[1], $date->[0]);
-
-	return ($time->[0], $time->[1], $t[3], $t[4], $t[5], $dst);
-};
-
-# test if valid cron expression
-sub validate {
-	my ($self, $cron) = @_;
-	my ($cronMin, $cronHour, $cronDay, $cronMonth, $cronWeekDay) = split / /, $cron;
-	my $time = $self->nextTime(0, 0, $cronMin, $cronHour);
-	my $date = $self->nextDate(2020, 1, 1, $cronDay, $cronMonth);
-	if (defined($time) and defined($date)) {
-		return 1;
-	} else {
-		return;
-	};
-};
-
-# min = time: actual minute
-# hour = time: actual hour
-sub nextTime {
-	my ($self, $min, $hour, $cronMin, $cronHour) = @_;
-
-	my $calcMin;
-	my $calcHour;
-	my $calcDay = 0;
-
-	foreach my $cronMinEntry (split /,/, $cronMin) {
-		my $e = $self->parseMinuteEntry($cronMinEntry, $min);
-		return if not defined($e); # syntax error
-		if ((not defined($calcMin) and defined($e)) or ($e < $calcMin)) {
-			$calcMin = $e;
-		};
-	};
-	($calcMin, $hour, $calcDay) = normalizeTime($calcMin, $hour, $calcDay);
-
-	foreach my $cronHourEntry (split /,/, $cronHour) {
-		my $e = $self->parseHourEntry($cronHourEntry, $hour);
-		return if not defined($e); # syntax error
-		if ((not defined($calcHour) and defined($e)) or ($e < $calcHour)) {
-			$calcHour = $e;
-		};
-	};
-	my (@time) = normalizeTime($calcMin, $calcHour, $calcDay);
-	return \@time;
-
-};
-
-sub nextDate {
-	my ($self, $day, $month, $year, $cronDay, $cronMonth) = @_;
-
-	my $dates = $self->listDates($day, $month, $year, $cronDay, $cronMonth);
-	my $result;
-	foreach (@{$dates}) {
-		if ((not defined($result) and defined($_)) or ($_ and ($_ < $result))) {
-			$result = $_;
-		};
-	};
-	return if (not defined($result));
-	my (@date) = ($result =~ m/^(\d{4})(\d{2})(\d{2})$/);
-	return \@date;
-};
-
-sub listDates {
-	my ($self, $day, $month, $year, $cronDay, $cronMonth) = @_;
-	my @result;
-
-	#return [] if ($self->{R}++ > 25);
-
-	my sub daysOfMonth {
-		my ($m, $y) = @_;
-		my (@d) = (0,31,28,31,30,31,30,31,31,30,31,30,31);
-		# leapyear
-		$d[2] = 29 if (((($y % 4) == 0) and (($y % 100) != 0)) or (($y % 400) == 0));
-		return ($d[$m]);
-	};
-
-	foreach my $cronDayEntry (split /,/, $cronDay) {
-		foreach my $cronMonthEntry (split /,/, $cronMonth) {
-			# impossible cron would recurse forever: [31 2 * * *] / [31 9/2 * * *]
-			my $invalid = 1;
-			if ((my ($fuseDay) = ($cronDayEntry =~ m/^(\d{1,2})/)) and 
-				(my ($fuseMonth, $fuseMonthStep) = ($cronMonthEntry =~ m/^(\d{1,2})(?:\/(\d{1,2}))*/))) {
-				#print "FUSE $fuseDay, $fuseMonth, $fuseMonthStep\n";
-				for (my $i = $fuseMonth; $i <= 12 and $invalid; $i += $fuseMonthStep //= 12) {
-					$invalid = 0 if (daysOfMonth($fuseMonth, 2000) >= $fuseDay); # 2000 is leapyear
-				};
-				if ($invalid) {
-					push @result, ();
-					next;
-				};
-			};
-			my $calcDay = $self->parseDateEntry($cronDayEntry, $day);
-			my $calcMonth = $self->parseDateEntry($cronMonthEntry, $month);
-			my $calcYear = $year;
-			#printf "Test: D:%s, M:%s against %s-%s -> %s-%s-%s\n", $cronDayEntry, $cronMonthEntry, $day, $month, $calcDay, $calcMonth, $calcYear;
-			if (defined($calcDay) and defined($calcMonth)) {
-				#$doy = isValid($testM, $testMd);
-				if (($calcDay == $day) and ($calcMonth == $month)) {
-					#printf "RETURN: D:%s, M:%s against %s-%s-%s -> %s-%s-%s\n", $cronDayEntry, $cronMonthEntry, $day, $month, $year, $calcDay, $calcMonth, $calcYear;
-					push @result, sprintf('%04d%02d%02d', $calcYear, $calcMonth, $calcDay);
-				} else {
-					if ($calcMonth > 12) {
-						$calcMonth -= ($calcMonth == 13)?12:32;
-						$calcYear++;
-					};
-					if ($calcDay > daysOfMonth($calcMonth, $calcYear)) {
-						$calcMonth++ if ($calcMonth == $month);
-						$calcDay = 1;
-					};
-					push @result, @{ $self->listDates($calcDay, $calcMonth, $calcYear, $cronDayEntry, $cronMonthEntry) };
-				};
-			} else {
-				return []; # syntax error
-			};
-		};
-	};
-	return \@result;
-};
-
 1;
 
 =pod
-=item helper
+=item device
 =item summary 		provides a generic way to parse and display json source
 =item summary_DE	JSON Quellen parsen und und verwenden
 =begin html
@@ -1766,13 +1669,29 @@ sub listDates {
 	<ul>
     	<code>define &lt;name&gt; JsonMod &lt;http[s]:example.com:/somepath/somefile.json&gt;</code>
     	<br><br>
-    	defines the device and set the source
+    	defines the device and set the source (file:|http:|https:|system://).<br>
+		<br>files example:
+		<ul>
+		<li>file:[//]/path/file (absolute)</li>
+		<li>file:[//]path/file (realtive)</li>
+		</ul>
+		<br>system example:
+		<ul>
+		<li>system://curl -X POST "https://httpbin.org/anything" -H "Accept: application/json" -H "Content-Type: application/json" -d '{"login":"my_login","password":"my_password"}'</li>
+		</ul>
 	</ul>
 	<br>
 
 	<a name="JsonModset"></a>
 	<b>Set</b>
 	<ul>
+		<li>reread
+			<ul>
+				<code>set &lt;name&gt; reread</code>
+				<br><br>
+				Trigger a load and processing of the json source manually.
+			</ul>
+		</li>
 		<li>secret
 			<ul>
 				<code>set &lt;name&gt; secret &lt;identifier&gt; &lt;value&gt;</code>
@@ -1798,10 +1717,20 @@ sub listDates {
 	<ul>
 		<a name="interval"></a>
 		<li>interval<br>
-			<code>set &lt;name&gt; interval &lt;*/15 * * * *&gt;</code><br>
+			<code>attr &lt;name&gt; interval &lt;*/15 * * * *&gt;</code><br>
 			utilize a cron expression to define the interval at which the source file will be loaded.
 			Default is one hour. 			
 		</li>
+		<a name="onEmptyResponse"></a>
+		# <li>onEmptyResponse<br>
+		# 	Controls the module behaviour if an empty response is received.
+		# 	<ul>
+		# 		<li>
+		# 			not set or empty (default):<br>
+		# 			the device will be updated to no computed readings and an event is triggered ()
+		# 		</li>
+		# 	</ul>
+		# </li>
 		<a name="readingList"></a>
 		<li>readingList<br>
 			Specifies the access to json elements and their representation as well as formatting as reading.
@@ -1823,25 +1752,50 @@ sub listDates {
 					Typically, this is based on the index of the array element and / or a property of the addressed objects.
 				</li>
 				<li>
-					jsonPath('$.');<br>
+					complete();<br>
+					Automatically creates readings for the entire JSON source. The readings ​​are named after their JSON path.
+				</li>
+				<li>
+					jsonPath('$.')<br>
 					Creates a jsonpath expression as part of a 'single' or 'multi' expression.
 				</li>
 				<li>
-					jsonPathf('$.', 'format');<br>
-					Creates a jsonpath expression as part of a 'single' expression and format its result. 
-					The syntax of the 'format' expression Mimics the syntax of printf.
+					jsonPathf('$.', 'format')<br>
+					Creates a jsonpath expression as part of a 'single' expression and format its result.
+					The syntax of the expression 'format' match to the syntax of printf.
 				</li>
 				<li>
-					concat('expression', 'expression', ...);
+					property('expression')<br>
+					Is used to access properties of the json objects within a multi() statement.
+				</li>
+				<li>
+					propertyf('expression', 'format')<br>
+					Is used to access properties of the json objects within a multi() statement and format its result.
+					The syntax of the expression 'format' match to the syntax of printf.
+				</li>
+				<li>
+					concat('expression', 'expression', ...)<br>
 					Concatenates the expressions to one result. 
-					Can be used in a 'multi ()' statement to create a reading name from one or more object properties or the index.
+					Can be used in a 'multi()' statement to create a reading name from one or more object properties or the index.
 				</li>
 				<li>
-					index();
+					count|count()<br>
 					Contains the index number of the current list element. 
-					Within 'multi ()' instructions for generating reading names using 'connect ()' are used.
+					Within 'multi()' instructions for generating reading names, eg by using concat('item_', count) or similar.
 				</li>
-
+				<li>
+					node|node()<br>
+					Contains the normalized path expression of the current node. Required to access the keys of an object when iterating over a keys/value structure of an object. 
+					Within 'multi()' instructions eg for generating reading names from object keys.
+				</li>
+			</ul>
+			<br>within the expresiions single() and multi(), additional perl expressions may be used if required.<br><br>
+			Since the reading names are typically generated from the content of the JSON, it is the responsibility of the user to ensure that the fhem naming conventions are followed. JsonMod will make the following adjustments to the readings name if necessary and possible:
+			<ul>
+			<li>All non-ACSII characters are converted to an ASCII equivalent if possible</li>
+			<li>All forbidden characters are removed from the name</li>
+			<li>if a conversion fails, the name is set as "__CONVERSATION_ERROR__"</li>
+			<li>in case of multiple same reading names, the last one overwrites the previous one</li>
 			</ul>
 		</li>
 	</ul>

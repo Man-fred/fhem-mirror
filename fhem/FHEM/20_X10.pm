@@ -23,24 +23,24 @@
 #
 ################################################################
 # $Id$
-
+# 2023-12-19 mgmino
 
 #
 # Internals introduced in this module:
-#	MODEL	distinguish between different X10 device types
-#	BRIGHT	brightness level of dimmer devices in units of microdims (0..210)
+#   MODEL   distinguish between different X10 device types
+#   BRIGHT  brightness level of dimmer devices in units of microdims (0..210)
 #
 # Readings introduced in this module:
-#	state	function and argument of last command
-#	onoff	inherited from switch interface (0= on, 1= off)
-#	dimmer	inherited from dimmer interface (0= dark, 100= bright)
+#   state   function and argument of last command
+#   onoff   inherited from switch interface (0= on, 1= off)
+#   dimmer  inherited from dimmer interface (0= dark, 100= bright)
 #
 # Setters introduced in this module:
-#	on	inherited from switch interface
-#	off	inherited from switch interface
-#	dimmer  inherited from dimmer interface (0= dark, 100= bright)
-#	dimdown	inherited from dimmer interface
-#	dimup	inherited from dimmer interface
+#   on      inherited from switch interface
+#   off     inherited from switch interface
+#   dimmer  inherited from dimmer interface (0= dark, 100= bright)
+#   dimdown inherited from dimmer interface
+#   dimup   inherited from dimmer interface
 #
 
 package main;
@@ -93,17 +93,21 @@ my %functions_set = ( "on" => 0,
                       "off" => 0,
                       "dimup" => 1,
                       "dimdown" => 1,
-		                  "dimto" => 1,
-                      "on-till" => 1,
-            		      "on-for-timer" => 1,
+                      "dimto" => 1,
                       "all_units_off" => 0,
                       "all_units_on" => 0,
                       "all_lights_off" => 0,
                       "all_lights_on" => 0,
+                      'off-till' => 10,
+                      'on-till' => 11,
+                      'off-till-overnight' => 20,
+                      'on-till-overnight' => 21,
+                      'off-for-timer' => 30,
+                      'on-for-timer' => 31,
                     );
 
 my %models = (
-    lm12	=> 'dimmer',
+    lm12        => 'dimmer',
     lm15        => 'switch',
     am12        => 'switch',
     tm13        => 'switch',
@@ -135,7 +139,8 @@ X10_Initialize($)
   $hash->{UndefFn}   = "X10_Undef";
   $hash->{ParseFn}   = "X10_Parse";
   $hash->{AttrList}  = "IODev do_not_notify:1,0 " .
-                       "dummy:1,0 showtime:1,0 model:lm12,lm15,am12,tm13";
+                       "dummy:1,0 showtime:1,0 model:lm12,lm15,am12,tm13 " .
+                       $readingFnAttributes;
 
 }
 
@@ -208,10 +213,15 @@ X10_StateMachine($$$$)
 
   $hash->{ONOFF}= $onoff;
   $hash->{BRIGHT}= $bright;
-  $hash->{READINGS}{onoff}{TIME}= $time;
-  $hash->{READINGS}{onoff}{VAL}= $onoff;
-  $hash->{READINGS}{dimmer}{TIME}= $time;
-  $hash->{READINGS}{dimmer}{VAL}= int(1000.0*$bright/210.0+0.5)/10.0;
+  #$hash->{READINGS}{onoff}{TIME}= $time;
+  #$hash->{READINGS}{onoff}{VAL}= $onoff;
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash,'onoff',$onoff,1,$time);
+  #$hash->{READINGS}{dimmer}{TIME}= $time;
+  #$hash->{READINGS}{dimmer}{VAL}= int(1000.0*$bright/210.0+0.5)/10.0;
+  readingsBulkUpdate($hash,'dimmer',int(1000.0*$bright/210.0+0.5)/10.0,1,$time);
+  readingsEndUpdate($hash,1);
+  return;
 }
 
 #############################
@@ -222,60 +232,6 @@ X10_LevelToDims($)
   my ($level)= @_;
   my $dim= int(22*$level/100.0+0.5);
   return $dim;
-}
-
-
-#############################
-sub
-X10_Do_On_Till($@)
-{
-  my ($hash, @a) = @_;
-  return "Timespec (HH:MM[:SS]) needed for the on-till command" if(@a != 3);
-
-  my ($err, $hr, $min, $sec, $fn) = GetTimeSpec($a[2]);
-  return $err if($err);
-
-  my @lt = localtime;
-  my $hms_till = sprintf("%02d:%02d:%02d", $hr, $min, $sec);
-  my $hms_now = sprintf("%02d:%02d:%02d", $lt[2], $lt[1], $lt[0]);
-  if($hms_now ge $hms_till) {
-    Log3 $hash, 4, "on-till: won't switch as now ($hms_now) is later than $hms_till";
-    return "";
-  }
-
-  if($modules{X10}{ldata}{$a[0]}) {
-    CommandDelete(undef, $a[0] . "_timer");
-    delete $modules{FS20}{ldata}{$a[0]};
-  }
-  $modules{X10}{ldata}{$a[0]} = "$hms_till";
-
-  my @b = ($a[0], "on");
-  X10_Set($hash, @b);
-  CommandDefine(undef, $hash->{NAME} . "_timer at $hms_till set $a[0] off");
-
-}
-#############################
-sub
-X10_Do_On_For_Timer($@)
-{
-  my ($hash, @a) = @_;
-  return "Timespec (HH:MM[:SS]) needed for the on-for-timer command" if(@a != 3);
-
-  my ($err, $hr, $min, $sec, $fn) = GetTimeSpec($a[2]);
-  return $err if($err);
-
-  my $hms_for_timer = sprintf("+%02d:%02d:%02d", $hr, $min, $sec);
-
-  if($modules{X10}{ldata}{$a[0]}) {
-    CommandDelete(undef, $a[0] . "_timer");
-    delete $modules{FS20}{ldata}{$a[0]};
-  }
-  $modules{X10}{ldata}{$a[0]} = "$hms_for_timer";
-
-  my @b = ($a[0], "on");
-  X10_Set($hash, @b);
-  CommandDefine(undef, $hash->{NAME} . "_timer at $hms_for_timer set $a[0] off");
-
 }
 
 ###################################
@@ -317,26 +273,55 @@ sub
 X10_Set($@)
 {
   my ($hash, @a) = @_;
-  my $ret = undef;
   my $na = int(@a);
-
-  # initialization and sanity checks
-  return "no set value specified" if($na < 2);
-
   my $name= $hash->{NAME};
   my $function= $a[1];
+
+  # initialization and sanity checks
+  return "$name $function -> no set value specified" if($na < 2);
+
   my $nrparams= $functions_set{$function};
-  return "Unknown argument $function, choose one of " .
-          join(" ", sort keys %functions_set) if(!defined($nrparams));
-  return "Wrong number of parameters"  if($na != 2+$nrparams);
+  return "$name $function -> Unknown argument, choose one of " .
+          join(' ', sort keys %functions_set) if(!defined($nrparams));
 
-  # special for on-till
-  return X10_Do_On_Till($hash, @a) if($function eq "on-till");
+  if ($nrparams > 9) { # -till or -for-timer
+	return "$name $function -> Timespec (HH:MM[:SS]) missing"  if($na != 3);
 
-  # special for on-for-timer
-  return X10_Do_On_For_Timer($hash, @a) if($function eq "on-for-timer");
+	my ($err, $hr, $min, $sec, $fn) = GetTimeSpec($a[2]);
+	my $hms_spec;
+	if($err) { # not a time spec
+	  if($a[2] =~ m/^\d+$/ and $nrparams > 21) { #if for-timer and natural number interpret as seconds
+		$hms_spec = sprintf("%02d:%02d:%02d", $a[2]/3600, $a[2]/60%60, $a[2]%60);
+	  } else {
+		return "$name $function $a[2] -> Not timespec HH:MM[:SS] or {perlcode}";
+	  }
+	} else {
+	  $hms_spec = sprintf("%02d:%02d:%02d", $hr, $min, $sec);
+	}
 
+	my @lt = localtime;
+	my $hms_now = sprintf("%02d:%02d:%02d", $lt[2], $lt[1], $lt[0]);
+	if($nrparams < 20 and $hms_now ge $hms_spec) { #only test for -till
+	  Log3 $hash, 4, "$name $function $hms_spec aborted -> before current time ($hms_now)";
+	  return undef;
+	}
 
+	if($modules{X10}{ldata}{$a[0]}) {
+		CommandDelete(undef, $a[0] . '_timer');
+		delete $modules{X10}{ldata}{$a[0]};
+	}
+	$modules{X10}{ldata}{$a[0]} = $hms_spec;
+
+	my $cond = $nrparams % 2 ? 'on' : 'off';
+	my @b = ($a[0], $cond);
+	X10_Set($hash, @b);
+	my $notCond = $nrparams % 2 ? 'off' : 'on';
+	my $forTimer = $nrparams > 21 ? '+' : ''; #only for-timer
+	CommandDefine(undef, "${name}_timer at $forTimer$hms_spec set $a[0] $notCond");
+	return undef;
+  }
+
+  return "$name $function -> Incorrect number of parameters"  if($na != 2+$nrparams);
 
   # argument evaluation
   my $model= $hash->{MODEL};
@@ -345,19 +330,19 @@ X10_Set($@)
   if($function =~ m/^dim/) {
     return "Cannot dim $name (model $model)" if($models{$model} ne "dimmer");
     my $arg= $a[2];
-    return "Wrong argument $arg, use 0..100" if($arg !~ m/^[0-9]{1,3}$/);
-    return "Wrong argument $arg, use 0..100" if($arg>100);
+    return "Incorrect argument $arg, use 0..100" if($arg !~ m/^[0-9]{1,3}$/);
+    return "Incorrect argument $arg, use 0..100" if($arg>100);
     if($function eq "dimto") {
       # translate dimmer command to dimup/dimdown command
       my $bright= 210;
       if(defined($hash->{BRIGHT})) { $bright= $hash->{BRIGHT} };
       $arg= $arg-100.0*$bright/210.0;
       if($arg> 0) {
-	$function= "dimup";
-	$dim= X10_LevelToDims($arg);
+        $function= "dimup";
+        $dim= X10_LevelToDims($arg);
       } else {
-	$function= "dimdown";
-	$dim= X10_LevelToDims(-$arg);
+        $function= "dimdown";
+        $dim= X10_LevelToDims(-$arg);
       }
     } else {
       $dim= X10_LevelToDims($arg);
@@ -379,9 +364,10 @@ X10_Set($@)
   my $tn = TimeNow();
 
   $hash->{CHANGED}[0] = $v;
-  $hash->{STATE} = $v;
-  $hash->{READINGS}{state}{TIME} = $tn;
-  $hash->{READINGS}{state}{VAL} = $v;
+  #$hash->{STATE} = $v;
+  #$hash->{READINGS}{state}{TIME} = $tn;
+  #$hash->{READINGS}{state}{VAL} = $v;
+  readingsSingleUpdate($hash,'state',$v,1,$tn);
   X10_StateMachine($hash, $tn, $function, int(210.0*$dim/22.0+0.5));
 
   return undef;
@@ -405,12 +391,12 @@ X10_Define($$)
   my $housecode = $a[3];
   return "Define $a[0]: wrong housecode format: specify a value ".
          "from A to P"
-  		if($housecode !~ m/^[A-P]$/i);
+        if($housecode !~ m/^[A-P]$/i);
 
   my $unitcode = $a[4];
   return "Define $a[0]: wrong unitcode format: specify a value " .
          "from 1 to 16"
-  		if( ($unitcode<1) || ($unitcode>16) );
+        if( ($unitcode<1) || ($unitcode>16) );
 
 
   $hash->{MODEL}  = $model;
@@ -515,10 +501,11 @@ X10_Parse($$)
     if($h) {
         my $name= $h->{NAME};
         $h->{CHANGED}[0] = $value;
-        $h->{STATE} = $value;
-        $h->{READINGS}{state}{TIME} = $tn;
-        $h->{READINGS}{state}{VAL} = $value;
-	X10_StateMachine($h, $tn, $function, $arg);
+        #$h->{STATE} = $value;
+        #$h->{READINGS}{state}{TIME} = $tn;
+        #$h->{READINGS}{state}{VAL} = $value;
+        readingsSingleUpdate($h,'state',$value,1,$tn);
+        X10_StateMachine($h, $tn, $function, $arg);
         Log3 $hash, 2, "X10 $name $value";
         push(@list, $name);
     } else {
@@ -535,15 +522,17 @@ X10_Parse($$)
 
 1;
 
+__END__
+
 =pod
 =item summary    devices communicating via the X10 protocol
 =item summary_DE Anbindung von X10-Ger&auml;ten
 =begin html
 
-<a name="X10"></a>
+<a id="X10"></a>
 <h3>X10</h3>
 <ul>
-  <a name="X10define"></a>
+  <a id="X10-define"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; X10 &lt;model&gt; &lt;housecode&gt;
@@ -578,19 +567,23 @@ X10_Parse($$)
   </ul>
   <br>
 
-  <a name="X10set"></a>
+  <a id="X10-set"></a>
   <b>Set </b>
   <ul>
     <code>set &lt;name&gt; &lt;value&gt; [&lt;argument&gt]</code>
     <br><br>
     where <code>value</code> is one of:<br>
     <pre>
-    dimdown           # requires argument, see the note
-    dimup             # requires argument, see the note
+    dimdown            # requires argument, see the note
+    dimup              # requires argument, see the note
     off
     on
-    on-till           # Special, see the note
-    on-for-timer      # Special, see the note
+    on-till            # Special, see the note
+    on-till-overnight  # Special, see the note
+    off-till           # Special, see the note
+    off-till-overnight # Special, see the note
+    on-for-timer       # Special, see the note
+    off-for-timer      # Special, see the note
     </pre>
     Examples:
     <ul>
@@ -599,6 +592,7 @@ X10_Parse($$)
       <code>set pump off</code><br>
       <code>set lamp2 on-till 19:59</code><br>
       <code>set lamp2 on-for-timer 00:02:30</code><br>
+      <code>set lamp2 on-for-timer 150</code><br>
     </ul>
     <br>
     Notes:
@@ -610,6 +604,7 @@ X10_Parse($$)
       <li>An X10 device has 210 discrete brightness levels. If you use a
           X10 sender, e.g. a remote control or a wall switch to dim, a
           brightness step is 100%/210.</li>
+      <a id="X10-set-dimup" data-pattern="dim(up|down)"></a>
       <li><code>dimdown</code> and <code>dimup</code> take a number in the
           range from 0 to 22 as argument. It is assumed that argument 1 is
           a 1% brightness change (microdim) and arguments 2 to 22 are
@@ -623,24 +618,25 @@ X10_Parse($$)
           have unexpected results. This seems to be a feature of the X10
           devices.</li>
       <li><code>on-till</code> requires an absolute time in the "at" format
-          (HH:MM:SS, HH:MM) or { &lt;perl code&gt; }, where the perl code
+          (HH:MM[:SS]) or { &lt;perl code&gt; }, where the perl code
           returns a time specification).
           If the current time is greater than the specified time, then the
           command is ignored, else an "on" command is generated, and for the
           given "till-time" an off command is scheduleld via the at command.
-          </li>
-      <li><code>on-for-timer</code> requires a relative time in the "at" format
-          (HH:MM:SS, HH:MM) or { &lt;perl code&gt; }, where the perl code
-          returns a time specification).
-          </li>
+          <code>off-till</code> invert the conditions above.</li>
+      <li><code>on-till-overnight</code> or <code>off-till-overnight</code>
+          the specified time is not compared to the current time.</li>
+      <li><code>on-for-timer</code> or <code>off-for-timer</code> requires a
+           relative time in the "at" format (HH:MM[:SS]) or { &lt;perl code&gt; },
+           where the perl code returns a time specification) or seconds.</li>
     </ul>
   </ul>
   <br>
 
-  <a name="X10get"></a>
+  <a id="X10-get"></a>
   <b>Get</b> <ul>N/A</ul><br>
 
-  <a name="X10attr"></a>
+  <a id="X10-attr"></a>
   <b>Attributes</b>
   <ul>
   <li><a href="#do_not_notify">do_not_notify</a></li>

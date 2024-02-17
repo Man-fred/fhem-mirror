@@ -2,7 +2,7 @@
 FW_version["console.js"] = "$Id$";
 
 var consConn;
-var debug;
+var consName="#console";
 
 var consFilter, oldFilter, consFType="";
 var consLastIndex = 0;
@@ -21,6 +21,28 @@ cons_closeConn()
   else if(typeof consConn.abort ==  "function")
     consConn.abort();
   consConn = undefined;
+}
+
+function
+consAppender(new_content)
+{
+  // Extract the FHEM-Log, to avoid escaping its formatting (Forum #104842)
+  var logContent = "";
+  var rTab = {'<':'&lt;', '>':'&gt;',' ':'&nbsp;', '\n':'<br>' };
+  new_content = new_content.replace(
+  /(<div class='fhemlog'>)([\s\S]*?)(<\/div>)/gm,
+  function(all, div1, msg, div2) {
+    logContent += div1+
+                  msg.replace(/[<> \n]/g, function(a){return rTab[a]})+
+                  div2;
+    return "";
+  });
+
+  var isTa = $(consName).is("textarea"); // 102773
+  var ncA = new_content.split(/<br>[\r\n]/);
+  for(var i1=0; i1<ncA.length; i1++)
+    ncA[i1] = ncA[i1].replace(/[<> ]/g, function(a){return rTab[a]});
+  $(consName).append(logContent+ncA.join(isTa?"\n":"<br>"));
 }
 
 function
@@ -59,26 +81,16 @@ consUpdate(evt)
   }
   if(new_content == undefined || new_content.length == 0)
     return;
-  log("Console Rcvd: "+new_content);
+  if(new_content.length < 120)
+    log("console Rcvd: "+new_content);
+  else
+    log("console Rcvd: "+new_content.substr(0,120)+
+        "..., truncated, original length "+new_content.length);
 
-  // Extract the FHEM-Log, to avoid escaping its formatting (Forum #104842)
-  var logContent = "";
-  var rTab = {'<':'&lt;', '>':'&gt;',' ':'&nbsp;'};
-  new_content = new_content.replace(/(<div class='fhemlog'>)(.*?)(<\/div>)/g,
-  function(all, div1, msg, div2) {
-    logContent += div1+msg.replace(/[<> ]/g, function(a){return rTab[a]})+div2;
-    return "";
-  });
-
-  // replace space with nbsp to preserve formatting
-  var isTa = $("#console").is("textarea"); // 102773
-  new_content = new_content.replace(/(.*)<br>[\r\n]/g, function(all,p1) {
-    return p1.replace(/[<> ]/g, function(a){return rTab[a]})+(isTa?"\n":"<br>");
-  });
-  $("#console").append(logContent+new_content);
+  consAppender(new_content);
     
   if(mustScroll)
-    $("#console").scrollTop($("#console")[0].scrollHeight);
+    $(consName).scrollTop($(consName)[0].scrollHeight);
 }
 
 function
@@ -89,9 +101,10 @@ consFill()
   if(FW_pollConn)
     FW_closeConn();
 
-  var query = "?XHR=1"+
-       "&inform=type=raw;withLog="+withLog+";filter="+
-       encodeURIComponent(consFilter)+consFType+
+  var query = "?XHR=1&inform="+
+        encodeURIComponent("type=raw;withLog="+withLog+
+                                   ";filter="+consFilter+consFType)+
+       "&fw_id="+$("body").attr('fw_id')+
        "&timestamp="+new Date().getTime();
   query = addcsrf(query);
 
@@ -123,7 +136,7 @@ consFill()
 
   consLastIndex = 0;
   if(oldFilter != consFilter)  // only clear, when filter changes
-    $("#console").html("");
+    $(consName).html("");
   
   oldFilter = consFilter;
 }
@@ -131,19 +144,21 @@ consFill()
 function
 consStart()
 {
-  var el = document.getElementById("console");
+  if($(consName).length != 1)
+    return;
 
-  consFilter = $("a#eventFilter").html();
+  if($("a#eventFilter").length)
+    consFilter = $("a#eventFilter").html();
   if(consFilter == undefined)
     consFilter = ".*";
   oldFilter = consFilter;
   withLog = ($("#eventWithLog").is(':checked') ? 1 : 0);
   setTimeout(consFill, 1000);
   
-   $("#eventReset").click(function(evt){  // Event Monitor Reset
-     log("Console resetted by user");
-     $("#console").html("");
-   });
+  $("#eventReset").click(function(evt){  // Event Monitor Reset
+    log("Console resetted by user");
+    $(consName).html("");
+  });
   
   $("#eventFilter").click(function(evt){  // Event-Filter Dialog
     $('body').append(
@@ -186,10 +201,10 @@ consStart()
   });
   
   
-  $("#console").scroll(function() { // autoscroll check
+  $(consName).scroll(function() { // autoscroll check
     
-    if($("#console")[0].scrollHeight - $("#console").scrollTop() <=
-       $("#console").outerHeight() + 2) { 
+    if($(consName)[0].scrollHeight - $(consName).scrollTop() <=
+       $(consName).outerHeight() + 2) { 
       if(!mustScroll) {
         mustScroll = 1;
         log("Console autoscroll restarted");
@@ -330,5 +345,134 @@ consAddRegexpPart()
     });
   });
 }
-  
+
+var c4d_rowNum=0, c4d_filter=".*"
+function
+cons4devAppender(new_content)
+{
+  var cArr = new_content.split("\n");
+  for(var i1=0; i1<cArr.length; i1++) {
+    var cols = [];
+
+    try { cols = JSON.parse(cArr[i1]); } catch(e) { continue; };
+    if(c4d_filter != ".*") {
+      var content = cols.join(" ");
+      if(!content.match(c4d_filter))
+        continue;
+    }
+    var row = $(`<tr class="${c4d_rowNum++%2 ? 'odd':'even'}"><td>
+                 <div class="dname">`+
+                  cols.join('</div></td><td><div class="dval">')+
+                "</div></td></tr>");
+    $(consName+" table").append(row);
+    $(row).find("div.dval")           // Format JSON
+      .css("cursor", "pointer")
+      .click(function(){
+        var content = $(this).attr("data-content");
+        if(!content) {
+          content = $(this).html();
+          $(this).attr("data-content", content);
+        }
+        if(content.match(/^{.*}$/)) {
+          try{
+            var fmt = $(this).attr("data-fmt");
+            fmt = (typeof(fmt)=="undefined" || fmt=="no") ? "yes" : "no";
+            $(this).attr("data-fmt", fmt);
+            if(fmt=="yes") {
+              var js = JSON.parse(content);
+              content = '<pre>'+JSON.stringify(js, undefined, 2)+'</pre>';
+            }
+            $(this).html(content);
+          } catch(e) { }
+        }
+      });
+  }
+}
+
+function
+cons4dev(screenId, filter, feedFn, devName)
+{
+  $(screenId).find("a")
+    .blur()     // remove focus, so return wont open/close it
+    .unbind("click")
+    .click(toggleOpen);
+
+  consName = screenId+">div.console";
+  consFilter = filter;
+  consAppender = cons4devAppender;
+  var opened;
+
+  function
+  toggleOpen()
+  {
+    $(this).blur();
+    var cmd = FW_root+"?cmd="+encodeURIComponent("{"+feedFn+"('"+devName+"',"+
+                        (opened ? 0 : 1)+")}")+"&XHR=1";
+    if(!opened) {
+      $(screenId)
+        .append(`<span class="buttons">
+                  &nbsp;<a href="#" class="reset">Reset</a>
+                  &nbsp;<a href="#" class="filter">Filter:</a>
+                  &nbsp;<span class="filterContent">${c4d_filter}</span>
+                 </span>`);
+      $(screenId)
+        .append(`<div class="console">
+                   <table class="block wide"></table>
+                 </div>`);
+      $(consName)
+        .width( $("#content").width()-40)
+        .height($("#content").height()/2-20)
+        .css({overflow:"auto"});
+      $(screenId+">a").html($(screenId+">a").html().replace("Show", "Hide"));
+      FW_closeConn();
+      consStart();
+      // Leave time for establishing the connection, else the "feeder" may
+      // clear the flag
+      setTimeout(function(){ FW_cmd(cmd) }, 100);
+
+      $(screenId+" .reset").click(function(){ $(consName+" table").html("") });
+      $(screenId+" .filter").click(function(){
+        $('body').append(
+          '<div id="filterdlg">'+
+            '<div>Filter (Regexp, matching the row):</div><br>'+
+            '<div><input id="filtertext" value="'+c4d_filter+'"></div><br>'+
+          '</div>');
+        $('#filterdlg').dialog({ modal:true, width:'auto',
+          position:{ my: "left top", at: "right bottom",
+                     of: this, collision: "flipfit" },
+          close:function(){$('#filterdlg').remove();},
+          buttons:[
+            { text:"Cancel", click:function(){ $(this).dialog('close'); }},
+            { text:"OK", click:function(){
+              var val = $("#filtertext").val().trim();
+              try {
+                new RegExp(val ? val : ".*");
+              } catch(e) {
+                return FW_okDialog(e);
+              }
+              c4d_filter = val ? val : ".*";
+              $(this).dialog('close');
+              $(screenId+" .filterContent").html(c4d_filter);
+              $(consName+" table").html("");
+            }}]
+        });
+      });
+
+    } else {
+      FW_cmd(cmd);
+      $(consName).remove();
+      $(screenId+">a").html($(screenId+">a").html().replace("Hide", "Show"));
+      $(screenId+" span.buttons").remove();
+      if(consConn) {
+        consConn.onclose = undefined;
+        cons_closeConn();
+      }
+      FW_longpoll();
+    }
+    opened = !opened;
+  }
+
+  toggleOpen();
+}
+
 window.onload = consStart;

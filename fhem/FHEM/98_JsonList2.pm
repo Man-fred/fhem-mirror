@@ -28,7 +28,7 @@ JsonList2_Escape($)
   $a =~ s/"/\\"/g; 
   $a =~ s/\n/\\n/g; 
   my $b = "x$a";
-  $a = "<BINARY>" if(!utf8::decode($b)); # Forum #55318
+  $a = "<BINARY>" if(!utf8::decode($b) && !$unicodeEncoding); # Forum #55318
   return $a;
 }
 
@@ -37,19 +37,22 @@ JsonList2_dumpHash($$$$$$)
 {
   my ($arrp, $name, $h, $isReading, $showInternal, $attr) = @_;
   my $ret = "";
-  my %filter = map { $_=>1 } @$attr if(@$attr);
+  my %filter;
+  %filter = map { $_=>1 } @$attr if(@$attr);
   
   my @arr = grep { ($showInternal || $_ !~ m/^\./) &&
-                   ($isReading || !ref($h->{$_}) ) &&
+                   ($isReading || $_ eq "IODev" || !ref($h->{$_}) ) &&
                    (!@$attr || $filter{$_}) } sort keys %{$h};
   for(my $i2=0; $i2 < @arr; $i2++) {
     my $k = $arr[$i2];
+    my $v = $h->{$k};
     $ret .= "      \"".JsonList2_Escape($k)."\": ";
     if($isReading) {
-      $ret .= "{ \"Value\":\"".JsonList2_Escape($h->{$k}{VAL})."\",";
-      $ret .=   " \"Time\":\"".JsonList2_Escape($h->{$k}{TIME})."\" }";
+      $ret .= "{ \"Value\":\"".JsonList2_Escape($v->{VAL})."\",";
+      $ret .=   " \"Time\":\"".JsonList2_Escape($v->{TIME})."\" }";
     } else {
-      $ret .= "\"".JsonList2_Escape($h->{$k})."\"";
+      $v = $v->{NAME} if($k eq "IODev" && ref($v) eq "HASH" && $v->{NAME});
+      $ret .= "\"".JsonList2_Escape($v)."\"";
     }
     $ret .= "," if($i2 < int(@arr)-1);
     $ret .= "\n" if(int(@arr)>1);

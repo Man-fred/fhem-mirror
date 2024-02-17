@@ -15,25 +15,27 @@
 # 20200127: Corrected line indents                                          @HomeAutoUser
 # 20200127: fix, WindDirAverage return undef --> return $windDirection_old  @HomeAutoUser
 # 20200127: revised commandref                                              @HomeAutoUser
-# 
+# 20230121  use round from package FHEM::Core::Utils::Math
 
 package main;
 
 use strict;
 use warnings;
+use FHEM::Meta;
+use FHEM::Core::Utils::Math;
 
 # werden benötigt, aber im Programm noch extra abgetestet 
 #use Digest::CRC qw(crc);
 #use Math::Trig;
 
-sub SD_WS09_Initialize($) {
+sub SD_WS09_Initialize {
 	my ($hash) = @_;
 
 	$hash->{Match}     = "^P9#F[A-Fa-f0-9]+";    ## pos 7 ist aktuell immer 0xF
-	$hash->{DefFn}     = "SD_WS09_Define";
-	$hash->{UndefFn}   = "SD_WS09_Undef";
-	$hash->{ParseFn}   = "SD_WS09_Parse";
-	$hash->{AttrFn}	   = "SD_WS09_Attr";
+	$hash->{DefFn}     = \&SD_WS09_Define;
+	$hash->{UndefFn}   = \&SD_WS09_Undef;
+	$hash->{ParseFn}   = \&SD_WS09_Parse;
+	$hash->{AttrFn}	   = \&SD_WS09_Attr;
 	$hash->{AttrList}  = "IODev do_not_notify:1,0 ignore:0,1 showtime:1,0 "
                        ."model:CTW600,WH1080 ignore:0,1 "
                        ."windKorrektur:-3,-2,-1,0,1,2,3 "
@@ -44,10 +46,12 @@ sub SD_WS09_Initialize($) {
                        ."$readingFnAttributes ";
 	$hash->{AutoCreate} =
 		{ "SD_WS09.*" => { ATTR => "event-min-interval:.*:300 event-on-change-reading:.* windKorrektur:.*:0 verbose:5" , FILTER => "%NAME", GPLOT => "WH1080wind4:windSpeed/windGust,",  autocreateThreshold => "2:180"} };
+
+	return FHEM::Meta::InitMod( __FILE__, $hash );		
 }
 
 #############################
-sub SD_WS09_Define($$) {
+sub SD_WS09_Define {
 	my ($hash, $def) = @_;
 	my @a = split("[ \t][ \t]*", $def);
 
@@ -65,21 +69,21 @@ sub SD_WS09_Define($$) {
 	$hash->{MODEL} = $model;
 
 	my $name= $hash->{NAME};
-	return undef;
+	return ;
 }
 
 #####################################
-sub SD_WS09_Undef($$) {
+sub SD_WS09_Undef {
 	my ($hash, $name) = @_;
 
 	delete($modules{SD_WS09}{defptr}{$hash->{CODE}})
 		if(defined($hash->{CODE}) &&
 			defined($modules{SD_WS09}{defptr}{$hash->{CODE}}));
-	return undef;
+	return ;
 }
 
 ###################################
-sub SD_WS09_Parse($$) {
+sub SD_WS09_Parse {
 	my ($iohash, $msg) = @_;
 	my $name = $iohash->{NAME};
 	my (undef ,$rawData) = split("#",$msg);
@@ -151,7 +155,7 @@ sub SD_WS09_Parse($$) {
 
 		if ($syncpos ==-1 || length($bitData)-$syncpos < $minL2) {
 			Log3 $iohash, 4, "$name: SD_WS09_Parse EXIT: msg=$rawData syncp=$syncpos length:".length($bitData) ;
-			return undef;
+			return ;
 		}
 	}
 
@@ -225,7 +229,7 @@ sub SD_WS09_Parse($$) {
 		Log3 $iohash, 5, "$name: SD_WS09_Parse_0 whid=$whid";
 
 		# A  Wettermeldungen
-		if(  $whid == "1010" ){
+		if(  $whid eq '1010' ){
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_1 msg=$sensdata length:".length($sensdata) ;
 			$model = "WH1080";
 			$id = SD_WS09_bin2dec(substr($sensdata,4,8));
@@ -235,16 +239,16 @@ sub SD_WS09_Parse($$) {
 			$windDirection = SD_WS09_bin2dec(substr($sensdata,68,4));  
 			$windDirectionText = $winddir_name[$windDirection];
 			$windDirectionDegree = $windDirection * 360 / 16;
-			$windSpeed =  round((SD_WS09_bin2dec(substr($sensdata,32,8))* 34)/100,01);
+			$windSpeed =  FHEM::Core::Utils::Math::round((SD_WS09_bin2dec(substr($sensdata,32,8))* 34)/100,01);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_2 ".$model." id:$id, Windspeed bit: ".substr($sensdata,32,8)." Dec: " . $windSpeed ;
-			$windguest = round((SD_WS09_bin2dec(substr($sensdata,40,8)) * 34)/100,01);
+			$windguest = FHEM::Core::Utils::Math::round((SD_WS09_bin2dec(substr($sensdata,40,8)) * 34)/100,01);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_3 ".$model." id:$id, Windguest bit: ".substr($sensdata,40,8)." Dec: " . $windguest ;
 			$rain =  SD_WS09_bin2dec(substr($sensdata,52,12)) * 0.3;
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_4 ".$model." id:$id, Rain bit: ".substr($sensdata,52,12)." Dec: " . $rain ;
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_5 ".$model." id:$id, bat:$bat, temp=$temp, hum=$hum, winddir=$windDirection:$windDirectionText wS=$windSpeed, wG=$windguest, rain=$rain";
 
 		# B  DCF-77 Zeitmeldungen vom Sensor
-		} elsif (  $whid == "1011" ) {
+		} elsif (  $whid eq '1011' ) {
 			my $hrs1 = substr($sensdata,16,8);
 			my $hrs;
 			my $mins; 
@@ -267,7 +271,7 @@ sub SD_WS09_Parse($$) {
 			return $name;
 
 		# 7  UV/Solar Meldungen vom Sensor
-		} elsif ( $whid == "0111" ) {
+		} elsif ( $whid eq '0111' ) {
 			# Fine Offset (Solar Data) message BYTE offsets (within receive buffer)
 			# Examples= FF 75 B0 55 00 97 8E 0E *CRC*OK*
 			# =FF 75 B0 55 00 8F BE 92 *CRC*OK*
@@ -285,13 +289,13 @@ sub SD_WS09_Parse($$) {
 		} else {
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_Ex Exit: msg=$rawData length:".length($sensdata) ;
 			Log3 $iohash, 4, "$name: SD_WS09_WH10 Exit:  Model=$model " ;
-			return undef;
+			return ;
 		}
 	} else {
 		# es wird eine CTW600 angenommen 
-		$syncpos= index($bitData,"11111110");  #7x1 1x0 preamble
+		$syncpos= index($bitData,'11111110');  #7x1 1x0 preamble
 		$wh = substr($bitData,0,8);
-		if ( $wh == "11111110" && length($bitData) > $minL1 ) {
+		if ( $wh eq '11111110' && length($bitData) > $minL1 ) {
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_11 CTW600 EXIT: msg=$bitData wh:$wh length:".length($bitData) ; 
 			$sensdata = substr($bitData,$syncpos+8);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_12 CTW WH=$wh msg=$sensdata syncp=$syncpos length:".length($sensdata) ;
@@ -309,15 +313,15 @@ sub SD_WS09_Parse($$) {
 			$windDirection = SD_WS09_bin2dec(substr($sensdata,66,4));  
 			$windDirectionText = $winddir_name[$windDirection];
 			$windDirectionDegree = $windDirection * 360 / 16;
-			$windSpeed =  round(SD_WS09_bin2dec(substr($sensdata,30,16))/240,01);
+			$windSpeed =  FHEM::Core::Utils::Math::round(SD_WS09_bin2dec(substr($sensdata,30,16))/240,01);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_15 ".$model." Windspeed bit: ".substr($sensdata,32,8)." Dec: " . $windSpeed ;
-			$windguest = round((SD_WS09_bin2dec(substr($sensdata,40,8)) * 34)/100,01);
+			$windguest = FHEM::Core::Utils::Math::round((SD_WS09_bin2dec(substr($sensdata,40,8)) * 34)/100,01);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_16 ".$model." Windguest bit: ".substr($sensdata,40,8)." Dec: " . $windguest ;
-			$rain =  round(SD_WS09_bin2dec(substr($sensdata,46,16)) * 0.3,01);
+			$rain = FHEM::Core::Utils::Math::round(SD_WS09_bin2dec(substr($sensdata,46,16)) * 0.3,01);
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_17 ".$model." Rain bit: ".substr($sensdata,46,16)." Dec: " . $rain ;           
 		} else {
 			Log3 $iohash, 4, "$name: SD_WS09_Parse_18 CTW600 EXIT: msg=$bitData length:".length($bitData) ;
-			return undef;
+			return ;
 		}
 	}
 
@@ -326,11 +330,11 @@ sub SD_WS09_Parse($$) {
 
 	if($hum > 100 || $hum < 0) {
 		Log3 $iohash, 4, "$name: SD_WS09_Parse HUM: hum=$hum msg=$rawData " ;
-		return undef;
+		return ;
 	} 
 	if($temp > 60 || $temp < -40) {
 		Log3 $iohash, 4, "$name: SD_WS09_Parse TEMP: Temp=$temp msg=$rawData " ;
-		return undef;
+		return ;
 	} 
 
 	my $longids = AttrVal($iohash->{NAME},'longids',0);
@@ -357,7 +361,7 @@ sub SD_WS09_Parse($$) {
 		my $minsecs = AttrVal($iohash->{NAME},'minsecs',0);
 		if($hash->{lastReceive} && (time() - $hash->{lastReceive} < $minsecs)) {
 			Log3 $hash, 4, "SD_WS09_Parse_End $deviceCode Dropped due to short time. minsecs=$minsecs";
-			return undef;
+			return ;
 		}
 	}
 
@@ -379,31 +383,31 @@ sub SD_WS09_Parse($$) {
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[0] : Faktor:$wfaktor" ;
 
 	$wfaktor = $uowind_unit{"km/h"};
-	$windguest_kmh = round ($windguest * $wfaktor,01);
-	$windSpeed_kmh = round ($windSpeed * $wfaktor,01);
+	$windguest_kmh = FHEM::Core::Utils::Math::round ($windguest * $wfaktor,01);
+	$windSpeed_kmh = FHEM::Core::Utils::Math::round ($windSpeed * $wfaktor,01);
 	$windstat[1]= " Ws:$windSpeed_kmh  Wg:$windguest_kmh km/h";
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[1] : Faktor:$wfaktor" ;
 
 	$wfaktor = $uowind_unit{"ft/s"};
-	$windguest_fts = round ($windguest * $wfaktor,01);
-	$windSpeed_fts = round ($windSpeed * $wfaktor,01);
+	$windguest_fts = FHEM::Core::Utils::Math::round ($windguest * $wfaktor,01);
+	$windSpeed_fts = FHEM::Core::Utils::Math::round ($windSpeed * $wfaktor,01);
 	$windstat[2]= " Ws:$windSpeed_fts  Wg:$windguest_fts ft/s";
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[2] : Faktor:$wfaktor" ;
 
 	$wfaktor = $uowind_unit{"mph"};
-	$windguest_mph = round ($windguest * $wfaktor,01);
-	$windSpeed_mph = round ($windSpeed * $wfaktor,01);
+	$windguest_mph = FHEM::Core::Utils::Math::round ($windguest * $wfaktor,01);
+	$windSpeed_mph = FHEM::Core::Utils::Math::round ($windSpeed * $wfaktor,01);
 	$windstat[3]= " Ws:$windSpeed_mph  Wg:$windguest_mph mph";
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[3] : Faktor:$wfaktor" ;
 
 	$wfaktor = $uowind_unit{"knot"};
-	$windguest_kn = round ($windguest * $wfaktor,01);
-	$windSpeed_kn = round ($windSpeed * $wfaktor,01);
+	$windguest_kn = FHEM::Core::Utils::Math::round ($windguest * $wfaktor,01);
+	$windSpeed_kn = FHEM::Core::Utils::Math::round ($windSpeed * $wfaktor,01);
 	$windstat[4]= " Ws:$windSpeed_kn  Wg:$windguest_kn kn" ;
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[4] : Faktor:$wfaktor" ;
 
-	$windguest_bft = round(sqrt( 9 + (6 * $windguest)) - 3,0) ;
-	$windSpeed_bft = round(sqrt( 9 + (6 * $windSpeed)) - 3,0) ;
+	$windguest_bft = FHEM::Core::Utils::Math::round(sqrt( 9 + (6 * $windguest)) - 3,0) ;
+	$windSpeed_bft = FHEM::Core::Utils::Math::round(sqrt( 9 + (6 * $windSpeed)) - 3,0) ;
 	$windstat[5]= " Ws:$windSpeed_bft  Wg:$windguest_bft bft";
 	Log3 $hash, 4, "SD_WS09_Wind $windstat[5] " ;
 
@@ -474,7 +478,7 @@ sub SD_WS09_Parse($$) {
 }
 
 ###################################
-sub SD_WS09_Attr(@) {
+sub SD_WS09_Attr {
 	my @a = @_;
 	# Make possible to use the same code for different logical devices when they
 	# are received through different physical devices.
@@ -484,11 +488,11 @@ sub SD_WS09_Attr(@) {
 	my $cde = $hash->{CODE};
 	delete($modules{SD_WS09}{defptr}{$cde});
 	$modules{SD_WS09}{defptr}{$iohash->{NAME} . "." . $cde} = $hash;
-	return undef;
+	return ;
 }
 
 ###################################
-sub SD_WS09_WindDirAverage($$$){
+sub SD_WS09_WindDirAverage {
  ###############################################################################
  #  übernommen von SabineT https://forum.fhem.de/index.php/topic,75225.msg669950.html#msg669950
  #  WindDirAverage
@@ -513,6 +517,11 @@ sub SD_WS09_WindDirAverage($$$){
  ###############################################################################
 
 	my ($hash, $ws, $wd) = @_;
+
+	return if ref($hash) ne 'HASH';
+	return if !defined $ws;
+	return if !defined $wd;
+
 	my $name = $hash->{NAME};
 	Log3 $hash, 4, "SD_WS09_WindDirAverage --- OK ----" ;
 
@@ -531,24 +540,24 @@ sub SD_WS09_WindDirAverage($$$){
 		return "";
 	}
 
-	my $avtime = AttrVal($name,'WindDirAverageTime',0);
+	my $avtime = AttrVal($name,'WindDirAverageTime',600);
 	my $decay = AttrVal($name,'WindDirAverageDecay',0);
 	my $minspeed = AttrVal($name,'WindDirAverageMinSpeed',0);
 	my $windDirection_old = $wd;
 
 	# default Werte für die optionalen Parameter, falls nicht beim Aufruf mit angegeben
-	$avtime = 600 if (!(defined $avtime) || $avtime == 0 );
+	#$avtime = 600 if (!(defined $avtime) || $avtime == 0 );
 	$decay = 1 if (!(defined $decay));
 	$decay = 1 if ($decay > 1); # darf nicht >1 sein
 	$decay = 0 if ($decay < 0); # darf nicht <0 sein
-	$minspeed = 0 if (!(defined $minspeed));
+	#$minspeed = 0 if (!(defined $minspeed));
 
 	$wd = deg2rad($wd);
-	my $ctime = time;
+	my $ctime = CORE::time;
 	my $time = FmtDateTime($ctime);
 	my @new = ($ws,$wd,$time);
 
-	Log3 $hash, 4,"SD_WS09_WindDirAverage_01 $name :Speed=".$ws." DirR=".round($wd,2)." Time=".$time;
+	Log3 $hash, 4,"SD_WS09_WindDirAverage_01 $name :Speed=".$ws." DirR=".FHEM::Core::Utils::Math::round($wd,2)." Time=".$time;
 	Log3 $hash, 4,"SD_WS09_WindDirAverage_02 $name :avtime=".$avtime." decay=".$decay." minspeed=".$minspeed;
 
 	my $num;
@@ -570,16 +579,16 @@ sub SD_WS09_WindDirAverage($$$){
 		$arr=\@{$hash->{helper}{history}};
 		my $stime = time_str2num($arr->[0][2]);       # Zeitpunkt des ältesten Eintrags
 		my $ltime = time_str2num($arr->[$num-1][2]);  # Zeitpunkt des letzten Eintrags
-		Log3 $hash,4,"SD_WS09_WindDirAverage_04 $name :Speed=".$ws." Dir=".round($wd,2)." Time=".$time." minspeed=".$minspeed." ctime=".$ctime." ltime=".$ltime." stime=".$stime." num=".$num;
+		Log3 $hash,4,"SD_WS09_WindDirAverage_04 $name :Speed=".$ws." Dir=".FHEM::Core::Utils::Math::round($wd,2)." Time=".$time." minspeed=".$minspeed." ctime=".$ctime." ltime=".$ltime." stime=".$stime." num=".$num;
 
 		if((($ctime - $ltime) > 10) || ($num == 0)) {
 			if(($num < 25) && (($ctime-$stime) < $avtime)){
-				Log3 $hash,4,"SD_WS09_WindDirAverage_05 $name :Speed=".$ws." Dir=".round($wd,2)." Time=".$time." minspeed=".$minspeed." num=".$num;
+				Log3 $hash,4,"SD_WS09_WindDirAverage_05 $name :Speed=".$ws." Dir=".FHEM::Core::Utils::Math::round($wd,2)." Time=".$time." minspeed=".$minspeed." num=".$num;
 				push(@{$hash->{helper}{history}},\@new);
 			} else {
 				shift(@{$hash->{helper}{history}});
 				push(@{$hash->{helper}{history}},\@new);
-				Log3 $hash,4,"SD_WS09_WindDirAverage_06 $name :Speed=".$ws." Dir=".round($wd,2)." Time=".$time." minspeed=".$minspeed." num=".$num;
+				Log3 $hash,4,"SD_WS09_WindDirAverage_06 $name :Speed=".$ws." Dir=".FHEM::Core::Utils::Math::round($wd,2)." Time=".$time." minspeed=".$minspeed." num=".$num;
 			}
 		} else {
 			return $windDirection_old; # old undef | different behavior dispatch <-> UnitTest´s ($ctime - $ltime)
@@ -590,49 +599,49 @@ sub SD_WS09_WindDirAverage($$$){
 	my ($anz, $sanz) = 0;
 	$num = int(@{$hash->{helper}{history}});
 	my ($sumSin, $sumCos, $sumSpeed, $age, $maxage, $weight) = 0;
-	for(my $i=0; $i<$num; $i++){
+	for(my $i=0; $i<$num; $i++) {
 		($ws, $wd, $time) = @{ $arr->[$i] };
 		$age = $ctime - time_str2num($time);
 		if (($time eq "") || ($age > $avtime)) {
 			#-- zu alte Einträge entfernen
-      Log3 $hash,4,"SD_WS09_WindDirAverage_07 $name i=".$i." Speed=".round($ws,2)." Dir=".round($wd,2)." Time=".substr($time,11)." ctime=".$ctime." akt.=".time_str2num($time);
-      shift(@{$hash->{helper}{history}});
-      $i--;
-      $num--;
-    } else {
+      		Log3 $hash,4,"SD_WS09_WindDirAverage_07 $name i=".$i." Speed=".FHEM::Core::Utils::Math::round($ws,2)." Dir=".FHEM::Core::Utils::Math::round($wd,2)." Time=".substr($time,11)." ctime=".$ctime." akt.=".time_str2num($time);
+      		shift(@{$hash->{helper}{history}});
+      		$i--;
+      		$num--;
+    	} else {
 			#-- Werte aufsummieren, Windrichtung gewichtet über Geschwindigkeit und decay/"alter"
-      $weight = $decay ** ($age / $avtime);
-      #-- für die Mittelwertsbildung der Geschwindigkeit wird nur ein 10tel von avtime genommen
-      if ($age < ($avtime / 10)) {
-        $sumSpeed += $ws * $weight if ($age < ($avtime / 10));
-        $sanz++;
-      }
-      $sumSin += sin($wd) * $ws * $weight;
-      $sumCos += cos($wd) * $ws * $weight;
-      $anz++;
-      Log3 $hash,4,"SD_WS09_WindDirAverage_08 $name i=".$i." Speed=".round($ws,2)." Dir=".round($wd,2)." Time=".substr($time,11)." vec=".round($sumSin,2)."/".round($sumCos,2)." age=".$age." ".round($weight,2);
-    }
-  }
-  my $average = int((rad2deg(atan2($sumSin, $sumCos)) + 360) % 360);
-  Log3 $hash,4,"SD_WS09_WindDirAverage_09 $name Mittelwert über $anz Werte ist $average, avspeed=".round($sumSpeed/$num,1) if ($num > 0);
+      		$weight = $decay ** ($age / $avtime);
+      		#-- für die Mittelwertsbildung der Geschwindigkeit wird nur ein 10tel von avtime genommen
+      		if ($age < ($avtime / 10)) {
+        		$sumSpeed += $ws * $weight ;
+        		$sanz++;
+      		}
+			$sumSin += sin($wd) * $ws * $weight;
+			$sumCos += cos($wd) * $ws * $weight;
+			$anz++;
+			Log3 $hash,4,"SD_WS09_WindDirAverage_08 $name i=".$i." Speed=".FHEM::Core::Utils::Math::round($ws,2)." Dir=".FHEM::Core::Utils::Math::round($wd,2)." Time=".substr($time,11)." vec=".FHEM::Core::Utils::Math::round($sumSin,2)."/".FHEM::Core::Utils::Math::round($sumCos,2)." age=".$age." ".FHEM::Core::Utils::Math::round($weight,2);
+  		}
+  	}
+  	my $average = int((rad2deg(atan2($sumSin, $sumCos)) + 360) % 360);
+  	Log3 $hash,4,"SD_WS09_WindDirAverage_09 $name Mittelwert über $anz Werte ist $average, avspeed=".FHEM::Core::Utils::Math::round($sumSpeed/$num,1) if ($num > 0);
   
 	#-- undef zurückliefern, wenn die durchschnittliche Geschwindigkeit zu gering oder gar keine Werte verfügbar
-  return undef if (($anz == 0) || ($sanz == 0));
-  return undef if (($sumSpeed / $sanz) < $minspeed);
+  	return if (($anz == 0) || ($sanz == 0));
+  	return if (($sumSpeed / $sanz) < $minspeed);
 
-	Log3 $hash,4,"SD_WS09_WindDirAverage_END $name Mittelwert=$average";
-  return $average;
+  	Log3 $hash,4,"SD_WS09_WindDirAverage_END $name Mittelwert=$average";
+  	return $average;
 }
 
 ###################################
-sub SD_WS09_bin2dec($) {
+sub SD_WS09_bin2dec {
 	my $h = shift;
 	my $int = unpack("N", pack("B32",substr("0" x 32 . $h, -32))); 
 	return sprintf("%d", $int); 
 }
 
 ###################################
-sub SD_WS09_binflip($) {
+sub SD_WS09_binflip {
 	my $h = shift;
 	my $hlen = length($h);
 	my $i = 0;
@@ -645,7 +654,7 @@ sub SD_WS09_binflip($) {
 }
 
 ###################################
-sub SD_WS09_BCD2bin($) {
+sub SD_WS09_BCD2bin {
 	my $binary = shift;
 	my $int = unpack("N", pack("B32", substr("0" x 32 . $binary, -32)));
 	my $BCD = sprintf("%x", $int );
@@ -653,7 +662,7 @@ sub SD_WS09_BCD2bin($) {
 }
 
 ###################################
-sub SD_WS09_SHIFT($$){
+sub SD_WS09_SHIFT{
 	my ($hash, $rawData) = @_;
 	my $name = $hash->{NAME};
 	my $hlen = length($rawData);
@@ -671,7 +680,7 @@ sub SD_WS09_SHIFT($$){
 }
 
 ###################################
-sub SD_WS09_CRCCHECK($) {
+sub SD_WS09_CRCCHECK {
 	my $rawData = shift;
 	my $datacheck1 = pack( 'H*', substr($rawData,2,length($rawData)-2) );
 	my $crcmein1 = Digest::CRC->new(width => 8, poly => 0x31);
@@ -912,5 +921,96 @@ sub SD_WS09_CRCCHECK($) {
 </ul>
 
 =end html_DE
+=for :application/json;q=META.json 14_SD_WS09.pm
+{
+  "abstract": "Supports weather sensors (WH1080/3080/CTW-600) protocl 9 from SIGNALduino",
+  "author": [
+    "Sidey <>",
+    "ralf9 <>",
+	"pejonp",
+	"homeautouser"
+  ],
+  "x_fhem_maintainer": [
+    "Sidey",
+	"pejonp"
+  ],
+  "x_fhem_maintainer_github": [
+    "Sidey79",
+	"HomeAutoUser",
+	"elektron-bbs"
+  ],
+  "description": "The SD_WS09 module interprets temperature sensor messages received by a Device like CUL, CUN, SIGNALduino etc",
+  "dynamic_config": 1,
+  "keywords": [
+    "fhem-sonstige-systeme",
+    "fhem-hausautomations-systeme",
+    "fhem-mod",
+    "signalduino",
+    "weather",
+    "station",
+    "sensor"
+  ],
+  "license": [
+    "GPL_2"
+  ],
+  "meta-spec": {
+    "url": "https://metacpan.org/pod/CPAN::Meta::Spec",
+    "version": 2
+  },
+  "name": "FHEM::SD_WS",
+  "prereqs": {
+    "runtime": {
+      "requires": {
+		"Math::Trig" : "0",
+		"Digest::CRC" : "0"
+      }
+    },
+    "develop": {
+      "requires": {
+      	"Math::Trig" : "0",
+		"Digest::CRC" : "0"
+	  }
+    }
+  },
+  "release_status": "stable",
+  "resources": {
+    "bugtracker": {
+      "web": "https://github.com/RFD-FHEM/RFFHEM/issues/"
+    },
+    "x_testData": [
+      {
+        "url": "https://raw.githubusercontent.com/RFD-FHEM/RFFHEM/master/t/FHEM/14_SD_WS09/testData.json",
+        "testname": "Testdata with SD_WS09 sensors"
+      }
+    ],
+    "repository": {
+      "x_master": {
+        "type": "git",
+        "url": "https://github.com/RFD-FHEM/RFFHEM.git",
+        "web": "https://github.com/RFD-FHEM/RFFHEM/tree/master"
+      },
+      "type": "svn",
+      "url": "https://svn.fhem.de/fhem",
+      "web": "https://svn.fhem.de/trac/browser/trunk/fhem/FHEM/14_SD_WS09.pm",
+      "x_branch": "trunk",
+      "x_filepath": "fhem/FHEM/",
+      "x_raw": "https://svn.fhem.de/trac/export/latest/trunk/fhem/FHEM/14_SD_WS09.pm"
+    },
+    "x_support_community": {
+      "board": "Sonstige Systeme",
+      "boardId": "29",
+      "cat": "FHEM - Hausautomations-Systeme",
+      "description": "Sonstige Hausautomations-Systeme",
+      "forum": "FHEM Forum",
+      "rss": "https://forum.fhem.de/index.php?action=.xml;type=rss;board=29",
+      "title": "FHEM Forum: Sonstige Systeme",
+      "web": "https://forum.fhem.de/index.php/board,29.0.html"
+    },
+    "x_wiki": {
+      "web": "https://wiki.fhem.de/wiki/SIGNALduino"
+    }
+  }
+}
+=end :application/json;q=META.json
 =cut
 

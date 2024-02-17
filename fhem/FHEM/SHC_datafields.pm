@@ -1,9 +1,9 @@
-#!/usr/bin/perl 
+#!/usr/bin/perl
 
 ##########################################################################
 # This file is part of the smarthomatic module for FHEM.
 #
-# Copyright (c) 2014 Uwe Freese
+# Copyright (c) 2014, 2019 Uwe Freese
 #
 # You can find smarthomatic at www.smarthomatic.org.
 # You can find FHEM at www.fhem.de.
@@ -126,7 +126,7 @@ sub setUInt($$$$)
   my $len       = min($length_bits, 8 - $bit);
   my $val8      = get_bits($value, $src_start, $len);
 
-# DEBUG print "   Write value " . $val8 . " (" . $len . " bits) to byte " . $byte . ", dst_start " . $dst_start . "\r\n";
+  # DEBUG print "   Write value " . $val8 . " (" . $len . " bits) to byte " . $byte . ", start bit " . $dst_start . "\r\n";
 
   setUIntBits($byteArrayRef, $byte, $dst_start, $len, $val8);
 
@@ -138,7 +138,7 @@ sub setUInt($$$$)
     $val8 = get_bits($value, $src_start, $len);
     $byte++;
 
-# DEBUG print "   Write value " . $val8 . " (" . $len . " bits) from src_start " . $src_start . " to byte " . $byte . ", dst_start " . $dst_start . "\r\n";
+    # DEBUG print "   Write value " . $val8 . " (" . $len . " bits) from src_start " . $src_start . " to byte " . $byte . ", start bit " . $dst_start . "\r\n";
 
     setUIntBits($byteArrayRef, $byte, $dst_start, $len, $val8);
 
@@ -226,6 +226,56 @@ sub setValue
   SHC_util::setInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index, $self->{_bits}, $value);
 }
 
+# ----------- FloatValue class -----------
+
+package FloatValue;
+
+sub new
+{
+  my $class = shift;
+  my $self  = {
+    _id               => shift,
+    _offset           => shift,
+    _length           => shift,
+    _arrayElementBits => shift
+  };
+  bless $self, $class;
+  return $self;
+}
+
+# reinterpret a float value as a 4-byte unsigned int which can be stored into a message
+sub floatToUint32($)
+{
+    my $b = pack 'f', shift();
+    my $str = reverse unpack "h*", $b;
+    return hex($str);
+}
+
+# reinterpret a 4-byte unsigned int received from a device as a float value
+sub uintToFloat($)
+{
+    my $u = shift();
+    my @bytes = ( $u >> 24, ($u >> 16) & 0xff, ($u >> 8) & 0xff, $u & 0xff);
+    return unpack 'f', pack 'C4', reverse @bytes;
+}
+
+sub getValue
+{
+  my ($self, $byteArrayRef, $index) = @_;
+
+  my $uint32 = SHC_util::getUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index, 32);
+  my $float = uintToFloat($uint32);
+  return $float;
+}
+
+sub setValue
+{
+  my ($self, $byteArrayRef, $value, $index) = @_;
+
+  my $uint32 = floatToUint32($value);
+  SHC_util::setUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index, 32, $uint32);
+}
+
 # ----------- BoolValue class -----------
 
 package BoolValue;
@@ -262,8 +312,8 @@ sub setValue
 
 package EnumValue;
 
-my %name2value = ();
-my %value2name = ();
+# my %name2value = ();
+# my %value2name = ();
 
 sub new
 {
@@ -273,7 +323,9 @@ sub new
     _offset           => shift,
     _bits             => shift,
     _length           => shift,
-    _arrayElementBits => shift
+    _arrayElementBits => shift,
+    _name2value       => {},
+    _value2name       => {}
   };
   bless $self, $class;
   return $self;
@@ -283,8 +335,8 @@ sub addValue
 {
   my ($self, $name, $value) = @_;
 
-  $name2value{$name}  = $value;
-  $value2name{$value} = $name;
+  $self->{_name2value}{$name}  = $value;
+  $self->{_value2name}{$value} = $name;
 }
 
 sub getValue
@@ -292,15 +344,79 @@ sub getValue
   my ($self, $byteArrayRef, $index) = @_;
 
   my $value = SHC_util::getUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index, $self->{_bits});
-  return $value2name{$value};
+  return $self->{_value2name}{$value};
 }
 
 sub setValue
 {
   my ($self, $byteArrayRef, $name, $index) = @_;
 
-  my $value = $name2value{$name};
+  my $value = $self->{_name2value}{$name};
   SHC_util::setUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index, $self->{_bits}, $value);
+}
+
+# ----------- ByteArray class -----------
+
+package ByteArray;
+
+sub new
+{
+  my $class = shift;
+  my $self  = {
+    _id               => shift,
+    _offset           => shift,
+    _bytes            => shift,
+    _length           => shift,
+    _arrayElementBits => shift
+  };
+  bless $self, $class;
+  return $self;
+}
+
+sub getValue
+{
+  my ($self, $byteArrayRef, $index) = @_;
+
+  my $res = "";
+  my ($i, $c);
+
+  for ($i = 0; $i < $self->{_bytes}; $i++)
+  {
+    $c = SHC_util::getUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index + $i * 8, 8);
+
+    if ($c == 0)
+    {
+      last;
+    }
+
+    $res .= Chr($c);
+  }
+
+  return $res;
+}
+
+sub setValue
+{
+  my ($self, $byteArrayRef, $value, $index) = @_;
+
+  my @chars = split("", $value);
+
+  # Set a maximum of _bytes bytes in the data array.
+  my $i;
+  my $strlen = SHC_util::min(length($value), $self->{_bytes});
+
+  for ($i = 0; $i < $strlen; $i++)
+  {
+    #print "set bit " . ($self->{_offset} + $self->{_arrayElementBits} * $index + $i * 8) . " char " . $i . " = " . $chars[$i] . " = ord " . ord($chars[$i]) . "\n";
+
+    SHC_util::setUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index + $i * 8, 8, ord($chars[$i]));
+  }
+
+  # Fill up the rest of the bytes with 0.
+  for ($i = $strlen; $i < $self->{_bytes}; $i++)
+  {
+    SHC_util::setUInt($byteArrayRef, $self->{_offset} + $self->{_arrayElementBits} * $index + $i * 8, 8, 0);
+  }
 }
 
 1;

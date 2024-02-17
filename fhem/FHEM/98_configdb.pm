@@ -21,8 +21,24 @@ sub configdb_Initialize {
   $cmds{configdb} = \%hash;
 }
 
+
+
 sub CommandConfigdb {
 	my ($cl, $param) = @_;
+
+	sub makeFilename{
+		my $f = shift;
+		my $filename = "";
+		$f =~ s/^["']//; # fix pah strange ideas
+		$f =~ s/["']$//; # dto.
+		if($f =~ m,^[./],) {
+			$filename = $f;
+		} else {
+			$filename  = $attr{global}{modpath};
+			$filename .= "/$f";
+		}
+		return $filename;
+	}
 
 	my @a = split("[ \t][ \t]*", $param);
 	my ($cmd, $param1, $param2) = @a;
@@ -39,7 +55,7 @@ sub CommandConfigdb {
 
 		when ('attr') {
 			Log3('configdb', 4, "configdb: attr $param1 $param2 requested.");
-			if ($param1 eq "" && $param2 eq "") {
+			if ($param1 eq '' && $param2 eq '') {
 			# list attributes
 				foreach my $c (sort keys %{$configDB{attr}}) {
 					my $val = $configDB{attr}{$c};
@@ -47,7 +63,19 @@ sub CommandConfigdb {
 					$val =~ s/\n/\\\n/g;
 					$ret .= "configdb attr $c $val\n";
 				}
-			} elsif($param2 eq "") {
+			} elsif(lc($param1) eq '?' || lc($param1) eq 'help') {
+			# list all available attributes
+			    my $l = 0;
+				foreach my $c (sort keys %{$configDB{knownAttr}}) {
+    				$l = length($c) > $l ? length($c) : $l;
+    			}
+				foreach my $c (sort keys %{$configDB{knownAttr}}) {
+					my $val = $configDB{knownAttr}{$c};
+					$val =~ s/;/;;/g;
+					$val =~ s/\n/\\\n/g;
+					$ret .= sprintf("%-*s : ",$l,$c)."$val\n";
+				}
+			} elsif($param2 eq '') {
 			# delete attribute
 				delete $configDB{attr}{$param1};
 				$ret = " attribute $param1 deleted";
@@ -68,8 +96,6 @@ sub CommandConfigdb {
 
 		when ('diff') {
 			return "\n Syntax: configdb diff <device> <version>" if @a != 3;
-#			return "Invalid paramaeter '$param1' for diff. Must be a number."
-#				unless looks_like_number($param1);
 			return "Invalid paramaeter '$param2' for diff. Must be a number."
 				unless (looks_like_number($param2) || $param2 eq 'current');
 			Log3('configdb', 4, "configdb: diff requested for device: $param1 in version $param2.");
@@ -78,13 +104,7 @@ sub CommandConfigdb {
 
 		when ('filedelete') {
 			return "\n Syntax: configdb filedelete <pathToFile>" if @a != 2;
-			my $filename;
-			if($param1 =~ m,^[./],) {
-				$filename = $param1;
-			} else {
-				$filename  = $attr{global}{modpath};
-				$filename .= "/$param1";
-			}
+			my $filename = makeFilename($param1);
 			$ret  = "File $filename ";
 			$ret .= defined(_cfgDB_Filedelete($filename)) ? "deleted from" : "not found in";
 			$ret .= " database.";
@@ -93,13 +113,7 @@ sub CommandConfigdb {
 		when ('fileexport') {
 			return "\n Syntax: configdb fileexport <pathToFile>" if @a != 2;
 			if ($param1 ne 'all') {
-				my $filename;
-				if($param1 =~ m,^[./],) {
-					$filename = $param1;
-				} else {
-					$filename  = $attr{global}{modpath};
-					$filename .= "/$param1";
-				}
+				my $filename = makeFilename($param1);
 				$ret = _cfgDB_Fileexport $filename;
 			} else { # start export all
 				my $flist    = _cfgDB_Filelist(1);
@@ -118,13 +132,7 @@ sub CommandConfigdb {
 
 		when ('fileimport') {
 			return "\n Syntax: configdb fileimport <pathToFile>" if @a != 2;
-			my $filename;
-			if($param1 =~ m,^[./],) {
-				$filename = $param1;
-			} else {
-				$filename  = $attr{global}{modpath};
-				$filename .= "/$param1";
-			}
+			my $filename = makeFilename($param1);
 			if ( -r $filename ) {
 				my $filesize = -s $filename;
 				$ret = _cfgDB_binFileimport($filename,$filesize);
@@ -141,13 +149,7 @@ sub CommandConfigdb {
 
 		when ('filemove') {
 			return "\n Syntax: configdb filemove <pathToFile>" if @a != 2;
-			my $filename;
-			if($param1 =~ m,^[./],) {
-				$filename = $param1;
-			} else {
-				$filename  = $attr{global}{modpath};
-				$filename .= "/$param1";
-			}
+			my $filename = makeFilename($param1);
 			if ( -r $filename ) {
 				my $filesize = -s $filename;
 				$ret  = _cfgDB_binFileimport ($filename,$filesize,1);
@@ -167,8 +169,9 @@ sub CommandConfigdb {
 		}
 
 		when ('info') {
+			my $raw = lc($param1) eq 'raw' ? 1 : 0;
 			Log3('configdb', 4, "info requested.");
-			$ret = _cfgDB_Info('$Id$');
+			$ret = _cfgDB_Info('$Id$',$raw);
 		}
 
 		when ('list') {
@@ -182,8 +185,16 @@ sub CommandConfigdb {
 
 		when ('migrate') {
 			return "\n Migration not possible. Already running with configDB!" if $configfile eq 'configDB';
+			$data{cfgDB_debug} = 1 if (lc($param1) eq 'debug');
 			Log3('configdb', 4, "configdb: migration requested.");
 			$ret = _cfgDB_Migrate;
+		}
+
+		when ('rawList'){
+			$data{cfgDB_rawList} = 1;
+			my @out = cfgDB_SaveCfg();
+			delete $data{cfgDB_rawList};
+			return join("\n",@out);
 		}
 
 		when ('recover') {
@@ -192,6 +203,15 @@ sub CommandConfigdb {
 				unless looks_like_number($param1);
 			Log3('configdb', 4, "configdb: recover for version $param1 requested.");
 			$ret = _cfgDB_Recover($param1);
+		}
+
+		when ('renum') {
+			Log3('configdb', 4, "configdb: renum requested for device: $param1.");
+			return "Unknown device $param1" if !defined $defs{$param1};
+			my $oldnum = $defs{$param1}{NR};
+			$defs{$param1}{NR} = 2;
+			$ret  = "configdb: renum requested for device: $param1 \n";
+			$ret .= "use 'save config' and 'shutdown restart' to make changes persistant.";
 		}
 
 		when ('reorg') {
@@ -211,7 +231,7 @@ sub CommandConfigdb {
 		}
 
 		when ('uuid') {
-			$param1 = _cfgDB_Uuid;
+			$param1 = createUniqueId();
 			Log3('configdb', 4, "configdb: uuid requested: $param1");
 			$ret = $param1;
 		}
@@ -230,6 +250,7 @@ sub CommandConfigdb {
 					"         configdb info\n".
 					"         configdb list [device] [version]\n".
 					"         configdb migrate\n".
+					"         configdb rawList\n".
 					"         configdb recover <version>\n".
 					"         configdb reorg [keepVersions]\n".
 					"         configdb search <searchTerm> [version]\n".
@@ -295,6 +316,8 @@ sub _cfgDB_readConfig() {
 		Starting with version 5079, fhem can be used with a configuration database instead of a plain text file (e.g. fhem.cfg).<br/>
 		This offers the possibility to completely waive all cfg-files, "include"-problems and so on.<br/>
 		Furthermore, configDB offers a versioning of several configuration together with the possibility to restore a former configuration.<br/>
+		Detailed information about the available recovery and rescue modes can be found in this forum thread:<br/>
+		<a href=https://forum.fhem.de/index.php/topic,86225.0.html>https://forum.fhem.de/index.php/topic,86225.0.html</a> </br> 
 		Access to database is provided via perl's database interface DBI.<br/>
 		<br/>
 
@@ -303,6 +326,8 @@ sub _cfgDB_readConfig() {
 			Currently the fhem modules<br/>
 			<br/>
 			<li>02_RSS.pm</li>
+			<li>10_RHASSPY.pm</li>
+			<li>31_Lightscene.pm</li>
 			<li>55_InfoPanel.pm</li>
 			<li>91_eventTypes</li>
 			<li>93_DbLog.pm</li>
@@ -439,13 +464,7 @@ sub _cfgDB_readConfig() {
 			<br/>
 			<code> configdb attr</code> - show all defined attributes.<br/>
 			<br/>
-			<ul>Supported attributes:</ul>
-			<br/>
-			<ul><b>deleteimported</b> if set to 1 files will always be deleted from filesystem after import to database.<br/></ul><br/>
-			<ul><b>maxversions</b> set the maximum number of configurations stored in database. <br/>
-			    The oldest version will be dropped in a "save config" if it would exceed this number.</ul><br/>
-			<ul><b>private</b> if set to 0 the database user and password info will be shown in 'configdb info' output.</ul><br/>
-			<ul><b>dumpPath</b> define a path for database dumps<br/></ul><br/>
+			<code> configdb attr ?|help</code> - show a list of available attributes.<br/>
 			<br/>
 
 		<li><code>configdb diff &lt;device&gt; &lt;version&gt;</code></li><br/>
@@ -514,8 +533,9 @@ compare device: telnetPort in current version 0 (left) to version: 1 (right)
 			<br/>
 <br/>
 
-		<li><code>configdb info</code></li><br/>
+		<li><code>configdb info [raw]</code></li><br/>
 			Returns some database statistics<br/>
+			if optional "raw" selected, version infos will be returned as json"<br/>
 <pre>
 --------------------------------------------------------------------------------
  configDB Database Information
@@ -550,6 +570,11 @@ Ver 0 always indicates the currently running configuration.<br/>
 			<code>get configDB list global</code><br/>
 			<code>get configDB list '' 1</code><br/>
 			<code>get configDB list global 1</code><br/>
+		<br/>
+
+		<li><code>configdb rawList</code></li><br/>
+		    Lists the running configuration in the same order that <br/>
+		    would be written to a configuration file.<br/>
 		<br/>
 
 		<li><code>configdb recover &lt;version&gt;</code></li><br/>

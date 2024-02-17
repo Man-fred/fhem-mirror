@@ -18,9 +18,11 @@
 #     You should have received a copy of the GNU General Public License
 #     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
+#     $Id$
+#
 ##############################################################################
 #  
-#  BlinkCamera (c) Johannes Viegener / https://github.com/viegener/Blink
+#  BlinkCamera (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem/tree/master/Blink
 #
 # This module interacts with Blink Home Cameras : https://blinkforhome.com/
 # Some information is based on the work here: https://github.com/MattTW/BlinkMonitorProtocol
@@ -28,7 +30,10 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,59719.0.html
 #
-# $Id$
+#
+ 
+my $repositoryID = '$Id$'; 
+
 #
 ##############################################################################
 #
@@ -50,22 +55,79 @@
 #   new camtype dependant camEnable / camDisable 
 #   ...Cam...active state corrected (was always disabled)
 #   getThumbnail also for Blink Mini
+#   login using V4 for V3 attr
+#   Digest networks from homescreen / eliminate networks call
+#   FIX: cam type not send for old homescreen
+#   FIX: remove also FUUID keyvalue on delete
+#   FIX: FUUID in undef corrected
+#   New default 1 for homescreenv3 - old apis deactivated
+#   Disclaimer for API changes
+#   Corrected handling of prefered network attribute
+#   Adapt active handling to new format
+#   Add new reading Enabled per camera with doc - showing enabled value
+#   Correction for JSON values - true/false 1/0
+#   deprecation note for attr homescreenv3 (log and doc)
+#   handle new video delete - media delete
+#   get client id and verification information from login
+#   add set option verifyPin for pin verification - not verified
+#   add doc for verifyPin (experimental)
+#SVN 7.8.2020
+#   add version id as internal - sourceVersion
+#   removed old homescreen functonality
+#   doc attr maxRetries
+#   attr maxRetries allow up to 9
+#   change retry sequence to 2** wait (instead fo 3**) - 2 4 8 16 ...
+#   change retry for followup on cmd completion to 6 
+#   change liveview for new API
+#   camera...Thumbnail reading only set after file is received
+#   alertupdate - reset after 10 cycles skipped
+#   add more log for alertupdating and remove skipped value
+#   login changed to V5 api and also new format of response  #msg1141218
+#   reset unique id as additional reset option
+#   change header for auth to new value token-auth
+#   adapter also region from login to new tier
+#   changed alert handing only when network is identified
+#   Correct perl warning on setup call with empty event timestamp #msg1142674
+#   Add description for allert readings
+# 5.2.2023
+#   #msg1228374 - könnte man in der commandref mal aktualisieren, dass man den code auch per sms bekommen kann statt nur email
+#   Added doorbells (lotus) cameras - basic function
+#   Get thumbnail working for doorbells/lotus
+#   Add alerts only for known cameras
+#   video alert working for doorbells 
+#   camdisable/camenable not working for Lotus --> now with return message
 
-#   FIX: camtype missing for old homescreen
-# 
-# 
-# 
+# 6.2.2023
+#   added type for syncmodule 
+#   added message for lveview being unsupported
+#   camEnable/camDisable working now for doorbells/lotus
+#   liveview cmd will also set liveCam reading to identify stream
+#   getThumbnail for doorbells working
+
+#   
+#   
+#   
 ##############################################################################
 ##############################################################################
 ##############################################################################
 ##############################################################################
 # TASKS 
-#
-#   unique id generator
-#   change headers: user-agent (Blink/8280 CFNetwork/1125.2 Darwin/19.4.0)/ app-build (IOS_8280)
-#   post on login with all information? --> https://rest-prod.immedia-semi.com/api/v4/account/login
 #   
+#   
+#   
+#   
+#   
+#   
+#   
+#   subtype for syncmodule needed?
+#   Button press?
+#   schlummermodus
 #
+#
+#   Set thumbnail Req reading only after thumbnail stored (from internal)
+#
+#
+#   Analyze more information and settings
 #
 #   FIX: getThumbnail url failing sometimes
 #   FIX: imgOriginalFile not fully working
@@ -82,7 +144,6 @@
 #{"authtoken":{"authtoken":"sjkashajhdjkashd","message":"auth"},"networks":{"<n>":{"name":"<name>","onboarded":true}},"region":{"prde":"Europe"}}
 #{"message":"Unauthorized Access"}
 #
-# { "video_list": [ 1012458 ] }   - POST https://rest.prir.immedia-semi.com/api/v2/videos/delete
 #
 ##############################################################################
 
@@ -143,15 +204,26 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0"
 # my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept-Charset: utf-8";
 
 my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifier\" : \"FHEM blinkCameraModule 1 - q_name_q\", \"email\" : \"q_email_q\" }";
+#my $BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.0.10 (8280) #881c8812\", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem #q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
+
+
+my $BlinkCamera_loginjsonV5 = "{ \"app_version\": \"6.2.7 (10212) \", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"14.4\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
+
+
+my $BlinkCamera_verifyPinjson = "{ \"pin\" : \"q_pin_q\" }";
 
 my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
 
 my $BlinkCamera_configOwljson = "{ \"enabled\" : q_value_q }";
 
-my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+my $BlinkCamera_configLotusjson = "{ \"enabled\" : q_value_q }";
+
+# OLD my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+my $BlinkCamera_deleteVideojson = "{ \"media_list\" : [ q_id_q ] }";
 
 my $BlinkCamera_cameraThumbnailjson = "{ \"id\" : \"q_id_q\", \"network\" : \"q_network_q\" }";
 
+my $BlinkCamera_liveviewjson = "{ \"intent\" : \"liveview\", \"motion_event_start_time\" : \"\" }";
 
 my $BlinkCamera_imgTemplate="<html><a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a></html>";
 my $BlinkCamera_vidTemplate="<html><a href=\"#URL#\">Video Id:#ID#:  #URL#</a></html>";
@@ -166,6 +238,10 @@ my $BlinkCamera_videofile = "BlinkCamera/q_name_q/video/q_id_q.mp4";
 # special debug setting
 my $BlinkCamera_specialLog = 4;
 
+
+# NEw Header store for toekn auth
+# my $BlinkCamera_TokenHeader = "TOKEN_AUTH";
+my $BlinkCamera_TokenHeader = "token-auth";
 
 ##############################################################################
 ##############################################################################
@@ -188,7 +264,7 @@ sub BlinkCamera_Initialize($) {
   $hash->{GetFn}      = "BlinkCamera_Get";
   $hash->{SetFn}      = "BlinkCamera_Set";
   $hash->{AttrFn}     = "BlinkCamera_Attr";
-  $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
+  $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5,6,7,8,9  ".
           "imgTemplate:textField ".
           "imgOriginalFile:0,1 ".
           "videoTemplate:textField ".
@@ -288,9 +364,12 @@ sub BlinkCamera_Delete($$)
 {
   my ($hash, $name) = @_;
 
+  my $fuuid = $hash->{FUUID};
+  
   Log3 $name, 3, "BlinkCamera_Delete $name: called ";
 
   setKeyValue(  "BlinkCamera_".$hash->{Email}, undef ); 
+  setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, undef ); 
   
   Log3 $name, 4, "BlinkCamera_Delete $name: done ";
   return undef;
@@ -330,6 +409,9 @@ sub BlinkCamera_Set($@)
   } elsif ($cmd eq 'login') {
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
   
+  } elsif ($cmd eq 'verifyPin') {
+    $ret = BlinkCamera_DoCmd( $hash, $cmd, $addArg  );
+  
   } elsif( ($cmd eq 'camEnable') || ($cmd eq 'camDisable') ) {
       $ret = BlinkCamera_CameraDoCmd( $hash, $cmd, $addArg )
       
@@ -338,6 +420,12 @@ sub BlinkCamera_Set($@)
 
   } elsif($cmd eq 'reset') {
     Log3 $name, 3, "BlinkCamera_Set $name: reset requested ";
+    BlinkCamera_Setup( $hash );
+    
+  } elsif($cmd eq 'resetUniqueID') {
+    Log3 $name, 3, "BlinkCamera_Set $name: resetUniqueID requested ";
+    my $fuuid = $hash->{FUUID}; 
+    setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, undef );  
     BlinkCamera_Setup( $hash );
 
   } elsif($cmd eq 'videoDelete') {
@@ -452,6 +540,9 @@ sub BlinkCamera_Attr(@) {
     } elsif ($aName eq 'pollingVerbose') {
       return "\"BlinkCamera_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
 
+    } elsif ($aName eq 'homeScreenV3') {
+      Log3 $name, 1, "BlinkCamera_Attr $name: Attribute homeScreenV3 is deprecated and can be removed - old API has been switched off";
+
     }
 
     $_[3] = $aVal;
@@ -529,15 +620,18 @@ sub BlinkCamera_DoCmd($$;$$$)
     return;
   } 
   
-  
-  #######################
-  # check networks if not existing queue current cmd and get networks first
+  ## get actual network and attr V3
   my $net =  BlinkCamera_GetNetwork( $hash ); 
-  if ( ($cmd ne "login") && ($cmd ne "networks") && ( ! defined( $net ) ) ) {
+
+  # !! removed old homescreen - 2020-10-12
+
+  #######################
+  # check networks if not existing queue current cmd and get homescreen first
+  if ( ($cmd ne "login") && ($cmd ne "homescreen") && ($cmd ne "verifyPin") && ( ! defined( $net ) ) ) {
     # add to queue
     Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd ".$cmdString;
     push( @{ $hash->{cmdQueue} }, \@args );
-    $cmd = "networks";
+    $cmd = "homescreen";
     $par1 = undef;
     $par2 = undef;
     # update cmdstring
@@ -546,11 +640,12 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   #######################
   # Check for invalid auth token and just remove cmds
-  if ( ($cmd ne "login") && ($cmd ne "networks") && ( $net eq "INVALID" ) ) {
+  if ( ($cmd ne "login") && ($cmd ne "homescreen") && ($cmd ne "verifyPin") && ( $net eq "INVALID" ) ) {
     # add to queue
     Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to invalid networks list (set attribute network) ".$cmdString;
     return;
   } 
+    
 
   my $ret;
 
@@ -587,24 +682,7 @@ sub BlinkCamera_DoCmd($$;$$$)
   $hash->{HU_DO_PARAMS}->{loglevel} = 4;
   
   $hash->{HU_DO_PARAMS}->{callback} = \&BlinkCamera_Callback;
-
-#????????????
-#SIZE_NOTIFICATION_KEY = 152
-#SIZE_UID = 16
-#         uid = util.gen_uid(const.SIZE_UID)
-#        notification_key = util.gen_uid(const.SIZE_NOTIFICATION_KEY) 
-#
-#
-#
-#
-#
-# generate 32 hex values or 16 HEx BYTES
-#my $rand_hex = join "", map { unpack "H*", chr(rand(256)) } 1..16;
-
-my $notif_key = join "", map { unpack "H*", chr(rand(256)) } 1..76;
-my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
-
-
+  
   # handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
 
@@ -629,15 +707,8 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     if ($cmd eq "login") {
     
-        $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/json";
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/json";
 
-###      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/login";
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/login";
-#      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
-      
-      $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjson;
-#      $hash->{HU_DO_PARAMS}->{compress} = 1;
-      
       my $email = $hash->{Email};
       my ($err, $password) = getKeyValue("BlinkCamera_".$email);
 
@@ -646,21 +717,53 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
       } elsif(! defined($password)) {
         $ret =  "BlinkCamera_DoCmd $name: password is empty";
       } else {
+      
+        my $isReauth = "true";
+        my $fuuid = $hash->{FUUID};
+        my ($err, $uid_key) = getKeyValue("BlinkCamera_BLINKUID_".$fuuid); 
+        if ( ( defined($err) ) || ( ! defined($uid_key) ) ) { 
+          $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..16;
+          setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, $uid_key ); 
+          $isReauth = "false";            
+        }
+
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v5/account/login";
+
+#        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjsonV4;
+        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjsonV5;
+
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_password_q/$password/g;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_email_q/$email/g;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_name_q/$name/g;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_uniqueid_q/$uid_key/g;
+        
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_reauth_q/$isReauth/g;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_fuuid_q/$fuuid/g;
 
-        Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
+
+        Log3 $name, 4, "BlinkCamera_DoCmd $name: loginV5  data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       }
         
     #######################
+    } elsif ( $cmd eq "verifyPin" ) {
+    
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+      #   /api/v4/account/<accountid>/client/<clientid>/pin/verify
+#ORG      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v4/account/".$hash->{account}."/client/".$hash->{clientid}."/pin/verify";
+      $hash->{HU_DO_PARAMS}->{url} = "https://rest-e004.immedia-semi.com"."/api/v4/account/".$hash->{account}."/client/".$hash->{clientid}."/pin/verify";
+    
+      $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_verifyPinjson;
+      $hash->{HU_DO_PARAMS}->{data} =~ s/q_pin_q/$par1/g;
+      Log3 $name, 4, "BlinkCamera_DoCmd $name:   verify pin : ".$par1.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+
+    #######################
     } elsif ( ($cmd eq "camEnable") || ($cmd eq "camDisable" ) ) {
     
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
 
       
-      my $net =  BlinkCamera_GetNetwork( $hash );
       my $ctype = "invalid";
       
       if ( ! defined( $net ) ) {
@@ -688,8 +791,22 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
           $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configOwljson;
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
           Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+        } elsif ( $ctype eq "lotus" ) {
+#          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unsupported !!";
+        
+          if ($cmd eq "camEnable") {
+            $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}.
+                    "/networks/".$net."/doorbells/".$par1."/config";
+            $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
+            $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
+          } else {
+            $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}.
+                    "/networks/".$net."/doorbells/".$par1."/disable";
+            $hash->{HU_DO_PARAMS}->{data} = "";
+          }
+          Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } else {
-          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype."( unknown !!";
+          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unknown !!";
         }
 
       }
@@ -697,9 +814,8 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
-      my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/".$cmd;
       } else {
@@ -709,33 +825,22 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ($cmd eq "homescreen" ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       
-      my $newHomeScreen = AttrVal($name,'homeScreenV3',"0");
-      
-      if ( $newHomeScreen ) {
-        my $acc = $hash->{account};
+      my $acc = $hash->{account};
 
-        if ( defined( $acc ) ) {
-          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/accounts/".$net."/".$cmd;
-        } else {
-          $ret = "BlinkCamera_DoCmd $name: no account id found for homescreen";
-        }
+      if ( defined( $acc ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/accounts/".$acc."/".$cmd;
       } else {
-        my $net =  BlinkCamera_GetNetwork( $hash );
-        if ( defined( $net ) ) {
-          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/".$cmd;
-        } else {
-          $ret = "BlinkCamera_DoCmd $name: no network identifier found for homescreen - set attribute";
-        }
+        $ret = "BlinkCamera_DoCmd $name: no account id found for homescreen";
       }
 
     #######################
     } elsif ( ($cmd eq "networks" ) ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET" ;
 
@@ -745,11 +850,10 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "command" )  ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
 
-      my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/command/".$par1;
       } else {
@@ -759,7 +863,7 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "alerts" )  ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       
@@ -779,11 +883,10 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "cameraConfig" ) ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
 
-      my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/config";
       } else {
@@ -793,12 +896,11 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "cameraThumbnail" ) ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "POST";
       $hash->{HU_DO_PARAMS}->{data} = "";
 
-      my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
       
         my $ctype =  BlinkCamera_GetCamType( $hash, $par1 );
@@ -813,8 +915,11 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
           # https://rest-prde.immedia-semi.com/api/v1/accounts/<accid>/networks/<netid>/owls/<camid>/thumbnail
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/thumbnail";
           Log3 $name, 4, "BlinkCamera_DoCmd $name:  $cmd cam type: ".$ctype.":  ";
+        } elsif ( $ctype eq "lotus" ) {
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/doorbells/".$par1."/thumbnail";
+          Log3 $name, 4, "BlinkCamera_DoCmd $name:  $cmd cam type: ".$ctype.":  ";
         } else {
-          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype."( unknown !!";
+          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
         }
       
       } else {
@@ -829,7 +934,7 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
       Log3 $name, 5, "BlinkCamera_DoCmd $name:   par1 :".$par1.":";
       Log3 $name, 5, "BlinkCamera_DoCmd $name:   curl :".(defined($curl)?$curl:"<undef>").":";
       
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       if ( defined( $curl ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}.$curl.".jpg";
@@ -859,7 +964,7 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
       $par1 = $vid;
       $hash->{HU_DO_PARAMS}->{par1} = $par1;
       
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
 
       if ( defined( $vidUrl ) ) {
@@ -893,12 +998,32 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
       }
         
       if ( defined( $vid ) ) {
-        $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+        ## NEW API
+        # https://rest-prde.immedia-semi.com/api/v1/accounts/<id>/media/delete
+        # request
+          # {
+              # "media_list": [
+                  # 742450103
+              # ]
+          # }
+        # response
+        # {
+            # "code": 711,
+            # "message": "Successfully deleted videos"
+        # } 
 
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/videos/delete";
+        ## OLD
+        # $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+        # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/videos/delete";
+        # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_deleteVideojson;
+        # $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$vid/g;
+
+        $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/media/delete";
         $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_deleteVideojson;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$vid/g;
-
         Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       } else {
@@ -908,14 +1033,28 @@ my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
     #######################
     } elsif ( ($cmd eq "liveview" ) ) {
 
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_TokenHeader.": ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "POST";
 
-      my $net =  BlinkCamera_GetNetwork( $hash );
-      if ( defined( $net ) ) {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/liveview";
+      $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_liveviewjson;
 
+
+      if ( defined( $net ) ) {
+      
+        my $ctype =  BlinkCamera_GetCamType( $hash, $par1 );
+        if ( $ctype eq "camera" ) {
+#          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/liveview";
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v5/accounts/".$hash->{account}."/networks/".$net."/cameras/".$par1."/liveview";
+        } elsif ( $ctype eq "owl" ) {
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/liveview";
+        } elsif ( $ctype eq "lotus" ) {
+          $hash->{HU_DO_PARAMS}->{url} = 
+              $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/doorbells/".$par1."/liveview";
+#          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unsupported !!";
+        } else {
+          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
+        }
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
       }
@@ -1012,92 +1151,72 @@ sub BlinkCamera_ParseLogin($$$)
   my ( $hash, $result, $readUpdates ) = @_;
   my $name = $hash->{NAME};
 
+  # !! removed old homescreen - 2020-10-12
   my $ret;
 
-  if ( defined( $result->{authtoken} ) ) {
-    my $at = $result->{authtoken};
-    if ( defined( $at->{authtoken} ) ) {
-      $hash->{AuthToken} = $at->{authtoken};
+  if ( defined( $result->{account} ) ) {
+    my $acc = $result->{account};
+    if ( defined( $acc->{account_id} ) ) {
+        $hash->{account} = $acc->{account_id};
     }
-    if ( defined( $result->{account} ) ) {
-      my $acc = $result->{account};
-      if ( defined( $acc->{id} ) ) {
-        $hash->{account} = $acc->{id};
-      }
+    # V5
+    if ( defined( $acc->{client_id} ) ) {
+      $hash->{clientid} = $acc->{client_id};
+    }
+    if ( defined( $acc->{client_verification_required} ) ) {
+      $hash->{clientverreq} = $acc->{client_verification_required};
+    }
+    if ( defined( $acc->{phone_verification_required} ) ) {
+      $hash->{phoneverreq} = $acc->{phone_verification_required};
     }
   }
+
+# V4
+#  if ( defined( $result->{authtoken} ) ) {
+#    my $at = $result->{authtoken};
+#    if ( defined( $at->{authtoken} ) ) {
+#      $hash->{AuthToken} = $at->{authtoken};
+#    }
+#  }
+
+# V5
+  if ( defined( $result->{auth} ) ) {
+    my $au = $result->{auth};
+    if ( defined( $au->{token} ) ) {
+      $hash->{AuthToken} = $au->{token};
+    }
+  }
+
+# V4
+#  if ( defined( $result->{client} ) ) {
+#    my $clt = $result->{client};
+#    if ( defined( $clt->{id} ) ) {
+#      $hash->{clientid} = $clt->{id};
+#      $hash->{clientverreq} = $clt->{verification_required};
+#    }
+#  }
+    
+# V4
+#  my $resreg = $result->{region};
+#  if ( defined( $resreg ) ) {
+#    $readUpdates->{region} = $resreg->{tier};
+#    $readUpdates->{regionName} = $resreg->{description};
+#  } else {
+#    $readUpdates->{region} = undef;    
+#    $readUpdates->{regionName} = undef;    
+#  }
   
-  my $resreg = $result->{region};
+# V5
+  my $resreg = $result->{account};
   if ( defined( $resreg ) ) {
-    my $regkey = ( keys %$resreg )[0];
-    $readUpdates->{region} = $regkey;
-    $readUpdates->{regionName} = $resreg->{$regkey};
+    $readUpdates->{region} = $resreg->{tier};
+    $readUpdates->{regionName} = $resreg->{region};
   } else {
     $readUpdates->{region} = undef;    
     $readUpdates->{regionName} = undef;    
   }
-  
   return $ret;
 }
-
-
-# OLD LOGIN #####################################
-# #  INTERNAL: Parse the login results
-# sub BlinkCamera_ParseLogin($$$)
-# {
-  # my ( $hash, $result, $readUpdates ) = @_;
-  # my $name = $hash->{NAME};
-
-  # my $ret;
-
-  # if ( defined( $result->{authtoken} ) ) {
-    # my $at = $result->{authtoken};
-    # if ( defined( $at->{authtoken} ) ) {
-      # $hash->{AuthToken} = $at->{authtoken};
-    # }
-    # if ( defined( $result->{account} ) ) {
-      # my $acc = $result->{account};
-      # if ( defined( $acc->{id} ) ) {
-        # $hash->{account} = $acc->{id};
-      # }
-    # }
-  # }
-  
-  # # grab network list
-  # my $resnet = $result->{networks};
-  # my $netlist = "";
-  # if ( defined( $resnet ) ) {
-    # Log3 $name, 4, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
-    # foreach my $netkey ( keys %$resnet ) {
-      # Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
-      # my $net =  $resnet->{$netkey};
-      # my $ob = 0;
-      # $ob = 1 if ( ( defined( $net->{onboarded} ) ) && ( $net->{onboarded}) );
-      # my $ns = $netkey.":".$net->{name};
-# #      Log3 $name, 4, "BlinkCamera_Callback $name: onboarded  :".$net->{onboarded}.":" ;
-      # if ( $ob ) {
-      # Log3 $name, 4, "BlinkCamera_Callback $name: found onboarded network  ".$netkey ;
-        # $ns .= "\n" if ( length( $netlist) > 0 );
-        # $netlist = $ns.$netlist;
-      # } else {
-        # $netlist .= "\n" if ( length( $netlist) > 0 );
-        # $netlist .= $ns;
-      # }
-    # }
-  # }
-  # $readUpdates->{networks} = $netlist;
-  # my $resreg = $result->{region};
-  # if ( defined( $resreg ) ) {
-    # my $regkey = ( keys %$resreg )[0];
-    # $readUpdates->{region} = $regkey;
-    # $readUpdates->{regionName} = $resreg->{$regkey};
-  # } else {
-    # $readUpdates->{region} = undef;    
-    # $readUpdates->{regionName} = undef;    
-  # }
-  
-  # return $ret;
-# }
 
 
 #####################################
@@ -1137,111 +1256,6 @@ sub BlinkCamera_ParseNetworks($$$)
 }
 
 
-
-#### OLD HOMESCREEN BEFORE V3 #####################################
-#####################################
-#  INTERNAL: Parse the homescreen results
-sub BlinkCamera_ParseHomescreenOLD($$$)
-{
-  my ( $hash, $result, $readUpdates ) = @_;
-  my $name = $hash->{NAME};
-
-  my $ret;
-
-  my $network = $result->{network};
-
-  Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  ";
-  
-  # Homescreen succesful so start a request for alerst/videos/notifications
-  $hash->{alertSkipped} = 0 if ( ! defined ($hash->{alertSkipped} ) );
-  if ( defined ($hash->{alertUpdate} ) ) {
-    $hash->{alertSkipped} += 1;
-  } else {
-    BlinkCamera_ParseStartAlerts($hash) 
-  }
-
-  # Get overall status
-  $readUpdates->{networkName} = "";
-  $readUpdates->{networkStatus} = "";
-  $readUpdates->{networkArmed} = "";
-  $readUpdates->{networkNotifications} = "";
-  if ( defined( $network ) ) {
-    $readUpdates->{networkName} = $network->{name} if ( defined( $network->{name} ) );
-    $readUpdates->{networkStatus} = $network->{status} if ( defined( $network->{status} ) );
-    $readUpdates->{networkArmed} = $network->{armed} if ( defined( $network->{armed} ) );
-    $readUpdates->{networkNotifications} = $network->{notifications} if ( defined( $network->{notifications} ) );
-    Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  foudn network info for network ";
-  }
-
-  # devices
-  my $devList = $result->{devices};
-  
-  
-  # loop through readings to reset all existing Cameras - but leave Img (otherwise too many events on thumbnails)
-  if ( defined($hash->{READINGS}) ) {
-    foreach my $cam ( keys  %{$hash->{READINGS}} ) {
-      $readUpdates->{$cam} = undef if ( ( $cam =~ /^networkCamera/ ) && ( $cam !~ /^networkCamera.*Img/ ) );
-    }
-  }
-  $readUpdates->{networkSyncModule} = "";
-  
-  # loop through devices and build a reading for cameras and a reading for the 
-  if ( defined( $devList ) ) {
-    my $cameraGets = "";
-    my $cameras = "";
-    foreach my $device ( @$devList ) {
-      if ( $device->{device_type} eq "camera" ) {
-#        Debug "Device loop: ".$device->{device_id};
-        $readUpdates->{"networkCamera".$device->{device_id}} = $device->{name}.":".$device->{active};
-        $readUpdates->{"networkCamera".$device->{device_id}."Name"} = $device->{name};
-        $readUpdates->{"networkCamera".$device->{device_id}."Type"} = "camera";
-        $readUpdates->{"networkCamera".$device->{device_id}."Active"} = $device->{active};
-        $cameraGets .= $device->{name}.",".$device->{device_id}.",";
-        $cameras .= $device->{device_id}.":".$device->{name}."\n";
-        if ( defined( $device->{thumbnail} ) ) {
-          # Load Thumbnail only if not already there
-          if ( ( ! defined( $hash->{"thumbnail".$device->{device_id}."Url"} ) ||
-               ( $hash->{"thumbnail".$device->{device_id}."Url"} ne $device->{thumbnail} ) ) ) {
-            if ( ! defined( $hash->{"thumbnail".$device->{device_id}."Req"} ) ) {
-#              Debug "retreive thumbnail from homescreen for ".$device->{device_id};
-              # Do thumbnail request only of not already there (e.g. by polling)
-              $hash->{"thumbnail".$device->{device_id}."Req"} = $device->{thumbnail};
-              BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
-            } else {
-              Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  thumbnail Req already defined for ".$device->{device_id};
-            }
-          } else {
-            # already there just update readings
-            $readUpdates->{"networkCamera".$device->{device_id}."Url"} = BlinkCamera_getwebname( $hash ).
-                BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{device_id}, $name ); 
-          }
-        }
-        $readUpdates->{"networkCamera".$device->{device_id}."Thumbnail"} = $device->{thumbnail}; 
-        $readUpdates->{"networkCamera".$device->{device_id}."Batt"} = $device->{battery}; 
-        $readUpdates->{"networkCamera".$device->{device_id}."Temp"} = $device->{temp}; 
-      } elsif ( $device->{device_type} eq "sync_module" ) {
-        if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
-          Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
-        } else {
-          $readUpdates->{networkSyncModule} .= $device->{device_id}.":".$device->{status};
-        }
-      } else {
-        Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
-      }
-    }
-    $cameraGets .= "all";
-    $hash->{getoptions}->{liveview} = $cameraGets;
-    $hash->{getoptions}->{getThumbnail} = $cameraGets;
-    $hash->{getoptions}->{getInfoCamera} = $cameraGets;
-    $hash->{setoptions}->{camEnable} = $cameraGets;
-    $hash->{setoptions}->{camDisable} = $cameraGets;
-    $readUpdates->{networkCameras} = $cameras;
-  }
-
-  return $ret;
-}
-
-
 #####################################
 #  INTERNAL: Parse the homescreen results --> valid for V3 
 sub BlinkCamera_ParseHomescreen($$$)
@@ -1249,54 +1263,88 @@ sub BlinkCamera_ParseHomescreen($$$)
   my ( $hash, $result, $readUpdates ) = @_;
   my $name = $hash->{NAME};
 
-  # Run old homescreen parsing if attribute not set
-  my $newHomeScreen = AttrVal($name,'homeScreenV3',"0");
-  if ( ! $newHomeScreen ) {
-    Log3 $name, 4, "BlinkCamera_ParseHomescreen $name: Use old home screen parsing ";
-    return BlinkCamera_ParseHomescreenOLD( $hash, $result, $readUpdates );
-  }
-
-  ################ NEW ##############
-
+  # !! removed old homescreen - 2020-10-12
   my $ret;
 
   Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  ";
   
-  # Homescreen succesful so start a request for alerst/videos/notifications
-  $hash->{alertSkipped} = 0 if ( ! defined ($hash->{alertSkipped} ) );
-  if ( defined ($hash->{alertUpdate} ) ) {
-    $hash->{alertSkipped} += 1;
-  } else {
-    BlinkCamera_ParseStartAlerts($hash) 
-  }
+  # grab network list from summary
+  my $resnet = $result->{networks};
+  my $firstnetwork = undef;
+  my $netlist = "";
 
-  my $network = BlinkCamera_GetNetwork( $hash );
-  if ( ! defined( $network ) ) {
-    Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: Network ID not found - please set attribute ";
-    $network = "invalid";
-  }
-
-  # networks
-  my $netList = $result->{networks};
+  my $prefnet = AttrVal($hash->{NAME},'network',undef); 
   
-  # loop through networks and get the requested network information 
   $readUpdates->{networkName} = "";
   $readUpdates->{networkArmed} = "";
-  if ( defined( $netList ) ) {
-    foreach my $network ( @$netList ) {
-      if ( $network->{id} eq $network ) {
-        $readUpdates->{networkName} = $network->{name} if ( defined( $network->{name} ) );
-        $readUpdates->{networkArmed} = $network->{armed} if ( defined( $network->{armed} ) );
-        Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  found network info for network ";
-        last;
+
+  if ( defined( $resnet ) ) {
+    Log3 $name, 4, "BlinkCamera_Callback $name: homescreen number of networks ".scalar(@$resnet) ;
+    foreach my $anet ( @$resnet ) {
+      my $netid =  $anet->{id};
+      Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netid ;
+      my $ob = 0;
+#      $ob = 1 if ( ( defined( $anet->{onboarded} ) ) && ( $anet->{onboarded}) );
+      my $ns = $netid.":".$anet->{name};
+#      Log3 $name, 4, "BlinkCamera_Callback $name: onboarded  :".$anet->{onboarded}.":" ;
+
+      # check with prefered network
+      if ( defined( $prefnet )  ) {
+        # only check against pref net if this is set to avoid using first network
+        if ( $netid eq $prefnet)  {
+          $firstnetwork = $netid;
+          $readUpdates->{networkName} = $anet->{name} if ( defined( $anet->{name} ) );
+          $readUpdates->{networkArmed} = ($anet->{armed}?"true":"false") if ( defined( $anet->{armed} ) );
+        }
+      } elsif ( ! defined( $firstnetwork ) ) {
+        $firstnetwork = $netid;
+        $readUpdates->{networkName} = $anet->{name} if ( defined( $anet->{name} ) );
+        $readUpdates->{networkArmed} = ($anet->{armed}?"true":"false") if ( defined( $anet->{armed} ) );
       }
+      
+      # $ob currently always 0 - check with onboarded networks - currently only influencing sequence
+      if ( $ob ) {
+        $ns .= "\n" if ( length( $netlist) > 0 );
+        $netlist = $ns.$netlist;
+      } else {
+        $netlist .= "\n" if ( length( $netlist) > 0 );
+        $netlist .= $ns;
+      }
+      
     }
   }
+  $readUpdates->{networks} = $netlist;
+  
+  my $network = $firstnetwork;
+  
+  if ( ! defined( $network ) ) {
+    Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: Network ID not found - please set attribute to existing network";
+  } else {
+    Log3 $name, 4, "BlinkCamera_ParseHomescreen $name: network  ".$network ;
+
+    # changed alerts after network identification only
+    # Homescreen succesful so start a request for alerst/videos/notifications
+    $hash->{alertSkipped} = 0 if ( ! defined ($hash->{alertSkipped} ) );
+    if ( defined ($hash->{alertUpdate} ) ) {
+      $hash->{alertSkipped} += 1;
+      if ( $hash->{alertSkipped} > 10 ) {
+        delete( $hash->{alertUpdate} );
+        $hash->{alertSkipped} = 0;
+        Log3 $name, 3, "BlinkCamera_Callback $name: alertUpdate reset - too many times skipped" ;
+      }
+    } else {
+      BlinkCamera_ParseStartAlerts($hash) 
+    }
+
+  }
+
+
+
+
 
   # sync module information
   my $syncList = $result->{sync_modules};
-  
-  
+    
   # loop through msync modules and get the requested module information 
   $readUpdates->{networkSyncModule} = "";
   $readUpdates->{networkSyncId} = "";
@@ -1304,6 +1352,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   $readUpdates->{networkSyncSerial} = "";
   $readUpdates->{networkSyncFirmware} = "";
   $readUpdates->{networkSyncWifi} = "";
+  $readUpdates->{networkSyncType} = "";
   if ( defined( $syncList ) ) {
     foreach my $module ( @$syncList ) {
       if ( $module->{network_id} eq $network ) {
@@ -1313,6 +1362,7 @@ sub BlinkCamera_ParseHomescreen($$$)
         $readUpdates->{networkSyncSerial} = $module->{serial} if ( defined( $module->{serial} ) );
         $readUpdates->{networkSyncFirmware} = $module->{fw_version} if ( defined( $module->{fw_version} ) );
         $readUpdates->{networkSyncWifi} = $module->{wifi_strength} if ( defined( $module->{wifi_strength} ) );
+        $readUpdates->{networkSyncType} = $module->{type} if ( defined( $module->{type} ) );
         Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  found sync module info for network ";
         last;
       }
@@ -1320,12 +1370,15 @@ sub BlinkCamera_ParseHomescreen($$$)
   }
 
 
-  # Cameras and Owls (blink mini)
+  # Cameras and Owls (blink mini) and lotus (doorbells)
   my $camList = $result->{cameras};
   my $owlList = $result->{owls};
+  my $lotusList = $result->{doorbells};
   
   return $ret if ( ( ! defined( $camList ) ) &&  ( ! defined( $owlList ) ) ); 
   
+  Log3 $name, 4, "BlinkCamera_Callback $name: handle cams" ;
+
   my $cameraGets = "";
   my $cameras = "";
 
@@ -1335,13 +1388,17 @@ sub BlinkCamera_ParseHomescreen($$$)
     foreach my $device ( @$camList ) {
       if ( $device->{network_id} eq $network ) {
         my $active = "disabled";
-#        $active = "armed" if ( $device->{enabled} eq "true" );
-        $active = "armed" if ( $device->{enabled} );
+        if ( defined( $device->{enabled} ) ) {
+          $active = "armed" if ( $device->{enabled} == 1 );
+          $active = "armed" if ( $device->{enabled} eq "true" );
+#        $active = "armed" if ( $device->{enabled} );
+        }
         
         $readUpdates->{"networkCamera".$device->{id}} = $device->{name}.":".$active;
         $readUpdates->{"networkCamera".$device->{id}."Name"} = $device->{name};
         $readUpdates->{"networkCamera".$device->{id}."Type"} = "camera";
         $readUpdates->{"networkCamera".$device->{id}."Active"} = $active;
+        $readUpdates->{"networkCamera".$device->{id}."Enabled"} = defined($device->{enabled})?$device->{enabled}:"undef";
         $cameraGets .= $device->{name}.",".$device->{id}.",";
         $cameras .= $device->{id}.":".$device->{name}."\n";
         
@@ -1362,7 +1419,8 @@ sub BlinkCamera_ParseHomescreen($$$)
             $readUpdates->{"networkCamera".$device->{id}."Url"} = BlinkCamera_getwebname( $hash ).
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{id}, $name ); 
           }
-          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
+
+# do this only after storag of thumbnail being completed          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
         }
         $readUpdates->{"networkCamera".$device->{id}."Batt"} = $device->{battery} if ( defined( $device->{battery} ) );
         $readUpdates->{"networkCamera".$device->{id}."Firmware"} = $device->{fw_version} if ( defined( $device->{fw_version} ) );
@@ -1382,13 +1440,17 @@ sub BlinkCamera_ParseHomescreen($$$)
     foreach my $device ( @$owlList ) {
       if ( $device->{network_id} eq $network ) {
         my $active = "disabled";
-#        $active = "armed" if ( $device->{enabled} eq "true" );
-        $active = "armed" if ( $device->{enabled}  );
+        if ( defined( $device->{enabled} ) ) {
+          $active = "armed" if ( $device->{enabled} == 1 );
+          $active = "armed" if ( $device->{enabled} eq "true" );
+#        $active = "armed" if ( $device->{enabled} );
+        }
         
         $readUpdates->{"networkCamera".$device->{id}} = $device->{name}.":".$active;
         $readUpdates->{"networkCamera".$device->{id}."Name"} = $device->{name};
         $readUpdates->{"networkCamera".$device->{id}."Type"} = "owl";
         $readUpdates->{"networkCamera".$device->{id}."Active"} = $active;
+        $readUpdates->{"networkCamera".$device->{id}."Enabled"} = defined($device->{enabled})?$device->{enabled}:"undef";
         $cameraGets .= $device->{name}.",".$device->{id}.",";
         $cameras .= $device->{id}.":".$device->{name}."\n";
         
@@ -1409,13 +1471,70 @@ sub BlinkCamera_ParseHomescreen($$$)
             $readUpdates->{"networkCamera".$device->{id}."Url"} = BlinkCamera_getwebname( $hash ).
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{id}, $name ); 
           }
-          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
+# do this only after storag of thumbnail being completed          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
         }
         $readUpdates->{"networkCamera".$device->{id}."Firmware"} = $device->{fw_version} if ( defined( $device->{fw_version} ) );
         $readUpdates->{"networkCamera".$device->{id}."Status"} = $device->{status} if ( defined( $device->{status} ) );
         if ( defined( $device->{signals} ) ) {
           my $signal = $device->{signals};
           $readUpdates->{"networkCamera".$device->{id}."Temp"} = $signal->{temp}; 
+        }
+      }
+    }
+
+  }
+
+  # loop through doorbells (lotus) and get the requested camera information 
+  if ( defined( $lotusList ) ) {
+  
+    foreach my $device ( @$lotusList ) {
+      if ( $device->{network_id} eq $network ) {
+        my $active = "disabled";
+        if ( defined( $device->{enabled} ) ) {
+          $active = "armed" if ( $device->{enabled} == 1 );
+          $active = "armed" if ( $device->{enabled} eq "true" );
+#        $active = "armed" if ( $device->{enabled} );
+        }
+        
+        $readUpdates->{"networkCamera".$device->{id}} = $device->{name}.":".$active;
+        $readUpdates->{"networkCamera".$device->{id}."Name"} = $device->{name};
+        $readUpdates->{"networkCamera".$device->{id}."Type"} = "lotus";
+        $readUpdates->{"networkCamera".$device->{id}."Active"} = $active;
+        $readUpdates->{"networkCamera".$device->{id}."Enabled"} = defined($device->{enabled})?$device->{enabled}:"undef";
+        $cameraGets .= $device->{name}.",".$device->{id}.",";
+        $cameras .= $device->{id}.":".$device->{name}."\n";
+        
+        if ( defined( $device->{thumbnail} ) ) {
+          # Load Thumbnail only if not already there
+          if ( ( ! defined( $hash->{"thumbnail".$device->{id}."Url"} ) ||
+               ( $hash->{"thumbnail".$device->{id}."Url"} ne $device->{thumbnail} ) ) ) {
+            if ( ! defined( $hash->{"thumbnail".$device->{id}."Req"} ) ) {
+  #              Debug "retreive thumbnail from homescreen for ".$device->{id};
+              # Do thumbnail request only of not already there (e.g. by polling)
+              $hash->{"thumbnail".$device->{id}."Req"} = $device->{thumbnail};
+              BlinkCamera_DoCmd( $hash, "thumbnail", $device->{id}, "HIDDEN" );
+            } else {
+              Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  thumbnail Req already defined for ".$device->{id};
+            }
+          } else {
+            # already there just update readings
+            $readUpdates->{"networkCamera".$device->{id}."Url"} = BlinkCamera_getwebname( $hash ).
+                BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{id}, $name ); 
+          }
+# do this only after storag of thumbnail being completed          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
+        }
+        $readUpdates->{"networkCamera".$device->{id}."Batt"} = $device->{battery} if ( defined( $device->{battery} ) );
+        $readUpdates->{"networkCamera".$device->{id}."Firmware"} = $device->{fw_version} if ( defined( $device->{fw_version} ) );
+        $readUpdates->{"networkCamera".$device->{id}."Status"} = $device->{status} if ( defined( $device->{status} ) );
+        $readUpdates->{"networkCamera".$device->{id}."Mode"} = $device->{doorbell_mode} if ( defined( $device->{doorbell_mode} ) );
+        $readUpdates->{"networkCamera".$device->{id}."Snooze"} = $device->{snooze} if ( defined( $device->{snooze} ) );
+
+
+        if ( defined( $device->{signals} ) ) {
+          my $signal = $device->{signals};
+          $readUpdates->{"networkCamera".$device->{id}."SignalLfr"} = $signal->{lfr}; 
+          $readUpdates->{"networkCamera".$device->{id}."SignalWifi"} = $signal->{wifi}; 
+          $readUpdates->{"networkCamera".$device->{id}."SignalBattery"} = $signal->{battery}; 
         }
       }
     }
@@ -1598,8 +1717,13 @@ sub BlinkCamera_Callback($$$)
         $ret = "Callback returned error:".$jo->{message}.":";
         
         $ret = "SUCCESS" if ( $jo->{message} =~ /^Successfully / );
+        
+        # special case for pin verification: Client has been successfully verified
+        $ret = "SUCCESS" if ( $jo->{message} =~ /^Client has been successfully / );
+        
         # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
         delete( $hash->{AuthToken} ) if ( $jo->{message} eq "Unauthorized Access" );
+        
       } else {
         $result = $jo;
       }
@@ -1657,7 +1781,7 @@ sub BlinkCamera_Callback($$$)
         } else {
           $cmdId = $result->{id} if ( defined( $result->{id} ) );
           $ret = "waiting for command to be finished";
-          $maxRetries = 3;
+          $maxRetries = 6;
         }
       }
 
@@ -1676,6 +1800,8 @@ sub BlinkCamera_Callback($$$)
         
         # Store which thumbnail file is loaded already
         $hash->{"thumbnail".$par1."Url"} = $hash->{"thumbnail".$par1."Req"};
+        # set the thumbnail reading after receiving the file
+        $readUpdates{"networkCamera".$par1."Thumbnail"} = $hash->{"thumbnail".$par1."Req"} ; 
         delete( $hash->{"thumbnail".$par1."Req"} );
         
 #        $readUpdates{"networkCamera".$par1."Url"} = BlinkCamera_getwebname( $hash ).
@@ -1694,6 +1820,7 @@ sub BlinkCamera_Callback($$$)
     
     } elsif ($cmd eq "liveview" ) {
       $readUpdates{liveVideo} = $result->{server};
+      $readUpdates{liveCam} = $par1;
 
     } else {
       
@@ -1726,13 +1853,15 @@ sub BlinkCamera_Callback($$$)
       $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
       if ( ( defined($wait) ) && ( $wait <= $maxRetries ) ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
-        $wait = 3**$wait;
+#        $wait = 3**$wait;
+        # new wait time calc - 2 4 8 16       
+        my $waittime = 2**$wait;
         
-        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
+        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $waittime (ret: $ret) for cmd ".
               $param->{args}[0];
 
         # set timer
-        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
+        InternalTimer(gettimeofday()+$waittime, "BlinkCamera_RetryDo", $param,0); 
         
         # finish
         return;
@@ -1950,8 +2079,11 @@ sub BlinkCamera_Setup($) {
   # remove all readings ebside eventTimestamp to avoid addtl notifications
   my $eventTime =  ReadingsVal($name,"eventTimestamp",undef);
   CommandDeleteReading(undef, "$name .*");
-  readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 ) if ( defined( $eventTime ) );
-
+  if ( defined( $eventTime ) ) {
+    Log3 $name, 4, "BlinkCamera_Setup $name: init eventtimestamp with ".$eventTime;
+    readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 );
+  }
+  
   foreach my $aKey ( keys  %{$hash} ) {
     # "thumbnail".$device->{device_id}."Req"
     delete( $hash->{$aKey} ) if ( $aKey =~ /^thumbnail/ );
@@ -1959,6 +2091,7 @@ sub BlinkCamera_Setup($) {
   
   my %sets = (
     "login" => undef,
+    "verifyPin" => undef,
 
     "arm" => undef,
     "disarm" => undef,
@@ -1967,6 +2100,8 @@ sub BlinkCamera_Setup($) {
     "camDisable" => undef,
     
     "reset" => undef,
+    
+    "resetUniqueID" => undef,
     
     "videoDelete" => undef,
     
@@ -2006,6 +2141,8 @@ sub BlinkCamera_Setup($) {
 
   $hash->{POLLING} = -1;
   
+  $hash->{sourceVersion} = $repositoryID;
+  
   # Temp?? SNAME is required for allowed (normally set in TCPServerUtils)
   $hash->{SNAME} = $name;
 
@@ -2032,7 +2169,11 @@ sub BlinkCamera_Setup($) {
   delete( $hash->{alertSkipped} );
   delete( $hash->{alertUpdate} );
   delete( $hash->{alertResults} );
-  
+
+  delete( $hash->{clientid} );
+  delete( $hash->{clientverreq} );
+  delete( $hash->{phoneverreq} );
+
   delete( $hash->{URL} );
   
   # remove timer for retry
@@ -2378,17 +2519,22 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
       
       if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
         Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: is new alert ";
-        readingsBeginUpdate($hash);
-        readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
-        readingsBulkUpdate($hash, "alertCamera", $alertCamera );        
-        
         my $cname = BlinkCamera_GetCameraName( $hash, $alertCamera );
-        readingsBulkUpdate($hash, "alertCameraName", $cname ) if ( defined( $cname ) );        
+        
+        if ( defined( $cname ) ) {
+          readingsBeginUpdate($hash);
+          readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
+          readingsBulkUpdate($hash, "alertCamera", $alertCamera );        
+          
+          readingsBulkUpdate($hash, "alertCameraName", $cname );        
 
-        readingsBulkUpdate($hash, "alertTime", $alertTime );        
-        readingsBulkUpdate($hash, "alertID", $id );        
+          readingsBulkUpdate($hash, "alertTime", $alertTime );        
+          readingsBulkUpdate($hash, "alertID", $id );        
 
-        readingsEndUpdate($hash, 1);
+          readingsEndUpdate($hash, 1);
+        } else {
+          # cameraname not found --> ignore
+        }
       }
 
       # eval eventTimestamp to check for latest and update event timestamp
@@ -2474,8 +2620,14 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   
   <a href="https://blinkforhome.com">Blink Home Cameras</a> are relatively inexpensive wire-free video home security & monitoring system
 
-  The blink device contains the possibility to regular poll for updates (i.e. specifically for notificatio0ns/alerts) 
+  <br><br>
+  <b>Disclaimer</b>: Since there are no official APIs for the blink cameras, there is no guarantee for this module to continue working. Several changes over the years have caused temporary outages due to incompatibe changes done by the provider of the Blink cameras. 
+  <br><br>
+
+  The blink device contains the possibility to regular poll for updates (i.e. specifically for notifications/alerts) 
   MOst commands that change configurations are not synchronous, but the result will be returned after polling for status information. This is automatically handled in the device and the result of the cmd is marked in the reading <code>cmdResult</code> with the value "SUCCESS".
+  <br>
+  Traditional Blink cameras and also the BlinkMini types should work
   <br>
   The blink device also contains a proxy for retrieving videos and thumbnails throug an FHEMweb extension in the form of http://&lt;fhem&gt;:&lt;fhemwebport&gt;/fhem/BlinkCamera/&lt;name of the blink device&gt;/...
   
@@ -2504,12 +2656,17 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   <br><br>
     <li><code>login</code><br>Initiate a login to the blink servers. This is usually done automatically when needed or when the login is expired
     </li>
+    <li><code>verifyPin</code><br>can be used to verify the pin send from blink via email/sms 
+    </li>
     <li><code>arm</code> or <code>disarm</code><br>All enabled cameras in the system will be armed (i.e. they will be set to a mode where alarms/videos are automatically created based on the current settings) / disarmed (set to inactive mode where no video is recorded.
     </li>
     <li><code>camEnable &lt;camera name or number or "all"&gt;</code> or <code>camDisable &lt;camera name or number&gt;</code><br>The specified camera will be enabled (i.e. so that it is included in the arm / disarm commands) / disabled (excluded from arm/disarm).
     </li>
     
     <li><code>reset</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state)
+    </li>
+    
+    <li><code>resetUniqueID</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state). Additionally the uniqueID that is used in the device loing will be reset in this option.
     </li>
     
     <li><code>videoDelete &lt;video id&gt;</code><br>The video with the given id will be removed (both from the local filesystem and from the blink servers)
@@ -2539,7 +2696,7 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     <li><code>getVideoAlert [ &lt;video id&gt; ]</code><br>Retrieve the video for the corresponding id (or if ommitted as specified in the reading <code>alertID</code>) and store the video in a local file in the directory given in the attribute <code>proxyDir</code>
     </li>
     
-    <li><code>liveview &lt;camera name or number or "all"&gt;</code><br>Request a link to the live video stream. The live video stream access (URL) will be stored in the reading liveVideo. The link to the video is an rtsp - which can be shown in video players like VLC.
+    <li><code>liveview &lt;camera name or number or "all"&gt;</code><br>Request a link to the live video stream. The live video stream access (URL) will be stored in the reading liveVideo (the associated cam id in liveCam). The link to the video is an rtsp - which can be shown in video players like VLC.
     <br>
     Note: Live video streaming might have a substantially negative effect on battery life<br>
     </li>
@@ -2553,6 +2710,9 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   <b>Attributes</b>
   <br><br>
   <ul>
+    <li><code>maxRetries &lt;0|1|2...|9&gt;</code><br>Defines the number of retries that are done in case of a failure of a command. Pauses between retries are done with an increasing delay between calls. 
+    </li> 
+
     <li><code>network &lt;network id&gt;</code><br>This attribute is needed if your blink system contains more than one network. If not specified the first netowrk defined in the account is used
     </li> 
 
@@ -2566,11 +2726,6 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li> 
 
 
-    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
-    NOTE: This is necessary to show at least the status of Blink Mini cameras - changes are not yet possible 
-    </li> 
-
-
     <li><code>imgOriginalFile &lt;1 or 0&gt;</code><br>If set to 1 it will keep the original filename of the thumbnail when storing ti. With setting this new thumbnails will not overwrite existing ones. <br>
     NOTE: No cleanup of thumbnails is done, so over time more and more thumbnails will be stored in the proxydir. 
     </li> 
@@ -2580,6 +2735,11 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
 
     <li><code>webname &lt;path to fhem web&gt;</code><br>can be set if fhem is not accessible through the standard url of FHEMWeb <code>/fhem/... </code> (Default value is fhem). 
     </li> 
+
+    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 (default) the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
+    NOTE: This attribute is deprecated and not needed anymore, since the old API has been switched off by Blink (default is on = 1)
+    </li> 
+
 
   </ul>
 
@@ -2605,7 +2765,11 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     <br>
     
     <li><code>networkCamera... </code><br>Set of readings specific for each camera (identified by the cameraID in the reading name). Providing status and name of the camera / most recent thumbnail / url for the thumbnail to the proxy </li> 
+    <li><code>networkCamera<cameraid>Enabled</code><br>Shows the enabled (active) status of the camera (known values: 0 / 1 / "undef" - last value will be given if this value is not contained in the camerainfo </li> 
+
+    <br>
     
+    <li><code>alert... </code><br>Set of readings specifying the last alert (movement alert) coming from one of the devices. Especially the ID is relevant here for accessing the corresponding video secifically. Additionally the camera, time and video url are specifed here. </li> 
     
   </ul> 
 

@@ -3,7 +3,7 @@
 
 var fd_loadedHash={}, fd_loadedList=[], fd_all={}, fd_allCnt, fd_progress=0, 
     fd_lang, fd_offsets=[], fd_scrolled=0, fd_modLinks={}, csrfToken="X",
-    fd_modLangs={}, fd_mode = "FHEM";
+    fd_modLangs={}, fd_mode = "FHEM", fd_style;
 var fd_otherSrc = { "usb":"autocreate", "createlog":"autocreate" };
 
 
@@ -103,7 +103,7 @@ loadOneDoc(mname, lang)
     ret = ret.replace(/Keine deutsche Hilfe gefunden!<br\/>/,'');
     ret = '<div id="FD_'+mname+'">'+ret+'</div>';
     ret = ret.replace(/target="_blank"/g, '');  // revert help URL rewrite
-    ret = ret.replace(/href=".*?commandref.*?.html#/g, 'href="#');
+    ret = ret.replace(/href="[^"]*commandref[^"]*.html#/g, 'href="#');
 
     if(fd_loadedHash[mname])
       $("div#FD_"+mname).remove();
@@ -204,7 +204,6 @@ fd_csrfRefresh(callback)
 {
   if(fd_mode != "FHEM")
     return;
-  console.log("fd_csrfRefresh");
   $.ajax({
     url:location.pathname.replace(/docs.*/,'')+"?XHR=1",
     success: function(data, textStatus, request){
@@ -218,13 +217,15 @@ fd_csrfRefresh(callback)
 
 
 $(document).ready(function(){
+  if(fd_style) {
+    $("head style#f18_css").remove();
+    $("head").append("<style id='f18_css'>"+fd_style+"</style>");
+  }
   var p = location.pathname.split(/[_.]/);
   fd_lang = (p[1] == "modular" ? p[2] : p[1]);
   if(fd_lang == "html")
     fd_lang = "EN";
 
-  if(location.host == "fhem.de" || location.host == "commandref.fhem.de")
-    fd_mode = "static";
 
 
   $("div#modLinks").each(function(){
@@ -263,8 +264,15 @@ $(document).ready(function(){
   for(var i1 in fd_otherSrc)
     fd_modLinks[i1] = fd_otherSrc[i1];
 
-  if(location.hash && location.hash.length > 1)
-    loadOneDoc(location.hash.substr(1), fd_lang);
+  if(location.hash && location.hash.length > 1) {
+    var h = location.hash.substr(1);
+    var m = h.match(/(.*)(&fwcsrf=.*)$/);
+    if(m) {
+      h = m[1];
+      csrfToken = m[2];
+    }
+    loadOneDoc(h, fd_lang);
+  }
 
   $(window).bind('hashchange', function() {
     if(location.hash.length > 1)
@@ -295,3 +303,22 @@ $(document).ready(function(){
 });
 
 $(window).resize(calcOffsets);
+
+if(location.host == "fhem.de" || location.host == "commandref.fhem.de")
+  fd_mode = "static";
+
+// Set f18 style from the localStorage
+var sdAsString = localStorage.getItem("styleData"), sd = {};
+if(sdAsString)
+  try { sd = JSON.parse(sdAsString) } catch(e) { console.log(e) }
+if(sd["cols.bg"]) {
+  fd_style = `
+    body.commandref {
+      background-color: #${sd["cols.bg"]};
+      color: #${sd["cols.fg"]};
+    }
+    a,h2,h3,h4 { color:#${sd["cols.link"]}; }
+    tr.odd { background-color:#${sd["cols.oddrow"]}; }
+    table.block { border:0; }
+    `;
+}

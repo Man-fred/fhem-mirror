@@ -22,7 +22,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with FHEM.  If not, see <http://www.gnu.org/licenses/>.
-
 # packages ####################################################################
 package FHEM::RandomTimer;    ## no critic 'Package declaration'
 
@@ -32,7 +31,8 @@ use utf8;
 use Time::HiRes qw(gettimeofday);
 use Time::Local qw(timelocal_nocheck);
 use List::Util qw(max);
-use GPUtils qw(GP_Import GP_Export);
+use POSIX qw(strftime);
+use GPUtils qw(GP_Import);
 
 ## Import der FHEM Funktionen
 #-- Run before package compilation
@@ -63,13 +63,13 @@ BEGIN {
           perlSyntaxCheck
           SemicolonEscape
           FmtDateTime
-          strftime
           GetTimeSpec
+          CommandDelete
           stacktrace )
     );
 }
 
-sub main::RandomTimer_Initialize { goto &Initialize }
+sub ::RandomTimer_Initialize { goto &Initialize }
 
 # initialize ##################################################################
 sub Initialize {
@@ -99,7 +99,7 @@ sub Define {
       if ( !defined $timeToSwitch );
 
     my ( $rel, $rep, $tspec );
-    if ( $timespec_start =~ m{^(\+)?(\*)?(.*)$}ixms ) {
+    if ( $timespec_start =~ m{\A(\+)?(\*)?(.*)\z}ixms ) {
         $rel   = $1;
         $rep   = $2;
         $tspec = $3;
@@ -111,11 +111,11 @@ sub Define {
     my ( $err, $hr, $min, $sec, $fn ) = GetTimeSpec($tspec);
     return $err if ($err);
 
-    $rel = $rel // "";
-    $rep = $rep // "";
+    $rel = $rel // q{};
+    $rep = $rep // q{};
 
     my ( $srel, $srep, $stspec );
-    if ( $timespec_stop =~ m{^(\+)?(\*)?(.*)$}ixms ) {
+    if ( $timespec_stop =~ m{\A(\+)?(\*)?(.*)\z}ixms ) {
         $srel   = $1;
         $srep   = $2;
         $stspec = $3;
@@ -126,18 +126,17 @@ sub Define {
     }
 
     my ( $e, $h, $m, $s, $f ) = GetTimeSpec($stspec);
-    return $e if ($e);
+    return $e if $e;
 
     return "invalid timeToSwitch <$timeToSwitch>, use 9999"
       if ( !( $timeToSwitch =~ m{^[0-9]{2,4}$}ixms ) );
-    my ( $varDuration, $varStart );
-    $varDuration = 0;
-    $varStart    = 0;
+    my $varDuration = 0;
+    my $varStart    = 0;
     if ( defined $variation ) {
         $variation =~ m{^([\d]+)}xms   ? $varDuration = $1 : undef;
         $variation =~ m{[:]([\d]+)}xms ? $varStart    = $1 : undef;
     }
-    setSwitchmode( $hash, "800/200" )
+    setSwitchmode( $hash, '800/200' )
       if ( !defined $hash->{helper}{SWITCHMODE} );
 
     $hash->{NAME}                   = $name;
@@ -154,26 +153,21 @@ sub Define {
 
     $hash->{COMMAND} = Value( $hash->{DEVICE} ) if ( $featurelevel < 6.1 );
     if ( $featurelevel > 6.0 ) {
-        $hash->{COMMAND} = ReadingsVal( $hash->{DEVICE}, "state", undef );
-        $hash->{helper}{offRegex}   = "off";
-        $hash->{helper}{offReading} = "state";
+        $hash->{COMMAND} = ReadingsVal( $hash->{DEVICE}, 'state', undef );
+        $hash->{helper}{offRegex}   = q{off};
+        $hash->{helper}{offReading} = q{state};
     }
 
-    readingsSingleUpdate( $hash, "TimeToSwitch", $hash->{helper}{TIMETOSWITCH},
-        1 );
+    readingsSingleUpdate( $hash, 'TimeToSwitch', $hash->{helper}{TIMETOSWITCH}, 1 );
 
-    RmInternalTimer( "SetTimer", $hash );
-    MkInternalTimer( "SetTimer", time(), \&SetTimer, $hash, 0 );
-
+    RemoveInternalTimer($hash,\&RT_SetTimer);
+    InternalTimer(time,\&RT_SetTimer,$hash);
     return;
 }
 
 sub Undef {
-
-    my ( $hash, $arg ) = @_;
-
-    RmInternalTimer( "SetTimer", $hash );
-    RmInternalTimer( "Exec",     $hash );
+    my $hash = shift // return;
+    RemoveInternalTimer($hash);
     delete $modules{RandomTimer}{defptr}{ $hash->{NAME} };
     return;
 }
@@ -188,58 +182,57 @@ sub Attr {
     }
 
     if ( $attrName =~ m{\A disable(Cond)? \z}xms ) {
-
         # Immediately execute next switch check
-        RmInternalTimer( "Exec", $hash );
-        MkInternalTimer( "Exec", time() + 1, \&Exec, $hash, 0 );
+        RemoveInternalTimer( $hash, \&RT_Exec );
+        InternalTimer( time, \&RT_Exec, $hash );
     }
 
     if ( $attrName eq 'offState' ) {
-        my ( $offRegex, $offReading ) = split ' ', $attrVal, 2;
+        my ( $offRegex, $offReading ) = split m{\s+}xms, $attrVal, 2;
         $hash->{helper}{offRegex} = $offRegex;
         $hash->{helper}{offReading} = $offReading // 'state';
     }
     
     if ( $attrName eq 'disableCond' ) {
-        if( $cmd eq "set" ) {
+        if( $cmd eq 'set' ) {
             my $err = perlSyntaxCheck($attrVal);
-            return $err if ( $err );
+            return $err if $err;
         }
     }
-  
+
     return;
 }
 
 sub Set {
-    my ( $hash, @a ) = @_;
+    my ( $hash, @arr ) = @_;
 
-    return "no set value specified" if ( int(@a) < 2 );
-    return "Unknown argument $a[1], choose one of execNow:noArg active:noArg inactive:noArg"
-      if ( $a[1] eq "?" );
+    return "no set value specified" if int(@arr) < 2 ;
+    return "Unknown argument, choose one of execNow:noArg active:noArg inactive:noArg"
+      if $arr[1] eq '?';
 
-    my $name = shift @a;
-    my $v = join( " ", @a );
+    my $name = shift @arr;
+    my $v    = join q{ }, @arr;
 
-    if ( $v eq "execNow" ) {
+    if ( $v eq 'execNow' ) {
         Log3( $hash, 3, "[$name] set $name $v" );
-        if ( AttrVal( $name, "disable", 0 ) ) {
+        if ( AttrVal( $name, 'disable', 0 ) ) {
             Log3( $hash, 3, "[$name] is disabled, set execNow not possible" );
         }
         else {
-            RmInternalTimer( "Exec", $hash );
-            MkInternalTimer( "Exec", time() + 1, \&Exec, $hash, 0 );
+            RemoveInternalTimer($hash,\&RT_Exec);
+            InternalTimer(time + 1,\&RT_Exec,$hash);
         }
         return;
     }
-    if ( $v eq "active" || $v eq "inactive" ) {
+    if ( $v eq 'active' || $v eq 'inactive' ) {
         Log3( $hash, 3, "[$name] set $name $v" );
-        if ( $v eq "active" && AttrVal( $name, "disable", 0 ) ) {
+        if ( $v eq 'active' && AttrVal( $name, 'disable', 0 ) ) {
             CommandDeleteAttr( undef, "$name disable" );
         }
-        my $statevalue = $v eq "active" ? "activated" : $v;
-        readingsSingleUpdate( $hash, "state", $statevalue, 1 );
-        RmInternalTimer( "Exec", $hash );
-        MkInternalTimer( "Exec", time() + 1, \&Exec, $hash, 0 );
+        my $statevalue = $v eq 'active' ? 'activated' : $v;
+        readingsSingleUpdate( $hash, 'state', $statevalue, 1 );
+        RemoveInternalTimer($hash,\&RT_Exec);
+        InternalTimer(time + 1,\&RT_Exec,$hash);
         return;
     }
     return;
@@ -255,27 +248,25 @@ sub addDays {
     my $next = timelocal_nocheck(@jetzt_arr);
 
     return $next;
-
 }
 
 sub device_switch {
     my $hash = shift // return;
 
     my $command = "set @ $hash->{COMMAND}";
-    if ( $hash->{COMMAND} eq "on" ) {
-        $command = AttrVal( $hash->{NAME}, "onCmd", $command );
+    if ( $hash->{COMMAND} eq 'on' ) {
+        $command = AttrVal( $hash->{NAME}, 'onCmd', $command );
     }
     else {
-        $command = AttrVal( $hash->{NAME}, "offCmd", $command );
+        $command = AttrVal( $hash->{NAME}, 'offCmd', $command );
     }
     $command =~ s/@/$hash->{DEVICE}/gxms;
     $command = SemicolonEscape($command);
     readingsSingleUpdate( $hash, 'LastCommand', $command, 1 );
-    Log3( $hash, 4, "[" . $hash->{NAME} . "]" . " command: $command" );
+    Log3( $hash, 4, "[$hash->{NAME}] command: $command" );
 
-    my $ret = AnalyzeCommandChain( undef, $command );
-    Log3( $hash, 3, "[$hash->{NAME}] ERROR: " . $ret . " SENDING " . $command )
-      if ($ret);
+    my $ret = AnalyzeCommandChain( $hash, $command );
+    Log3( $hash, 3, "[$hash->{NAME}] ERROR: $ret SENDING $command" ) if $ret;
 
     return;
 }
@@ -284,7 +275,6 @@ sub device_toggle {
     my $hash = shift // return;
     my $name = $hash->{NAME};
 
-    #my $attrOffState = AttrVal($name,"offState",undef);
     my $status = Value( $hash->{DEVICE} );
 
     if ( defined $hash->{helper}{offRegex} ) {
@@ -310,10 +300,10 @@ sub device_toggle {
 
     my $zufall = int( rand(1000) );
     Log3( $hash, 4, "[$name] IstZustand:$status sigmaWhen-$status:$sigma random:$zufall<$sigma=>"
-      . ( ( $zufall < $sigma ) ? "true" : "false" ) );
+      . ( ( $zufall < $sigma ) ? 'true' : 'false' ) );
 
     if ( $zufall < $sigma ) {
-        $hash->{COMMAND} = ( $status eq "on" ) ? "off" : "on";
+        $hash->{COMMAND} = ( $status eq 'on' ) ? 'off' : 'on';
         device_switch($hash);
     }
     return;
@@ -323,45 +313,31 @@ sub disableDown {
     my $hash = shift // return;
     my $disableCondCmd = AttrVal( $hash->{NAME}, "disableCondCmd", 0 );
 
-    if ( $disableCondCmd ne "none" ) {
-        Log3( $hash, 4,
-            "["
-          . $hash->{NAME} . "]"
-          . " setting requested disableCondCmd on $hash->{DEVICE}: " );
-        $hash->{COMMAND} =
-          AttrVal( $hash->{NAME}, "disableCondCmd", 0 ) eq "onCmd"
-          ? "on"
-          : "off";
-        device_switch($hash);
-    }
-    else {
-        Log3( $hash, 4,
-            "["
-          . $hash->{NAME} . "]"
-          . " no action requested on $hash->{DEVICE}: " );
-    }
-    return;
+    return Log3( $hash, 4, "[$hash->{NAME}] no action requested on $hash->{DEVICE}" ) 
+        if $disableCondCmd eq 'none';
+
+    Log3( $hash, 4,
+        "[$hash->{NAME}] setting requested disableCondCmd on $hash->{DEVICE}: " );
+    $hash->{COMMAND} =
+        AttrVal( $hash->{NAME}, 'disableCondCmd', 0 ) eq 'onCmd'
+        ? 'on'
+        : 'off';
+    return device_switch($hash);
 }
 
 sub down {
     my $hash = shift // return;
     Log3( $hash, 4,
-        "["
-      . $hash->{NAME} . "]"
-      . " setting requested keepDeviceAlive on $hash->{DEVICE}: " );
+        "[$hash->{NAME}] setting requested keepDeviceAlive on $hash->{DEVICE}" );
     $hash->{COMMAND} =
-      AttrVal( $hash->{NAME}, "keepDeviceAlive", 0 ) ? "on" : "off";
-    device_switch($hash);
-    return;
+      AttrVal( $hash->{NAME}, 'keepDeviceAlive', 0 ) ? 'on' : 'off';
+    return device_switch($hash);
 }
 
-sub Exec {
-    my $myHash = shift // return;
+sub RT_Exec {
+    my $hash = shift // return;
 
-    my $hash = GetHashIndirekt( $myHash, ( caller(0) )[3] );
-    return if ( !defined($hash) );
-
-    my $now = time();
+    my $now = time;
 
     # Wenn aktiv aber disabled, dann timer abschalten, Meldung ausgeben.
     my $active          = isAktive($hash);
@@ -373,9 +349,7 @@ sub Exec {
         # wenn temporär ausgeschaltet
         if ($disabled) {
             Log3( $hash, 3,
-                "["
-              . $hash->{NAME} . "]"
-              . " disabled before stop-time , ending RandomTimer on $hash->{DEVICE}: "
+                "[$hash->{NAME}] disabled before stop-time , ending RandomTimer on $hash->{DEVICE}: "
               . strftime( "%H:%M:%S(%d)",
                 localtime( $hash->{helper}{startTime} ) )
               . " - "
@@ -386,12 +360,10 @@ sub Exec {
             setState($hash);
         }
 
-# Wenn aktiv und Abschaltzeit erreicht, dann Gerät ausschalten, Meldung ausgeben und Timer schließen
+        # Wenn aktiv und Abschaltzeit erreicht, dann Gerät ausschalten, Meldung ausgeben und Timer schließen
         if ($stopTimeReached) {
             Log3( $hash, 3,
-                "["
-              . $hash->{NAME} . "]"
-              . " stop-time reached, ending RandomTimer on $hash->{DEVICE}: "
+                "[$hash->{NAME}] stop-time reached, ending RandomTimer on $hash->{DEVICE}: "
               . strftime( "%H:%M:%S(%d)",
                 localtime( $hash->{helper}{startTime} ) )
               . " - "
@@ -399,11 +371,11 @@ sub Exec {
                 localtime( $hash->{helper}{stopTime} ) ) );
             down($hash);
             setActive( $hash, 0 );
-            if ( AttrVal( $hash->{NAME}, "runonce", -1 ) eq "1" ) {
-                Log3( $hash, 3, "[" . $hash->{NAME} . "]" . "runonceMode" );
-                fhem("delete $hash->{NAME}");
-            }
             setState($hash);
+            if ( AttrVal( $hash->{NAME}, 'runonce', -1 ) eq '1' ) {
+                Log3( $hash, 3, "[$hash->{NAME}] runonceMode" );
+                CommandDelete($hash,$hash->{NAME});
+            }
             return;
         }
     }
@@ -451,14 +423,14 @@ sub Exec {
     setState($hash);
     if ( $now > $hash->{helper}{startTime} && $now < $hash->{helper}{stopTime} )
     {
-        device_toggle($hash) if ( !$disabled );
+        device_toggle($hash) if !$disabled;
     }
 
     my $nextSwitch = time() + getSecsToNextAbschaltTest($hash);
-    RmInternalTimer( "Exec", $hash );
     $hash->{helper}{NEXT_CHECK} =
       strftime( "%d.%m.%Y  %H:%M:%S", localtime($nextSwitch) );
-    MkInternalTimer( "Exec", $nextSwitch, \&Exec, $hash, 0 );
+    RemoveInternalTimer($hash,\&RT_Exec);
+    InternalTimer($nextSwitch,\&RT_Exec,$hash);
     return;
 }
 
@@ -467,9 +439,8 @@ sub getSecsToNextAbschaltTest {
     my $intervall   = $hash->{helper}{TIMETOSWITCH};
     my $varDuration = $hash->{helper}{VAR_DURATION};
     my $nextSecs    = $intervall + int( rand($varDuration) );
-    unless ($varDuration) {
-        my $proz  = 10;
-        my $delta = $intervall * $proz / 100;
+    if (defined $varDuration) {
+        my $delta = $intervall * 0.1; #+/- 5% desired variation
         $nextSecs = $intervall - $delta / 2 + int( rand($delta) );
     }
     return $nextSecs;
@@ -483,12 +454,8 @@ sub isAktive {
 sub isDisabled {
     my $hash = shift // return;
 
-    my $disable =
-      IsDisabled( $hash->{NAME} );    #AttrVal($hash->{NAME}, "disable", 0 );
-    return $disable if ($disable);
-
-    my $disableCond = AttrVal( $hash->{NAME}, "disableCond", "nf" );
-    return 0 if ( $disableCond eq "nf" );
+    return 1 if IsDisabled( $hash->{NAME} );
+    my $disableCond = AttrVal( $hash->{NAME}, 'disableCond', undef) // return 0;
 
     return AnalyzePerlCommand( $hash, $disableCond );
 }
@@ -502,11 +469,9 @@ sub schaltZeitenErmitteln {
 
     readingsBeginUpdate($hash);
 
-#  readingsBulkUpdate ($hash,  "Startzeit", FmtDateTime($hash->{helper}{startTime}));
-#  readingsBulkUpdate ($hash,  "Stoppzeit", FmtDateTime($hash->{helper}{stopTime}));
-    readingsBulkUpdate( $hash, "StartTime",
+    readingsBulkUpdate( $hash, 'StartTime',
         FmtDateTime( $hash->{helper}{startTime} ) );
-    readingsBulkUpdate( $hash, "StopTime",
+    readingsBulkUpdate( $hash, 'StopTime',
         FmtDateTime( $hash->{helper}{stopTime} ) );
     readingsEndUpdate( $hash, defined( $hash->{LOCAL} ? 0 : 1 ) );
     return;
@@ -517,7 +482,7 @@ sub setActive {
     my $value = shift // return;
     $hash->{helper}{active} = $value;
     my $trigger = ( isDisabled($hash) ) ? 0 : 1;
-    readingsSingleUpdate( $hash, "active", $value, $trigger );
+    readingsSingleUpdate( $hash, 'active', $value, $trigger );
     return;
 }
 
@@ -525,17 +490,17 @@ sub setState {
     my $hash = shift // return;
 
     if ( isDisabled($hash) ) {
-        if ( ReadingsVal( $hash->{NAME}, "state", "" ) ne "inactive" ) {
+        if ( ReadingsVal( $hash->{NAME}, 'state', q{} ) ne 'inactive' ) {
             my $dotrigger =
-              ReadingsVal( $hash->{NAME}, "state", "none" ) ne "disabled"
+              ReadingsVal( $hash->{NAME}, 'state', 'none' ) ne 'disabled'
               ? 1
               : 0;
-            readingsSingleUpdate( $hash, "state", "disabled", $dotrigger );
+            readingsSingleUpdate( $hash, 'state', 'disabled', $dotrigger );
         }
     }
     else {
-        my $state = $hash->{helper}{active} ? "on" : "off";
-        readingsSingleUpdate( $hash, "state", $state, 1 );
+        my $state = $hash->{helper}{active} ? 'on' : 'off';
+        readingsSingleUpdate( $hash, 'state', $state, 1 );
     }
     return;
 }
@@ -544,10 +509,9 @@ sub setSwitchmode {
 
     my $hash    = shift;
     my $attrVal = shift // return;
-    my $mod     = "[" . $hash->{NAME} . "] ";
 
     if ( !( $attrVal =~ m/^([0-9]{1,3})\/([0-9]{1,3})$/ixms ) ) {
-        Log3( undef, 3, $mod . "invalid switchMode <$attrVal>, use 999/999");
+        Log3( undef, 3, "[$hash->{NAME}] invalid switchMode <$attrVal>, use 999/999");
     }
     else {
         my ( $sigmaWhenOff, $sigmaWhenOn ) = ( $1, $2 );
@@ -559,12 +523,10 @@ sub setSwitchmode {
     return;
 }
 
-sub SetTimer {
-    my $myHash = shift // return;
-    my $hash = GetHashIndirekt( $myHash, ( caller(0) )[3] );
-    return if ( !defined($hash) );
-
-    my $now = time();
+sub RT_SetTimer {
+    my $hash = shift // return;
+    
+    my $now = time;
     my ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst ) =
       localtime($now);
 
@@ -573,9 +535,7 @@ sub SetTimer {
     setState($hash);
 
     Log3( $hash, 4,
-        "["
-      . $hash->{NAME} . "]"
-      . " timings RandomTimer on $hash->{DEVICE}: "
+        "[$hash->{NAME}] timings RandomTimer on $hash->{DEVICE}: "
       . strftime( "%H:%M:%S(%d)", localtime( $hash->{helper}{startTime} ) )
       . " - "
       . strftime( "%H:%M:%S(%d)", localtime( $hash->{helper}{stopTime} ) ) );
@@ -583,22 +543,23 @@ sub SetTimer {
     my $secToMidnight = 24 * 3600 - ( 3600 * $hour + 60 * $min + $sec );
 
     my $setExecTime = max( $now, $hash->{helper}{startTime} );
-    RmInternalTimer( "Exec", $hash );
-    MkInternalTimer( "Exec", $setExecTime, \&Exec, $hash, 0 );
+    RemoveInternalTimer($hash,\&RT_Exec);
+    InternalTimer($setExecTime,\&RT_Exec,$hash);
 
-    if ( $hash->{helper}{REP} gt "" ) {
+    if ( $hash->{helper}{REP} gt q{} ) {
         my $setTimerTime =
           max( $now + $secToMidnight + 15, $hash->{helper}{stopTime} ) +
           $hash->{helper}{TIMETOSWITCH} + 15;
-        RmInternalTimer( "SetTimer", $hash );
-        MkInternalTimer( "SetTimer", $setTimerTime, \&SetTimer, $hash, 0 );
+        RemoveInternalTimer($hash,\&RT_SetTimer);
+        InternalTimer($setTimerTime,\&RT_SetTimer,$hash);
+
     }
     return;
 }
 
 sub startZeitErmitteln {
     my $hash = shift;
-    my $now = shift // return;
+    my $now  = shift // return;
 
     my $timespec_start = $hash->{helper}{TIMESPEC_START};
 
@@ -610,7 +571,7 @@ sub startZeitErmitteln {
     }
     else {
         return
-"Wrong timespec_start <$timespec_start>, use \"[+][*]<time or func>\"";
+        "Wrong timespec_start <$timespec_start>, use \"[+][*]<time or func>\"";
     }
 
     my ( $err, $hour, $min, $sec, $fn ) = GetTimeSpec($tspec);
@@ -634,12 +595,12 @@ sub startZeitErmitteln {
 
 sub stopTimeReached {
     my $hash = shift // return;
-    return ( time() > $hash->{helper}{stopTime} );
+    return ( time > $hash->{helper}{stopTime} );
 }
 
 sub stopZeitErmitteln {
     my $hash = shift;
-    my $now = shift // return;
+    my $now  = shift // return;
 
     my $timespec_stop = $hash->{helper}{TIMESPEC_STOP};
 
@@ -666,7 +627,7 @@ sub stopZeitErmitteln {
         $stopTime = zeitBerechnen( $now, $hour, $min, $sec );
     }
 
-    if ( !AttrVal( $hash->{NAME}, "forceStoptimeSameDay", 0 ) ) {
+    if ( !AttrVal( $hash->{NAME}, 'forceStoptimeSameDay', 0 ) ) {
         if ( $hash->{helper}{startTime} > $stopTime ) {
             $stopTime = addDays( $stopTime, 1 );
         }
@@ -682,67 +643,19 @@ sub zeitBerechnen {
 
     my @jetzt_arr = localtime($now);
 
-    #Stunden               Minuten               Sekunden
+    #Stunden    Minuten    Sekunden
     $jetzt_arr[2] = $hour;
     $jetzt_arr[1] = $min;
     $jetzt_arr[0] = $sec;
-    my $next = timelocal_nocheck(@jetzt_arr);
-    return $next;
-}
-
-sub MkInternalTimer {
-    my ( $modifier, $tim, $callback, $hash, $waitIfInitNotDone ) = @_;
-
-    my $timerName = "$hash->{NAME}_$modifier";
-    my $mHash     = {
-        HASH     => $hash,
-        NAME     => "$hash->{NAME}_$modifier",
-        MODIFIER => $modifier
-    };
-    if ( defined( $hash->{TIMER}{$timerName} ) ) {
-        Log3( $hash, 1, "[$hash->{NAME}] possible overwriting of timer $timerName - please delete first" );
-        stacktrace();
-    }
-    else {
-        $hash->{TIMER}{$timerName} = $mHash;
-    }
-
-    Log3( $hash, 5,
-      "[$hash->{NAME}] setting  Timer: $timerName " . FmtDateTime($tim) );
-    InternalTimer( $tim, $callback, $mHash, $waitIfInitNotDone );
-    return $mHash;
-}
-################################################################################
-sub RmInternalTimer {
-    my $modifier = shift;
-    my $hash = shift // return;
-
-    my $timerName = "$hash->{NAME}_$modifier";
-    my $myHash    = $hash->{TIMER}{$timerName};
-    if ( defined($myHash) ) {
-        delete $hash->{TIMER}{$timerName};
-        Log3( $hash, 5, "[$hash->{NAME}] removing Timer: $timerName" );
-        RemoveInternalTimer($myHash);
-    }
-    return;
-}
-
-sub GetHashIndirekt {
-    my $myHash = shift;
-    my $function = shift // return;
-
-    if ( !defined( $myHash->{HASH} ) ) {
-        Log3( $myHash, 3, "[$function] myHash not valid" );
-        return;
-    }
-    return $myHash->{HASH};
+    my $nxt = timelocal_nocheck(@jetzt_arr);
+    return $nxt;
 }
 
 1;
 
 __END__
 
-# commandref ##################################################################
+
 =pod
 =encoding utf8
 =item helper
@@ -751,15 +664,15 @@ __END__
 
 =begin html
 
-<a name="RandomTimer"></a>
+<a id="RandomTimer"></a>
 <h3>RandomTimer</h3>
 <div>
   <ul>
-    <a name="RandomTimerdefine"></a>
+    <a id="RandomTimer-define"></a>
     <b>Define</b>
     <ul>
       <code>
-        define &lt;name&gt; RandomTimer  &lt;timespec_start&gt; &lt;device&gt; &lt;timespec_stop&gt; &lt;timeToSwitch&gt;
+        define &lt;name&gt; RandomTimer  &lt;timespec_start&gt; &lt;device&gt; &lt;timespec_stop&gt; &lt;timeToSwitch&gt; [&lt;[VAR_DURATION][:VAR_START]&gt;]
       </code>
       <br>
       Defines a device, that imitates the random switch functionality of a timer clock, like a <b>FS20 ZSU</b>. The idea to create it, came from the problem, that is was always a little bit tricky to install a timer clock before holiday: finding the manual, testing it the days before and three different timer clocks with three different manuals - a horror.<br>
@@ -795,11 +708,11 @@ __END__
           The optional parameters <b>variations</b> will modify <i>timeToSwitch</i> and/or <i>timespec_start</i>, syntax is [VAR_DURATION][:VAR_START].<br>
           <ul>
             <li>VAR_DURATION will turn <i>timeToSwitch</i> to a minimum value with some random seconds between zero and VAR_DURATION will be added.</li>
-            <li>VAR_START will modify <i>timespec_start</i> by adding some random seconds between zero and VAR_START.</li>
+            <li>VAR_START will modify <i>timespec_start</i> by adding some random number of seconds (between zero and VAR_START).</li>
             <b>Examples:</b><br>
             Add something between 0 and 10 minutes to <i>timeToSwitch</i>:<br>
             <code>defmod Zufall1 RandomTimer *06:00 MYSENSOR_98 22:00:00 3600 600</code><br>
-            Randomize day's first check by half an hour:<br>
+            Randomize day's first check by up to half an hour:<br>
             <code>defmod Zufall1 RandomTimer *06:00 MYSENSOR_98 22:00:00 3600 :1800</code><br>
             Do both:<br>
             <code>defmod Zufall1 RandomTimer *06:00 MYSENSOR_98 22:00:00 3600 600:1800</code><br>
@@ -813,7 +726,7 @@ __END__
           <code>
             define ZufallsTimerTisch RandomTimer *{sunset_abs()} StehlampeTisch +03:00:00 500
           </code><br>
-          defines a timer that starts at sunset an ends 3 hous later. The timer trys to switch every 500 seconds(+-10%).
+          defines a timer that starts at sunset an ends 3 hous later. Every 500 seconds(+-10%), the timer will perform an evaluation of the parameters to decide whether the device has to be switched or not. 
         </li><br>
         <li>
           <code>
@@ -830,30 +743,30 @@ __END__
       </ul><br>
    </ul>
    <ul>
-     <a name="RandomTimerset"></a>
+     <a id="RandomTimer-set"></a>
      <b>Set</b><br>
-     <ul>
+     <ul><a id="RandomTimer-set-execNow"></a>
        <code>set &lt;name&gt; execNow</code>
      <br>
      This will force the RandomTimer device to immediately execute the next switch instead of waiting untill timeToSwitch has passed. Use this in case you want immediate reaction on changes of reading values factored in disableCond. As RandomTimer itself will not be notified about any event at all, you'll need an additional event handler like notify that listens to relevant events and issues the "execNow" command towards your RandomTimer device(s). <br>
      NOTE: If the RandomTimer is disabled by attribute, this will not have any effect (different to <code>set &lt;name&gt; active</code>.)
      </ul><br>
-     <ul>
+     <ul><a id="RandomTimer-set-active"></a>
        <code>set &lt;name&gt; active</code>
      <br>
      Same effect than execNow, but will also delete a disable attribute if set.
      </ul><br>
-     <ul>
+     <ul><a id="RandomTimer-set-inactive"></a>
        <code>set &lt;name&gt; inactive</code>
      <br>
      Temporarily disable the RandomTimer w/o setting disable attribute. When set the next switch will be immediately executed.
      </ul><br>
     </ul>
    <ul>  
-    <a name="RandomTimerAttributes"></a>
+    <id name="RandomTimer-attr"></a>
     <b>Attributes</b>
     <ul>
-      <li>
+      <li><a id="RandomTimer-attr-disableCond"></a>
         <code>disableCond</code><br>
         The default behavior of a RandomTimer is, that it works. To set the Randomtimer out of work, you can specify in the disableCond attibute a condition in perlcode that must evaluate to true. The Condition must be put into round brackets. The best way is to define a function in 99_utils.<br>
         <br>
@@ -868,12 +781,12 @@ __END__
         </ul>
       </li>
       <br>
-      <li>
+      <li><a id="RandomTimer-attr-forceStoptimeSameDay"></a>
         <code>forceStoptimeSameDay</code><br>
         When <b>timespec_start</b> is later then <b>timespec_stop</b>, it forces the <b>timespec_stop</b> to end on the current day instead of the next day. See <a href="https://forum.fhem.de/index.php/topic,72988.0.html" title="Random Timer in Verbindung mit Twilight, EIN-Schaltzeit nach AUS-Schaltzeit">forum post</a> for use case.<br>
       </li>
       <br>
-      <li>
+      <li><a id="RandomTimer-attr-keepDeviceAlive"></a>
         <code>keepDeviceAlive</code><br>
         The default behavior of a RandomTimer is, that it shuts down the device after stoptime is reached. The <b>keepDeviceAlive</b> attribute changes the behavior. If set, the device status is not changed when the stoptime is reached.<br>
         <br>
@@ -883,7 +796,7 @@ __END__
         </ul>
       </li>
       <br>
-      <li>
+      <li><a id="RandomTimer-attr-disableCondCmd"></a>
         <code>disableCondCmd</code><br>
         In case the disable condition becomes true while a RandomTimer is already <b>running</b>, by default the same action is executed as when stoptime is reached (see keepDeviceAlive attribute). Setting the <b>disableCondCmd</b> attribute changes this as follows: "none" will lead to no action, "offCmd" means "use off command", "onCmd" will lead to execution of the "on command". Delete the attribute to get back to default behaviour.<br>
     <br>
@@ -891,21 +804,19 @@ __END__
         <ul>
           <li><code>attr ZufallsTimerZ disableCondCmd offCmd</code></li>
         </ul>
-      </li><br><br>
-      <li>
-        <code>disabledForIntervals</code><br>
-        See <a href="#disabledForIntervals">commandref for at - disabledForIntervals</a>
       </li><br>
-      <li>
+      <li><a href="#disabledForIntervals"><code>disabledForIntervals</code></a>
+      </li><br>
+      <li><a id="RandomTimer-attr-offCmd" data-pattern="o.*Cmd"></a>
         <code>onCmd, offCmd</code><br>
-        Setting the on-/offCmd changes the command sent to the device. Standard is: "set &lt;device&gt; on". The device can be specified by a @.<br>
+        Setting the on-/offCmd changes the command sent to the device. Default <code>onCmd</code> is <code>set &lt;device&gt; on</code>. The device can be specified by a @.<br>
         <br>
         <b>Examples</b>
         <ul>
           <li><code>
             attr Timer oncmd  {fhem("set @ on-for-timer 14")}
-          </code></li>
-          <br>NOTE: using on-for-timer commands might lead to irritating results!
+          </code><br>
+          NOTE: using on-for-timer commands might lead to irritating results!</li>
           <li><code>
             attr Timer offCmd {fhem("set @ off 16")}
           </code></li>
@@ -925,8 +836,8 @@ __END__
            [EDIPlug] result of function Value(EDIPlug_01) must be 'on' or 'off'
         </code>
         NOTE: From $featurelevel 6.1 on or if attribute offState is set, the funktion ReadingsVal(&lt;device&gt;,"state",undef) will be used instead of Value(). If "state" of the device exactly matches the regex provided in the attribute "offState" or lowercase of "state" contains a part matching to "off", device will be considered to be "off" (or "on" in all other cases respectively).
-      </li>
-      <li>
+      </li><br>
+      <li><a id="RandomTimer-attr-offState"></a>
         <code>offState</code><br>
         Setting this attribute, evaluation of on of will use ReadingsVal(&lt;device&gt;,"state",undef) instead of Value(). The attribute value will be used as regex, so e.g. also "dim00" beside "off" may be considered as indication the device is "off". You may use an optional second parameter (space separated) to check a different reading, e.g. for a HUEDevice-group "0 any_on" might be usefull.
       <br>NOTE: This will be default behaviour starting with featurelevel 6.1.
@@ -938,13 +849,13 @@ __END__
         </a>
       </li>
       <br>
-      <li>
+      <li><a id="RandomTimer-attr-runonce"></a>
         <code>runonce</code><br>
         Deletes the RandomTimer device after <b>timespec_stop</b> is reached.
         <br>
       </li>
       <br>
-      <li>
+      <li><a id="RandomTimer-attr-switchmode"></a>
         <code>switchmode</code><br>
         Setting the switchmode you can influence the behavior of switching on/off. The parameter has the Format 999/999 and the default ist 800/200. The values are in "per mill". The first parameter sets the value of the probability that the device will be switched on when the device is off. The second parameter sets the value of the probability that the device will be switched off when the device is on.<br>
         <br>

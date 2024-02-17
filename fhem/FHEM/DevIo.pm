@@ -19,8 +19,19 @@ sub
 DevIo_setStates($$)
 {
   my ($hash, $val) = @_;
-  $hash->{STATE} = $val;
   setReadingsVal($hash, "state", $val, TimeNow());
+  if($hash->{devioNoSTATE}) {
+    evalStateFormat($hash);
+  } else {
+    $hash->{STATE} = $val;
+  }
+}
+
+sub
+DevIo_getState($)
+{
+  my ($hash) = @_;
+  return ReadingsVal($hash->{NAME}, "state", "disconnected")
 }
 
 ########################
@@ -67,6 +78,13 @@ DevIo_SimpleRead($)
 {
   my ($hash) = @_;
   my $buf = DevIo_DoSimpleRead($hash);
+
+  if(length($buf) == 0 && $! == EWOULDBLOCK && $hash->{SSL} && $hash->{TCPDev}) {
+    my $es = $hash->{TCPDev}->errstr;
+    $hash->{wantWrite} = 1 if($es == &IO::Socket::SSL::SSL_WANT_WRITE);
+    $hash->{wantRead}  = 1 if($es == &IO::Socket::SSL::SSL_WANT_READ);
+    return "";
+  }
 
   ###########
   # Lets' try again: Some drivers return len(0) on the first read...
@@ -192,7 +210,7 @@ DevIo_DecodeWS($$)
     $i += 2;
   } elsif( $len == 127 ) {
     return "" if(length($data) < 10);
-    $len = unpack( 'q', substr($hash->{".WSBUF"},$i,8) );
+    $len = unpack( 'Q>', substr($hash->{".WSBUF"},$i,8) );
     $i += 8;
   }
 
@@ -213,7 +231,10 @@ DevIo_DecodeWS($$)
 
   # $op: 0=>Continuation, 1=>Text, 2=>Binary, 8=>Close, 9=>Ping, 10=>Pong
   Log3 $hash, 5, "Websocket msg: OP:$op LEN:$len MASK:$mask FIN:$fin";
-  if($op == 8) {         # Close
+  if($op == 1) {              # Text
+    $data = Encode::decode('UTF-8', $data) if($unicodeEncoding);
+
+  } elsif($op == 8) {         # Close
     my $clCode = unpack("n", substr($data,0,2));
     $clCode = "$clCode ($wsCloseCode{$clCode})" if($wsCloseCode{$clCode});
     $clCode .= " ".substr($data, 2) if($len > 2);
@@ -233,6 +254,11 @@ DevIo_DecodeWS($$)
 
   }
 
+  if(length($hash->{".WSBUF"})) { # There is more data to digest
+    my $nd = DevIo_DecodeWS($hash, "");
+    $data .= $nd if(defined($nd));
+  }
+
   return $data;
 }
 
@@ -245,7 +271,7 @@ DevIo_SimpleWrite($$$;$)
   return if(!$hash);
 
   my $name = $hash->{NAME};
-  Log3 ($name, 5, $type ? "SW: $msg" : "SW: ".unpack("H*",$msg));
+  Log3 $name, 5, "DevIo_SimpleWrite $name: ".($type ? $msg : unpack("H*",$msg));
 
   $msg = pack('H*', $msg) if($type && $type == 1);
   $msg .= "\n" if($addnl);
@@ -253,7 +279,11 @@ DevIo_SimpleWrite($$$;$)
     $hash->{USBDev}->write($msg);
 
   } elsif($hash->{TCPDev}) {
-    $msg = DevIo_MaskWS($hash->{binary} ? 0x2:0x1, $msg) if($hash->{WEBSOCKET});
+    if($hash->{WEBSOCKET}) {
+      $msg = Encode::encode('UTF-8', $msg)
+        if($unicodeEncoding && !$hash->{binary});
+      $msg = DevIo_MaskWS($hash->{binary} ? 0x2:0x1, $msg);
+    }
     syswrite($hash->{TCPDev}, $msg);
 
   } elsif($hash->{DIODev}) { 
@@ -276,7 +306,7 @@ DevIo_Expect($$$)
   my ($hash, $msg, $timeout) = @_;
   my $name= $hash->{NAME};
   
-  my $state= $hash->{STATE};
+  my $state= DevIo_getState($hash);
   if($state ne "opened") {
     Log3 $name, 2, "Attempt to write to $state device.";
     return undef;
@@ -331,9 +361,10 @@ DevIo_Expect($$$)
 # - UNIX:(SEQPACKET|STREAM):filename => Open filename as a UNIX socket
 # - FHEM:DEVIO:IoDev[:IoPort] => Cascade I/O over another FHEM Device
 #
-# callback is only meaningful for TCP/IP (in which case a nonblocking connect
-# is executed) every cases. It will be called with $hash and a (potential)
-# error message. If $hash->{SSL} is set, SSL encryption is activated.
+# callback is only meaningful for TCP/IP, in which case a nonblocking connect
+# is executed. It will be called with $hash and a (potential) error message.
+# If # $hash->{SSL} is set, SSL encryption is activated.
+
 sub
 DevIo_OpenDev($$$;$)
 {
@@ -371,7 +402,7 @@ DevIo_OpenDev($$$;$)
       if($ret) {
         if($hadFD && !defined($hash->{FD})) { # Forum #54732 / ser2net
           DevIo_Disconnected($hash);
-          $hash->{NEXT_OPEN} = time() + $nextOpenDelay;
+          $hash->{NEXT_OPEN} = gettimeofday() + $nextOpenDelay;
 
         } else {
           DevIo_CloseDev($hash);
@@ -408,7 +439,8 @@ DevIo_OpenDev($$$;$)
   }
 
   $hash->{PARTIAL} = "";
-  Log3 $name, 3, ($hash->{DevioText} ? $hash->{DevioText} : "Opening").
+  my $l = $hash->{devioLoglevel}; # Forum #61970
+  Log3 $name, ($l ? $l:3), ($hash->{DevioText} ? $hash->{DevioText} : "Opening").
        " $name device ". (AttrVal($name,"privacy",0) ? "(private)" : $dev)
        if(!$reopen);
 
@@ -456,7 +488,7 @@ DevIo_OpenDev($$$;$)
   } elsif($dev =~ m,^(ws:|wss:)?([^/:]+):([0-9]+)(.*?)$,) {# TCP or websocket
    
     my ($proto, $host, $port, $path) = ($1 ? $1 : "", $2, $3, $4);
-    $dev = "$host:$port";
+    my $hp = "$host:$port";
     if($proto eq "wss:")  {
       $hash->{SSL} = 1;
       $proto = "ws:";
@@ -471,7 +503,7 @@ DevIo_OpenDev($$$;$)
     # somebody is communicating over another TCP connection. As the connect
     # for non-existent devices has a delay of 3 sec, we are sitting all the
     # time in this connect. NEXT_OPEN tries to avoid this problem.
-    if($hash->{NEXT_OPEN} && time() < $hash->{NEXT_OPEN}) {
+    if($hash->{NEXT_OPEN} && gettimeofday() < $hash->{NEXT_OPEN}) {
       return &$doCb(undef); # Forum 53309
     }
 
@@ -492,7 +524,7 @@ DevIo_OpenDev($$$;$)
         $readyfnlist{"$name.$dev"} = $hash;
         DevIo_setStates($hash, "disconnected");
         DoTrigger($name, "DISCONNECTED") if(!$reopen);
-        $hash->{NEXT_OPEN} = time() + $nextOpenDelay;
+        $hash->{NEXT_OPEN} = gettimeofday() + $nextOpenDelay;
         return 0;
       }
 
@@ -521,7 +553,7 @@ DevIo_OpenDev($$$;$)
 
       my $err = HttpUtils_Connect({     # Nonblocking
         timeout => $timeout,
-        url     => $hash->{SSL} ? "https://$dev$path" : "http://$dev$path",
+        url     => $hash->{SSL} ? "https://$hp$path" : "http://$hp$path",
         NAME    => $hash->{NAME},
         sslargs => $hash->{sslargs} ? $hash->{sslargs} : {},
         noConn2 => $proto eq "ws:" ? 0 : 1,
@@ -542,8 +574,8 @@ DevIo_OpenDev($$$;$)
 
     } else {    # blocking connect
       my $conn = $haveInet6 ? 
-          IO::Socket::INET6->new(PeerAddr => $dev, Timeout => $timeout) :
-          IO::Socket::INET ->new(PeerAddr => $dev, Timeout => $timeout);
+          IO::Socket::INET6->new(PeerAddr => $hp, Timeout => $timeout) :
+          IO::Socket::INET ->new(PeerAddr => $hp, Timeout => $timeout);
       return "" if(!&$doTcpTail($conn)); # no callback: no doCb
     }
 

@@ -81,7 +81,7 @@ CommandUpdate($$)
   return "An update is already running" if($upd_running);
   $upd_running = 1;
   if($updateInBackground) {
-    CallFn($cl->{NAME}, "ActivateInformFn", $cl, "log");
+    CallFn($cl->{NAME}, "ActivateInformFn", $cl, "log") if($cl);
     sub updDone(@) { $upd_running=0 }
     BlockingCall("doUpdateInBackground", {src=>$src,arg=>$arg}, "updDone");
     return "Executing the update the background.";
@@ -106,7 +106,7 @@ upd_metainit($)
        Log 1, $msg;
        return $msg;
      }
-     print FH "http://fhem.de/fhemupdate/controls_fhem.txt\n";
+     print FH "https://fhem.de/fhemupdate/controls_fhem.txt\n";
      close(FH);
   }
   return undef;
@@ -249,6 +249,7 @@ doUpdate($$$$)
   my ($basePath, $ctrlFileName);
   $src =~ s'^http://fhem\.de'https://fhem.de' if($upd_hasSSL);
   $src =~ s'^https://'http://' if(!$upd_wantSSL);
+  uLog 1, "";
   uLog 1, "Downloading $src";
   if($src !~ m,^(.*)/([^/]*)$,) {
     uLog 1, "Cannot parse $src, probably not a valid http control file";
@@ -271,7 +272,6 @@ doUpdate($$$$)
   }
 
   if($max != 1) {
-    uLog 1, "";
     uLog 1, $srcName;
   }
 
@@ -301,7 +301,8 @@ doUpdate($$$$)
   }
 
   my $canJoin;
-  my $cmod = AttrVal('global', 'commandref', 'full');
+  my $cmod = AttrVal('global', 'commandref', 
+                        $featurelevel >= 6.1 ? 'modular' : 'full');
   my $cj = "$root/contrib/commandref_".
                 ($cmod eq "full" ? "join":"modular").".pl";
   if(-f $cj &&
@@ -311,8 +312,9 @@ doUpdate($$$$)
     $canJoin = 1;
   }
 
-  my @excl = split(" ", AttrVal("global", "exclude_from_update", ""));
+  my @excl = split(/[\s,]+/, AttrVal("global", "exclude_from_update", ""));
   my $noSzCheck = AttrVal("global", "updateNoFileCheck", configDBUsed());
+  my $hideExcl = AttrVal("global", "hideExcludedUpdates", 0); #Forum #124670
 
   my @rl = upd_getChanges($root, $basePath);
   ###########################
@@ -358,7 +360,7 @@ doUpdate($$$$)
                     ($cmd eq "CRE" ||               # either file is create only
                      ($lh{$fName}{TS} eq $r[1] &&   # or both TS and LEN is same
                       $lh{$fName}{LEN} eq $r[2]))); # as the remote one
-      if($isExcl && !$fileOk) {
+      if($isExcl && !$fileOk && !$hideExcl) {
         uLog 1, "update: skipping $fName, matches exclude_from_update";
         $nSkipped++;
         next;
@@ -384,6 +386,7 @@ doUpdate($$$$)
     $nChanged++;
     my $sfx = ($arg eq "checktime" ? " $r[1]" : "");
     $sfx =~ s/_.*//;
+    next if($isCheck && $wouldExcl && $hideExcl);
     uLog 1, "$cmd $fName$sfx".
         ($isCheck && $wouldExcl ? " (excluded from update)" : "");
     next if($isCheck);
@@ -517,6 +520,7 @@ upd_getUrl($)
   $url =~ s/%/%25/g;
   $upd_connecthash{url} = $url;
   $upd_connecthash{keepalive} = ($url =~ m/localUpdate/ ? 0 : 1); # Forum #49798
+  $upd_connecthash{forceEncoding} = "" if($unicodeEncoding);
   my ($err, $data) = HttpUtils_BlockingGet(\%upd_connecthash);
   if($err) {
     uLog 1, $err;
@@ -592,7 +596,7 @@ upd_writeFile($$$$)
 =item summary_DE FHEM Programmdateien aktualisieren
 =begin html
 
-<a name="update"></a>
+<a id="update"></a>
 <h3>update</h3>
 <ul>
   <code>update [-noSSL] [&lt;fileName&gt;|all|check|checktime|force]
@@ -635,12 +639,12 @@ upd_writeFile($$$$)
     <li>update force</li>
     <li>update check http://fhem.de/fhemupdate/controls_fhem.txt</li>
   </ul>
-  <a name="updateattr"></a>
 
   <br>
+  <a id="update-attr"></a>
   <b>Attributes</b> (use attr global ...)
   <ul>
-    <a name="updateInBackground"></a>
+    <a id="update-attr-updateInBackground"></a>
     <li>updateInBackground<br>
         If this attribute is set (to 1), the update will be executed in a
         background process. The return message is communicated via events, and
@@ -648,14 +652,14 @@ upd_writeFile($$$$)
         Monitor. Default is set. Set it to 0 to switch it off.
         </li><br>
 
-    <a name="updateNoFileCheck"></a>
+    <a id="update-attr-updateNoFileCheck"></a>
     <li>updateNoFileCheck<br>
         If set, the command won't compare the local file size with the expected
         size. This attribute was introduced to satisfy some experienced FHEM
         user, its default value is 0.
         </li><br>
 
-    <a name="backup_before_update"></a>
+    <a id="update-attr-backup_before_update"></a>
     <li>backup_before_update<br>
         If this attribute is set, an update will back up your complete
         installation via the <a href="#backup">backup</a> command. The default
@@ -666,12 +670,13 @@ upd_writeFile($$$$)
         </ul>
         </li><br>
 
-    <a name="exclude_from_update"></a>
+    <a id="update-attr-exclude_from_update"></a>
     <li>exclude_from_update<br>
-        Contains a space separated list of fileNames (regexps) which will be
-        excluded by an update. The special value commandref will disable calling
-        commandref_join at the end, i.e commandref.html will be out of date.
-        The module-only documentation is not affected and is up-to-date.<br>
+        Contains a space or comma separated list of fileNames (regexps) which
+        will be excluded by an update. The special value commandref will
+        disable calling commandref_join at the end, i.e commandref.html will be
+        out of date.  The module-only documentation is not affected and is
+        up-to-date.<br>
         Example:<br>
         <ul>
           attr global exclude_from_update 21_OWTEMP.pm FS20.off.png
@@ -679,6 +684,11 @@ upd_writeFile($$$$)
         The regexp is checked against the filename and the source:filename
         combination. To exclude the updates for FILE.pm from fhem.de, as you are
         updating it from another source, specify fhem.de.*:FILE.pm
+        </li><br>
+
+    <a id="update-attr-hideExcludedUpdates"></a>
+    <li>hideExcludedUpdates<br>
+        if set to 1, do not print messages about excluded updates.
         </li><br>
 
     <li><a href="#restoreDirs">restoreDirs</a></li><br>
@@ -689,7 +699,7 @@ upd_writeFile($$$$)
 =end html
 =begin html_DE
 
-<a name="update"></a>
+<a id="update"></a>
 <h3>update</h3>
 <ul>
   <code>update [-noSSL] [&lt;fileName&gt;|all|check|checktime|force]
@@ -737,12 +747,12 @@ upd_writeFile($$$$)
     <li>update force</li>
     <li>update check http://fhem.de/fhemupdate/controls_fhem.txt</li>
   </ul>
-  <a name="updateattr"></a>
 
   <br>
+  <a id="update-attr"></a>
   <b>Attribute</b>  (sind mit attr global zu setzen)
   <ul>
-    <a name="updateInBackground"></a>
+    <a id="update-attr-updateInBackground"></a>
     <li>updateInBackground<br>
         Wenn dieses Attribut gesetzt ist, wird der update Befehl in einem
         separaten Prozess ausgef&uuml;hrt und alle Meldungen werden per Event
@@ -751,7 +761,7 @@ upd_writeFile($$$$)
         Deaktivieren bitte Attribut auf 0 setzen.
         </li><br>
 
-    <a name="updateNoFileCheck"></a>
+    <a id="update-attr-updateNoFileCheck"></a>
     <li>updateNoFileCheck<br>
         Wenn dieses Attribut gesetzt ist, wird die Gr&ouml;&szlig;e der bereits
         vorhandenen, lokalen Datei nicht mit der Sollgr&ouml;&szlig;e
@@ -759,7 +769,7 @@ upd_writeFile($$$$)
         erfahrener FHEM Benutzer eingefuehrt, die Voreinstellung ist 0.
         </li><br>
 
-    <a name="backup_before_update"></a>
+    <a id="update-attr-backup_before_update"></a>
     <li>backup_before_update<br>
         Wenn dieses Attribut gesetzt ist, erstellt FHEM eine Sicherheitskopie
         der FHEM Installation vor dem update mit dem backup Befehl. Die
@@ -771,13 +781,14 @@ upd_writeFile($$$$)
         </ul>
         </li><br>
 
-    <a name="exclude_from_update"></a>
+    <a id="update-attr-exclude_from_update"></a>
     <li>exclude_from_update<br>
-        Enth&auml;lt eine Liste durch Leerzeichen getrennter Dateinamen
-        (Regexp), welche nicht beim update ber&uuml;cksichtigt werden.<br>
-        Falls der Wert commandref enth&auml;lt, dann wird commandref_join.pl
-        nach dem update nicht aufgerufen, d.h. die Gesamtdokumentation ist
-        nicht mehr aktuell. Die Moduldokumentation bleibt weiterhin aktuell.
+        Enth&auml;lt eine durch Leerzeichen oder Komma getrennte Liste von
+        Dateinamen (Regexp), welche beim update nicht ber&uuml;cksichtigt
+        werden.<br> Falls der Wert commandref enth&auml;lt, dann wird
+        commandref_join.pl nach dem update nicht aufgerufen, d.h. die
+        Gesamtdokumentation ist nicht mehr aktuell. Die Moduldokumentation
+        bleibt weiterhin aktuell.
         <br>
         Beispiel:<br>
         <ul>
@@ -788,6 +799,12 @@ upd_writeFile($$$$)
         auszuschlie&szlig;en, weil sie von einer anderen Quelle bezogen wird,
         kann man fhem.de.*:FILE.pm spezifizieren.
 
+        </li><br>
+
+    <a id="update-attr-hideExcludedUpdates"></a>
+    <li>hideExcludedUpdates<br>
+        falls gesetzt, werden keine Meldungen bei exclude_from_update Dateien
+        generiert.
         </li><br>
 
     <li><a href="#restoreDirs">restoreDirs</a></li><br>

@@ -3,10 +3,13 @@ var FW_version={};
 FW_version["fhemweb.js"] = "$Id$";
 
 var FW_serverGenerated;
+var FW_jsLog;
 var FW_serverFirstMsg = (new Date()).getTime()/1000;
 var FW_serverLastMsg = FW_serverFirstMsg;
 var FW_isIE = (navigator.appVersion.indexOf("MSIE") > 0);
-var FW_isiOS = navigator.userAgent.match(/(iPad|iPhone|iPod)/);
+var FW_isiOS = navigator.userAgent.match(/(iPad|iPhone|iPod)/) ||
+               (navigator.platform === 'MacIntel' && 
+                navigator.maxTouchPoints > 1); /* iPad OS 13+ */
 var FW_scripts = {}, FW_links = {};
 var FW_docReady = false, FW_longpollType, FW_csrfToken, FW_csrfOk=true;
 var FW_root = "/fhem";  // root
@@ -36,7 +39,9 @@ var FW_widgets = {
   textField:         { createFn:FW_createTextField },
   textFieldNL:       { createFn:FW_createTextField, second:true },
   "textField-long":  { createFn:FW_createTextField, second:true },
-  bitfield:          { createFn:FW_createBitfield },
+  "textFieldNL-long":{ createFn:FW_createTextField, second:true },
+  bitfield:          { createFn:FW_createBitfield  },
+  widgetList:        { createFn:FW_createWidgetList },
 };
 
 window.onbeforeunload = function(e)
@@ -79,9 +84,11 @@ FW_jqueryReadyFn()
   if(FW_docReady)       // loading fhemweb.js twice is hard to debug
     return;
   FW_docReady = true;
-  FW_serverGenerated = $("body").attr("generated");
 
+  FW_serverGenerated = $("body").attr("generated");
+  FW_jsLog = $("body").attr("data-jsLog");
   FW_longpollType = $("body").attr("longpoll");
+
   var ajs = $("body").attr("data-availableJs");
   if(ajs) {
     ajs = ajs.split(",");
@@ -226,26 +233,6 @@ FW_jqueryReadyFn()
     });
   });
 
-  $("div.devSpecHelp a").each(function(){       // Help on detail window
-    var dev = FW_getLink(this).split("#").pop();
-    $(this).unbind("click");
-    $(this).attr("href", "#"); // Desktop: show underlined Text
-    $(this).removeAttr("onclick");
-
-    $(this).click(function(evt){
-      if($("#devSpecHelp").length) {
-        $("#devSpecHelp").remove();
-        return;
-      }
-      FW_getHelp(dev, function(data){
-        $("#content").append('<div id="devSpecHelp"></div>');
-        $("#devSpecHelp").html(data);
-        var off = $("#devSpecHelp").position().top-20;
-        $('body, html').animate({scrollTop:off}, 500);
-      });
-    });
-  });
-
   $("table.attributes tr div.dname")    // Click on attribute fills input value
     .each(function(){
       $(this)
@@ -258,6 +245,7 @@ FW_jqueryReadyFn()
             $(sel).append('<option value="'+attrName+'">'+attrName+'</option>');
           $(sel).val(attrName);
           FW_detailSelect(sel, true);
+          $(sel).trigger("change").focus();
         });
     });
 
@@ -290,45 +278,24 @@ FW_jqueryReadyFn()
   var sa = location.search.substring(1).split("&");
   for(var i = 0; i < sa.length; i++) {
     var kv = sa[i].split("=");
-    FW_urlParams[kv[0]] = kv[1];
+    FW_urlParams[kv[0]] = decodeURIComponent(kv[1]);
   }
 
   $("select[id^=sel_attr],select[id^=sel_set],select[id^=sel_get]")
   .change(function(){ // online help
-    var val = $(this).val().replace(/[.\/(){}\[\]%*]/g,
-                            function(a){ return "\\"+a });
+    var val = $(this).val();
     var m = $(this).attr("name").match(/arg.(set|get|attr)(.*)/);
     if(!m)
       return;
     $("#devSpecHelp").remove();
-    var sel = this;
-    FW_getHelp(m[2], function(data) { // show either the next or the outer li
-      $("#content")
-        .append("<div id='workbench' style='display:none'></div>");
-      $("#content > #workbench").html(data);
-
-      var mtype = $("#content > #workbench a[name]").attr("name"), aTag;
-      if(mtype)
-        aTag = $("#content > #workbench").find("a[name="+mtype+val+"]");
-      if(!$(aTag).length) // old style syntax without type
-        aTag = $("#content > #workbench").find("a[name="+val+"]");
-      if($(aTag).length) {
-        var liTag = $(aTag).next("li");
-        if(!$(liTag).length)
-          liTag = $(aTag).parent("li");
-        if($(liTag).length) {
-          $(sel).closest("div[cmd='"+m[1]+"']")
-             .after('<div class="makeTable" id="devSpecHelp"></div>')
-          $("#devSpecHelp").html($(liTag).html());
-        }
-      }
-      $("#content > #workbench").remove();
-    });
+    var sel=this, devName=m[2], selType=m[1];
+    var group = $(this).parent().find(':selected').parent().attr('label');
+    FW_displayHelp(devName, sel, selType, val, group);
   });
 
   FW_smallScreenCommands();
   FW_inlineModify();
-  FW_rawDef();
+  FW_detLink();
   FW_treeMenu();
 
   $("body").attr("data-os", FW_os);
@@ -347,17 +314,107 @@ FW_jqueryReadyFn()
 
 }
 
-var FW_helpData;
+function
+FW_displayHelp(devName, sel, selType, val, group)
+{
+  if(group) {
+    if(group.indexOf("userattr") >= 0)
+      return;
+    devName = (group == "framework" ? "commandref" : group);
+  }
+
+  FW_getHelp(devName, function(data) { // show either the next or the outer li
+    $("#content")
+      .append("<div id='workbench' style='display:none'></div>");
+    var wb = $("#content > #workbench");
+    wb.html(data);
+
+    var mtype = wb.find("a[id]").attr("id"), aTag;
+    if(!mtype)
+      mtype = wb.find("a[name]").attr("name");
+
+    if(devName == "commandref")
+      mtype = "";
+
+    if(mtype) {             // current syntax: FHEMWEB-attr-webCmd
+      var mv = (""+mtype+"-"+selType+"-"+val).replace(/[^a-z0-9_-]/ig,'_');
+      aTag = wb.find("a[id="+mv+"]");
+      if(!$(aTag).length) { // old style #1 syntax: FHEMWEBwebCmd
+        mv = (""+mtype+val).replace(/[^a-z0-9_-]/ig,'_');
+        aTag = wb.find("a[name="+mv+"]");
+      }
+    }
+    if(!$(aTag).length) { // old style #2 syntax : webCmd
+      var v = (val).replace(/[^a-z0-9_-]/ig,'_');
+      aTag = wb.find("a[name="+v+"]");
+    }
+
+    if(!$(aTag).length) { // regexp attributes, like backend_.*
+      wb.find("a[id^='"+mtype+"-"+selType+"-'][data-pattern]").each(
+        function() {
+          var dp = $(this).attr("data-pattern");
+          // if(!$(aTag).length && val.match(dp)) {
+          if(val.match(dp)) {
+            log("Searching for "+val+", found data-pattern "+dp);
+            aTag = this;
+          }
+        });
+    }
+
+    if($(aTag).length) {
+      var liTag = $(aTag).next("li");
+      if(!$(liTag).length)
+        liTag = $(aTag).parent("li");
+      if(!$(liTag).length)
+        liTag = $(aTag).parent().next("li");
+      $("#devSpecHelp").remove(); // shown only one if FHEM is slow
+      if($(liTag).length) {
+        $(sel).closest("div[cmd='"+selType+"']")
+           .after('<div class="makeTable" id="devSpecHelp"></div>')
+        $("#devSpecHelp").html($(liTag).html());
+        $("#devSpecHelp a").each(function(){ // #130694
+          var href = $(this).attr("href");
+          if(href && href.indexOf("#") == 0) {
+            $(this).attr("target", "_blank");
+            $(this).attr("href",
+                addcsrf(FW_root+"/docs/commandref.html"+$(this).attr("href")));
+          }
+        });
+      }
+    }
+    wb.remove();
+
+  });
+}
+
+var FW_helpData={};
 function
 FW_getHelp(dev, fn)
 {
-  if(FW_helpData)
-    return fn(FW_helpData);
+  if(FW_helpData[dev])
+    return fn(FW_helpData[dev]);
+
+  if(dev == "commandref") {
+    var lang = $("body").attr("data-language");
+    var url = FW_root+"/docs/commandref_frame"+
+                (lang == "EN" ? "" : "_"+lang)+".html";
+    $.ajax({
+      url:url, headers: { "cache-control": "no-cache" },
+      success: function(data, textStatus, req){
+        FW_helpData[dev] = data;
+        return fn(data);
+      },
+      error:function(xhr, status, err) { log("E:"+err+"/"+status); }
+    });
+    return;
+  }
+
   FW_cmd(FW_root+"?cmd=help "+dev+"&XHR=1", function(data) {
-    if(data.match(/^<html>No help found/)) // for our german only friends
+    if(data.match(/^<html>No help found/) &&
+       !dev.match(" DE")) // for our german only friends
       return FW_getHelp(dev+" DE", fn);
-    FW_helpData = data;
-    return fn(FW_helpData);
+    FW_helpData[dev] = data;
+    return fn(data);
   });
 }
 
@@ -395,6 +452,47 @@ FW_filterIcons()
   }
 }
 
+
+function
+FW_delete(cmd, fCmd)
+{
+  if($("body").attr("data-hiddenroom").match(/\binput\b/))
+    return FW_okDialog("Disabled");
+
+  if(!fCmd)
+    fCmd = addcsrf(FW_root+"?cmd="+cmd);
+
+  var cd = $("body").attr("data-confirmDelete");
+  if(!cd || cd == 0) {
+    location.href = fCmd;
+    return;
+  }
+
+  var div = $("<div>");
+  $(div).html("Do you really want to "+cmd+"?<br><br>"+
+    "<input type='checkbox' name='noconf'> Skip this dialog in the future");
+  $("body").append(div);
+
+  $(div).dialog({
+    dialogClass:"no-close", modal:true, width:"auto", closeOnEscape:true, 
+    maxWidth:$(window).width()*0.9, maxHeight:$(window).height()*0.9,
+    buttons: [
+      {text:"Yes", click:function(){ doClose(); location.href = fCmd; }},
+      {text:"No",  click:doClose} ],
+    close: doClose
+  });
+
+  function
+  doClose()
+  {
+    var wn = $("body").attr("data-webName");
+    if($(div).find("input:checked").length)
+      FW_cmd(FW_root+"?cmd=attr "+wn+" confirmDelete 0&XHR=1");
+    $(this).dialog("close"); $(div).remove();
+  }
+}
+
+// For all the links starting with delete (deleteattr, etc)
 function
 FW_confirmDelete()
 {
@@ -410,33 +508,38 @@ FW_confirmDelete()
     var ma = $(this).attr("href").match(/.*cmd[^=]*=(delete[^&]*).*$/);
     if(!ma || ma.length != 2)
       return;
-    $(this).attr("href", "#");
-    $(this).unbind("click");
-    $(this).click(function(e){
-      e.preventDefault();
-
-      var div = $("<div id='FW_okDialog'>");
-      $(div).html("Do you really want to "+ma[1]+"?<br><br>"+
-        "<input type='checkbox' name='noconf'> Skip this dialog in the future");
-      $("body").append(div);
-
-      function
-      doClose()
-      {
-          if($(div).find("input:checked").length)
-            FW_cmd(FW_root+"?cmd=attr "+wn+" confirmDelete 0&XHR=1");
-          $(this).dialog("close"); $(div).remove();
-      }
-
-      $(div).dialog({
-        dialogClass:"no-close", modal:true, width:"auto", closeOnEscape:true, 
-        maxWidth:$(window).width()*0.9, maxHeight:$(window).height()*0.9,
-        buttons: [
-          {text:"Yes", click:function(){ location.href = ma[0]; doClose(); }},
-          {text:"No",  click:function(){ doClose(); }}]
-      });
-    });
+    FW_removeLink(this);
+    $(this).click(function(e){ FW_delete(ma[1], ma[0]); return false; });
   });
+}
+
+function
+FW_renameDevice(dev)
+{
+  var div = $("<div>");
+  $(div).html('Rename '+dev+
+        ' to:<br><br><input type="text" size="30" value="'+dev+'">');
+  $("body").append(div);
+
+  $(div).dialog({
+    dialogClass:"no-close", modal:true, width:"auto", closeOnEscape:true, 
+    maxWidth:$(window).width()*0.9, maxHeight:$(window).height()*0.9,
+    buttons: [
+      {text:"Rename", click:function(){ 
+        var nn = $(div).find("input").val();
+        if(!nn.match(/^[a-z0-9._]*$/i))
+          return FW_okDialog("Illegal characters in the new name");
+        location.href=addcsrf(FW_root+"?cmd=rename "+dev+" "+nn+"&detail="+nn);
+      }},
+      {text:"Cancel", click:doClose} ],
+    close: doClose
+  });
+
+  function
+  doClose()
+  {
+    $(this).dialog("close"); $(div).remove();
+  }
 }
 
 // Show the webCmd list in a dialog if: smallScreen & hiddenroom=detail & room
@@ -495,16 +598,27 @@ FW_delayedStart()
 }
     
 
-
+var FW_logStack=[];
 function
 log(txt)
 {
   var d = new Date();
   var ms = ("000"+(d.getMilliseconds()%1000));
   ms = ms.substr(ms.length-3,3);
-  txt = d.toTimeString().substring(0,8)+"."+ms+" "+txt;
+  var lTxt = d.toTimeString().substring(0,8)+"."+ms+" "+txt;
   if(typeof window.console != "undefined")
-    console.log(txt);
+    console.log(lTxt);
+
+  if(FW_jsLog==1 && FW_longpollType == "websocket") {
+    FW_logStack.push(txt);
+    if(FW_pollConn && FW_pollConn.readyState == FW_pollConn.OPEN) {
+      while(FW_logStack.length) {
+        txt = '{Log 1, "jsLog: '+FW_logStack.shift().replace(/"/g, "'")+'"}';
+        console.log(txt);
+        FW_pollConn.send(txt);
+      }
+    }
+  }
 }
 
 function
@@ -534,8 +648,9 @@ FW_csrfRefresh(callback)
   });
 }
 
+var FW_cmdStack=[];
 function
-FW_cmd(arg, callback)
+FW_cmd(arg, callback, rep)
 {
   if(arg.length < 120)
     log("FW_cmd:"+arg);
@@ -543,6 +658,8 @@ FW_cmd(arg, callback)
     log("FW_cmd:"+arg.substr(0,120)+"...");
   $.ajax({
     url:addcsrf(arg)+'&fw_id='+$("body").attr('fw_id'),
+    headers: { "cache-control": "no-cache" },
+    dataType: "text",
     method:'POST',
     success: function(data, textStatus, req){
       FW_csrfOk = true;
@@ -550,11 +667,23 @@ FW_cmd(arg, callback)
         callback(req.responseText);
       else if(req.responseText)
         FW_errmsg(req.responseText, 5000);
+      var todo = FW_cmdStack.shift();
+      if(todo) {
+        log("FW_cmd retry #"+todo.rep);
+        FW_cmd(todo.arg, todo.callback, todo.rep);
+      }
     },
     error:function(xhr, status, err) {
-      if(xhr.status == 400 && typeof FW_csrfToken != "undefined") {
+      // iOS 13+ is not queueing requests, have to do it myself. Forum #116962
+      if(xhr.status == 0 && xhr.readyState == 0 && (!rep || rep < 10)) {
+        FW_cmdStack.push({ arg:arg, callback:callback, rep:(rep?rep+1:1)});
+
+      } else if(xhr.status == 400 && typeof FW_csrfToken != "undefined") {
         FW_csrfToken = "";
         FW_csrfRefresh(function(){FW_cmd(arg, callback)});
+
+      } else {
+        log("FW_cmd error: "+status+"/"+JSON.stringify(xhr));
       }
     }
   });
@@ -749,11 +878,25 @@ FW_inlineModify()       // Do not generate a new HTML page upon pressing modify
       AddCodeMirror(s[0], function(pcm) {cm = pcm;});
     }
     });
+
+  var hr = $("body").attr("data-hiddenroom");
+  if(!hr || !hr.match(/\binput\b/)) {
+    $("table.internals div.dname").each(function(){
+      if($(this).text() == "NAME") {
+        var dev = $(this).attr("data-name");
+        var a=$("<a style='cursor:pointer'>NAME</a>");
+        $(this).html(a);
+        a.click(function(){ FW_renameDevice(dev) });
+      }
+    });
+  }
     
+  // Set and attr 
   $("div input.psc[type=submit]:not(.get)").click(function(e){
     e.preventDefault();
+    var frm = $(this).closest("form");
     var newDef = typeof cm !== 'undefined' ?
-                 cm.getValue() : $(this).closest("form").find("textarea").val();
+                 cm.getValue() : frm.find("textarea").val();
     var cmd = $(this).attr("name")+"="+$(this).attr("value")+" "+newDef;
     var isDef = true, reloadIfOk = false;
 
@@ -762,11 +905,11 @@ FW_inlineModify()       // Do not generate a new HTML page upon pressing modify
       var div = $(this).closest("div.makeSelect");
       var devName = $(div).attr("dev"),
           cmd = $(div).attr("cmd");
-      var sel = $(this).closest("form").find("select");
+      var sel = frm.find("select");
       var arg = $(sel).val();
       var ifid = (devName+"-"+arg).replace(/([^_a-z0-9])/gi,
                                    function(m){ return "\\"+m });
-      if($(".dval[informid="+ifid+"]").length == 0) {
+      if($(".dval[informid="+ifid+"]").length == 0) {// No reading with this name
         if(cmd == "attr" || (cmd == "set" && arg == "attrTemplate")) {
           reloadIfOk = true;
         } else {
@@ -774,9 +917,9 @@ FW_inlineModify()       // Do not generate a new HTML page upon pressing modify
           return;
         }
       }
-      newDef = $(this).closest("form").find("input:text").val();
-      if(newDef == undefined)
-        newDef = $(this).closest("form").find("[name^=val]").val();
+      // Make it similar to submit: values joined by ,
+      var nd=frm.find("[name^=val]").map(function(){return $(this).val()}).get();
+      newDef = nd.length ? nd.join(",") : frm.find("input:text").val();
       cmd = $(this).attr("name")+"="+cmd+" "+devName+" "+arg+" "+newDef;
     }
     FW_cmd(FW_root+"?"+encodeURIComponent(cmd)+"&XHR=1", function(resp){
@@ -795,10 +938,9 @@ FW_inlineModify()       // Do not generate a new HTML page upon pressing modify
         return FW_okDialog(resp);
       }
       if(isDef) {
+        newDef = FW_htmlQuote(newDef);
         if(newDef.indexOf("\n") >= 0)
           newDef = '<pre>'+newDef+'</pre>';
-        else
-          newDef = FW_htmlQuote(newDef);
         $("div#disp").html(newDef).css("display", "");
         $("div#edit").css("display", "none");
       }
@@ -806,27 +948,93 @@ FW_inlineModify()       // Do not generate a new HTML page upon pressing modify
   });
 }
 
-function
-FW_rawDef()
-{
-  $("div.rawDef a").each(function(){       // Help on detail window
-    var dev = FW_getLink(this).split(" ").pop().split("&")[0];
-    $(this).unbind("click");
-    $(this).attr("href", "#"); // Desktop: show underlined Text
-    $(this).removeAttr("onclick");
 
-    $(this).click(function(evt){
+function
+FW_removeLink(el)
+{
+  $(el).unbind("click");
+  $(el).attr("href", "#"); // Desktop: show underlined Text
+  $(el).removeAttr("onclick"); // smallscreen style
+}
+
+// Fill the "detLink" line with life
+function
+FW_detLink()
+{
+  if(FW_isiOS || FW_os == "osx") {      // our copy fails here
+    $("#detLink a[href*=forumCopy]").parent().remove();
+    $("#detLink option[data-cmd^=forumCopy]").remove();
+  }
+
+  $("#detLink a").each(function(){
+    var m = FW_getLink(this).match(/cmd=([^&]*)/);
+    if(!m)      // delete is already processed
+      return;
+    FW_removeLink(this);
+    $(this).click(function(){doDetCmd(m[1])});
+  });
+  $("#detLink select#moreCmds").change(function(){
+    doDetCmd($(this).find("option:selected").attr("data-cmd"));
+  });
+
+  function
+  doDetCmd(fCmd)
+  {
+    if(!fCmd)
+      return;
+    var m = fCmd.match(/^([^ ]+) (.*)$/);
+    if(!m)
+      return;
+
+    var cmd=m[1], dev=m[2];
+
+    if(cmd == "devSpecHelp") {
+      if($("#devSpecHelp").length) {
+        $("#devSpecHelp").remove();
+        return;
+      }
+      FW_getHelp(dev, function(data){
+        $("#content").append('<div id="devSpecHelp"></div>');
+        $("#devSpecHelp").html(data);
+        var off = $("#devSpecHelp").position().top-20;
+        $('body, html').animate({scrollTop:off}, 500);
+      });
+
+    } else if(cmd == "forumCopy") {
+      FW_cmd(FW_root+"?cmd=list -r -i "+dev+"&XHR=1", function(data) {
+        var ta = document.createElement("textarea"), at="";
+        if(data.length > 50*1000) {
+          data = data.substr(0,50*1000)+
+                  "\n# ... truncated to 50k, original length "+data.length;
+          at = "<br><br>Text truncated to 50k due to forum restrictions.";
+        }
+        ta.value = '[code]'+data+'[/code]';
+        document.body.appendChild(ta);
+        ta.select();
+        if(document.execCommand('copy'))
+          FW_okDialog('"forum ready" definition copied to the clipboard.'+at);
+         else
+          FW_okDialog('Could not copy');
+        document.body.removeChild(ta);
+      });
+
+    } else if(cmd == "delete") {
+      FW_delete("delete "+dev);
+
+    } else if(cmd == "rawDef") {
       if($("#rawDef").length) {
         $("#rawDef").remove();
         return;
       }
-      var textAreaStyle = typeof AddCodeMirror == 'function'?'opacity:0':'';
 
+      var textAreaStyle = typeof AddCodeMirror == 'function'?'opacity:0':'';
       $("#content").append('<div id="rawDef">'+
           '<textarea id="td_rawDef" rows="25" cols="60" style="width:99%; '+
                 textAreaStyle+'"/>'+
           '<button>Execute commands</button>'+
-          ' Dump "Probably associated with" too <input type="checkbox">'+
+          ' Dump "Probably associated with" too '+
+                '<input class="paw" type="checkbox">'+
+          ' With internals <input class="int" type="checkbox">'+
         '<br><br></div>');
 
       var cmVar;
@@ -847,7 +1055,8 @@ FW_rawDef()
 
           var propertychange = function() {
             var nData = $("#rawDef textarea").val();
-            if(nData != data)
+            if(nData != data &&
+               !$("body").attr("data-hiddenroom").match(/\binput\b/))
               $("#rawDef button").show();
             else
               $("#rawDef button").hide();
@@ -871,15 +1080,20 @@ FW_rawDef()
         });
       }
       fillData("-r");
-
-      $("#rawDef input").click(function(){fillData(this.checked ?"-R":"-r")});
-
+      $("#rawDef input").click(function(){
+        fillData(
+          ($("input.paw").is(":checked") ? "-R" : "-r")+
+          ($("input.int").is(":checked") ? " -i" : ""));
+      });
       $("#rawDef button").click(function(){
         FW_execRawDef($("#rawDef textarea").val());
       });
-    });
 
-  });
+    } else {
+      location.href = addcsrf(FW_root+"?cmd="+cmd+" "+dev);
+
+    }
+  }
 }
 
 function
@@ -890,6 +1104,8 @@ FW_execRawDef(data)
   doNext()
   {
     if(++i1 >= arr.length) {
+      if($("#FW_okDialog").length) // F2F remote cmd execution
+        return;
       return FW_okDialog("Executed everything, no errors found.");
     }
     str += arr[i1];
@@ -941,7 +1157,8 @@ FW_treeMenu()
         if(!ma[nxt]) {
           $(tr).before("<tr class='menuTree closed level"+i1+"' "+
               "data-mTree='"+lst+"' data-nxt='"+nxt+"'>"+
-              "<td><div><a href='#'>"+ta[i1]+"</a><div></div></div></td></tr>");
+              "<td><div><a href='#' onclick='return false;'>"+ta[i1]+
+                "</a><div></div></div></td></tr>");
         }
         ma[nxt] = true;
         lst = nxt;
@@ -1002,7 +1219,7 @@ FW_escapeSelector(s)
 {
   if(typeof s != 'string')
     return s;
-  return s.replace(/[ .#\[\]>]/g, function(r) { return '\\'+r });
+  return s.replace(/[ .#\[\]>,]/g, function(r) { return '\\'+r });
 }
 
 /*************** LONGPOLL START **************/
@@ -1019,6 +1236,10 @@ FW_doUpdate(evt)
   var retryTime = 5000;
   var now = new Date()/1000;
 
+  // d: array
+  // d[0]: informid
+  // d[1]: if the informid Widget has setValueFn, arg for this
+  // d[2]: else replace the html with this
   function
   setValue(d) // is Callable from eval below
   {
@@ -1031,12 +1252,18 @@ FW_doUpdate(evt)
           d[2] = '<html><pre>'+d[2]+'</pre></html>';
 
         var ma = /^<html>([\s\S]*)<\/html>/.exec(d[2]);
-        if(!d[0].match("-")) // not a reading
+        if(!d[0].match("-")) { // not a reading
           $(this).html(d[2]);
-        else if(ma)
+          FW_replaceWidgets($(this));
+
+        } else if(ma) {
           $(this).html(ma[1]);
-        else
+          FW_replaceWidgets($(this));
+
+        } else {
           $(this).text(d[2]);
+
+        }
 
         if(d[0].match(/-ts$/))  // timestamps
           $(this).addClass('changed');
@@ -1056,7 +1283,8 @@ FW_doUpdate(evt)
   if(typeof WebSocket == "function" && evt && evt.target instanceof WebSocket) {
     if(evt.type == 'close' && !FW_leaving) {
       FW_errmsg(errstr, retryTime-100);
-      FW_pollConn.close();
+      if(FW_pollConn) // Race-condition(?) # 112181
+        FW_pollConn.close();
       FW_pollConn = undefined;
       setTimeout(FW_longpoll, retryTime);
       return;
@@ -1093,7 +1321,8 @@ FW_doUpdate(evt)
     var l = input.substr(FW_longpollOffset, nOff-FW_longpollOffset);
     FW_longpollOffset = nOff+1;
 
-    log("Rcvd: "+(l.length>132 ? l.substring(0,132)+"...("+l.length+")":l));
+    if(l != '[""]') // jsLog answer
+      log("Rcvd: "+(l.length>132 ? l.substring(0,132)+"...("+l.length+")":l));
     if(!l.length)
       continue;
     if(l.indexOf("<")== 0) {  // HTML returned by proxy, if FHEM behind is dead
@@ -1107,10 +1336,16 @@ FW_doUpdate(evt)
       continue;
 
     if( d[0].match(/^#FHEMWEB:/) ) {
-      eval(d[1]);
+      try {
+        eval(d[1]);
+      } catch(e) {
+        if($("body").attr("data-confirmJSError") != 0)
+          FW_okDialog("#FHEMWEB notification:<br>"+d[1]+"<br>"+e);
+      }
 
     } else {
       setValue(d);
+
     }
 
     // updateLine is deprecated, use setValueFn
@@ -1154,8 +1389,8 @@ FW_longpoll()
 
   // Build the notify filter for the backend
   var filter = $("body").attr("longpollfilter");
-  if(filter == null)
-    filter = "";
+  filter = filter ? decodeURIComponent(filter) : "";
+
   var retry;
   if(filter == "") {
     $("embed").each(function() {        // wait for all embeds to be there
@@ -1175,7 +1410,9 @@ FW_longpoll()
   }
 
   if(filter == "") {
-    if(FW_urlParams.room)   filter="room="+FW_urlParams.room;
+    if(FW_urlParams.room)
+        filter="room="+FW_urlParams.room
+                      .replace(/[[\]().+*?]/g, function(r){return '\\'+r});
     if(FW_urlParams.detail) filter=FW_urlParams.detail;
   }
 
@@ -1187,7 +1424,8 @@ FW_longpoll()
     if(content) {
       var room = content.getAttribute("room");
       if(room)
-        filter="room="+room;
+        filter="room="+room
+                      .replace(/[[\]().+*?]/g, function(r){return '\\'+r});
     }
   }
 
@@ -1203,8 +1441,10 @@ FW_longpoll()
   if(FW_serverGenerated)
     since = FW_serverLastMsg + (FW_serverGenerated-FW_serverFirstMsg);
 
+  var inform = encodeURIComponent("type=status;filter="+filter+
+                                  ";since="+since+";fmt=JSON"); // 128651
   var query = "?XHR=1"+
-              "&inform=type=status;filter="+filter+";since="+since+";fmt=JSON"+
+              "&inform="+inform+
               '&fw_id='+$("body").attr('fw_id')+
               "&timestamp="+new Date().getTime();
 
@@ -1244,26 +1484,34 @@ FW_detailSelect(selEl, mayMissing)
   var div = $(selEl).closest("div.makeSelect");
   if(!div.attr("list"))      // hiddenRoom=input
     return;
-  var arg,
+  var argAndPar, fnd,
       listArr = $(div).attr("list").split(" "),
       devName = $(div).attr("dev"),
       cmd = $(div).attr("cmd");
 
-  var i1;
-  for(i1=0; i1<listArr.length; i1++) {
-    arg = listArr[i1];
-    if(arg.indexOf(selVal) == 0 &&
-       (arg.length == selVal.length || arg[selVal.length] == ':'))
-      break;
+  if(selVal != null && selVal != undefined) {
+    for(var i1=0; i1<listArr.length; i1++) {
+      var aap = listArr[i1].split(":");
+      try {
+        if(selVal.match(new RegExp("^"+aap[0]+"$"))) {
+          if(aap.length > 2) {
+            var re = aap.shift();
+            aap = [re, aap.join(":")];
+          }
+          argAndPar = aap;
+          fnd = true;
+        }
+      } catch(e){
+        log("Problem building regexp from "+listArr[i1]);
+      }
+    }
   }
 
   var vArr = [];
-  if(i1==listArr.length && !mayMissing)
+  if(!fnd && !mayMissing)
     return;
-  if(i1<listArr.length) {
-    if(arg.length > selVal.length)
-      vArr = arg.substr(selVal.length+1).split(","); 
-  }
+  if(fnd && argAndPar[1])
+    vArr = argAndPar[1].split(",");
 
   FW_replaceWidget($(selEl).next(), devName, vArr,undefined,selVal,
     undefined, undefined, undefined,
@@ -1275,6 +1523,13 @@ FW_detailSelect(selEl, mayMissing)
     });
 }
 
+// elName: HTML-Element-id
+// devName: FHEM-Device name
+// vArr: all parameters split by ,
+// current: the value of the current attribute
+// set: "cmd" attribute first value
+// params: "cmd" attribute other values, split by space
+// cmd: function to call, if value changes
 function
 FW_callCreateFn(elName, devName, vArr, currVal, set, params, cmd, finishFn)
 {
@@ -1388,25 +1643,28 @@ FW_queryValue(cmd, el)
 function
 FW_createTextField(elName, devName, vArr, currVal, set, params, cmd)
 {
-  if(vArr.length != 1 ||
+  if(vArr.length > 3 ||
      (vArr[0] != "textField" && 
       vArr[0] != "textFieldNL" &&
       vArr[0] != "textField-long" &&
       vArr[0] != "textFieldNL-long") ||
      (params && params.length))
     return undefined;
-  
+
   var is_long = (vArr[0].indexOf("long") > 0);
 
   var newEl = $("<div style='display:inline-block'>").get(0);
   if(set && set != "state" && vArr[0].indexOf("NL") < 0)
     $(newEl).append(set+":");
-  $(newEl).append('<input type="text" size="30">');
+  var iSize = (vArr.length >= 3 ? vArr[2]: 30);
+  $(newEl).append('<input type="text" size="'+iSize+'">');
   var inp = $(newEl).find("input").get(0);
   if(elName)
     $(inp).attr('name', elName);
   if(currVal != undefined)
     $(inp).val(currVal);
+  if(vArr.length >= 2 && !is_long)
+    $(inp).attr("placeholder", vArr[1]);
 
   function addBlur() { if(cmd) $(inp).blur(function() { cmd($(inp).val()) }); };
 
@@ -1418,7 +1676,7 @@ FW_createTextField(elName, devName, vArr, currVal, set, params, cmd)
     $(inp).unbind("blur");
     $('body').append(
       '<div id="editdlg" style="display:none">'+
-        '<textarea id="td_longText" rows="25" cols="60" style="width:99%"/>'+
+        '<textarea id="td_longText" style="width:100%;height:100%;"/>'+
       '</div>');
 
     var txt = $(inp).val();
@@ -1430,9 +1688,11 @@ FW_createTextField(elName, devName, vArr, currVal, set, params, cmd)
       AddCodeMirror($("#td_longText"), function(pcm) {cm = pcm;});
     }
 
+    var sz = vArr[1] ? parseInt(vArr[1]) : 75;
     $('#editdlg').dialog(
-      { modal:true, closeOnEscape:true, width:$(window).width()*3/4,
-        height:$(window).height()*3/4,
+      { modal:true, closeOnEscape:true, 
+        width:$(window).width()*(sz/100),
+        height:$(window).height()*(sz/100),
         close:function(){ $('#editdlg').remove(); },
         buttons:[
         { text:"Cancel", click:function(){
@@ -1467,18 +1727,24 @@ FW_createSelect(elName, devName, vArr, currVal, set, params, cmd)
   var vHash = {};
   for(var j=1; j < vArr.length; j++) {
     var o = document.createElement('option');
-    if(!vArr[j].match(/&#[0-9a-f]{1,4};/i))
+    if(!vArr[j].match(/&#[0-9a-f]{1,4};/i)) // how to reproduce?
       o.text = o.value = vArr[j].replace(/#/g," ");
-    vHash[vArr[j]] = 1;
+    vHash[o.value] = 1;
     newEl.options[j-1] = o;
   }
-  if(currVal)
-    $(newEl).val(currVal);
+
   if(elName)
     $(newEl).attr('name', elName);
   if(cmd)
     $(newEl).change(function(arg) { cmd($(newEl).val()) });
-  newEl.setValueFn = function(arg) { if(vHash[arg]) $(newEl).val(arg); };
+  newEl.setValueFn = function(arg) {
+    if(!vHash[arg] && typeof(arg) != "undefined")
+      arg = (arg+"").replace(/ /g,"."); // #124505, replaceAll is Chrome 84+
+    if(vHash[arg])
+      $(newEl).val(arg);
+  };
+  newEl.setValueFn(currVal);
+
   return newEl;
 }
 
@@ -1499,7 +1765,7 @@ FW_createSelectNumbers(elName, devName, vArr, currVal, set, params, cmd)
 
   if(currVal != undefined)
     currVal = currVal.replace(/[^\d.\-]/g, "");
-    currVal = (currVal==undefined || currVal=="") ?  min : parseFloat(currVal);
+  currVal = (currVal==undefined || currVal=="") ?  min : parseFloat(currVal);
   if(max==min)
     return undefined;
   if(!(fun == "lin" || fun == "log10"))
@@ -1539,7 +1805,7 @@ FW_createSelectNumbers(elName, devName, vArr, currVal, set, params, cmd)
       k++;
     }
   }
-  if(currVal)
+  if(typeof(currVal) != "undefined")
     $(newEl).val(currVal.toFixed(dp));
   if(elName)
     $(newEl).attr('name', elName);
@@ -1691,7 +1957,7 @@ FW_createSlider(elName, devName, vArr, currVal, set, params, cmd)
   sh.ontouchstart = function(e) { touchFn(e, mouseDown); }
 
   newEl.setValueFn = function(arg) {
-    var res = arg.match(/[\d.\-]+/); // extract first number
+    var res = arg.match(/-?[\d.]+/); // extract first number
     currVal = (res ? parseFloat(res[0]) : min);
     if(currVal < min || currVal > max)
       currVal = min;
@@ -1781,8 +2047,11 @@ FW_createMultiple(elName, devName, vArr, currVal, set, params, cmd)
   if(vArr.length < 2 || (vArr[0]!="multiple" && vArr[0]!="multiple-strict") ||
      (params && params.length))
     return undefined;
+  var iSize = 30;
+  if(vArr[vArr.length-1].charAt(0) == "#")
+    iSize = vArr.pop().substr(1);
   
-  var newEl = $('<input type="text" size="30" readonly>').get(0);
+  var newEl = $('<input type="text" size="'+iSize+'" readonly>').get(0);
   if(currVal)
     $(newEl).val(currVal);
   if(elName)
@@ -1894,6 +2163,57 @@ FW_createBitfield(elName, devName, vArr, currVal, set, params, cmd)
       total = parseInt(total/2);
     }
   };
+  return newEl;
+}
+
+// List of widgets, each one is prepended with its vArr.length
+// widgetList,4,select,f1,f2,f3,1,textField,3,select,s1,s2
+// No autoloading for subwidgets!
+function
+FW_createWidgetList(elName, devName, vArr, currVal, set, params, cmd)
+{
+  if(vArr[0] != "widgetList")
+    return undefined;
+
+  var newEl = $('<span><span>').get(0);
+
+  function
+  setCmd()
+  {
+    cmd($(newEl).find("[name^=val]")
+                .map( function(){return $(this).val()} )
+                .get()
+                .join(","));
+  }
+
+  if(!elName)
+    elName = "val."+Math.random().toString(36).substr(2);
+  for(var i1=1; i1<vArr.length; i1++) {
+    var lvArr = vArr.slice(i1+1,i1+1+parseInt(vArr[i1]));
+    for(var wn in FW_widgets) {
+      if(!FW_widgets[wn].createFn || FW_widgets[wn].second)
+        continue;
+      var subEl = FW_widgets[wn].createFn(elName, devName, lvArr);
+      if(subEl) {
+        $(newEl).append(subEl);
+        if(cmd)
+          $(subEl).change(setCmd);
+        break;
+      }
+    }
+    i1 += parseInt(vArr[i1]);
+  }
+
+  newEl.setValueFn = function(arg) { // , separated values for each widget
+    var wa = arg.split(","), idx=0;
+    $(newEl).find("[name^=val]").each(function(){
+      if(this.setValueFn)
+        this.setValueFn(wa[idx++]);
+      else
+        $(this).val(wa[idx++]);
+    });
+  };
+
   return newEl;
 }
 /*************** WIDGETS END **************/
@@ -2019,6 +2339,80 @@ FW_getSVG(emb)
   return undefined;
 }
 
+function
+FW_checkNotifydev(reName)
+{
+  var internals={};
+  $("table.internals tr td div.dname").each(function(){
+    internals[$(this).html()] = this;
+  });
+  if(!internals[reName] || internals.NOTIFYDEV)
+    return;
+  $(internals[reName])
+    .html(reName+" <a>(!)</a>")
+    .css("cursor","pointer")
+    .click(function(){
+      var val = $(internals[reName]).closest("tr").find("div[informid]").text();
+      FW_okDialog("Could not optimize the regexp:<ul>"+val+
+                "</ul>How I tried (notifyRegexpCheck):<ul><pre></pre></ul>");
+      FW_cmd(FW_root+'?cmd={notifyRegexpCheck("'+val+'")}&XHR=1',
+      function(res){
+        $("#FW_okDialog pre").html(res);
+      });
+
+    });
+}
+
+function
+FW_rescueClient(pid, key)
+{
+  var html='<div id="rescueDialog" style="display:none">';
+  if(!pid || pid == "0") {
+    html += '<b>Key (send it to the rescuer):</b><br>'+
+            (key ? '<code>'+key+'</code>' : 'Not found, generate one first');
+    html += '<br><br>';
+  }
+
+  var buttons = [];
+
+  if(key) {
+    if(pid && pid != "0") {
+      html += "<div>There is a connection with pid "+pid+"</div><br>";
+      buttons.push({
+        text:"Terminate connection",
+        click:function(){
+          FW_cmd(FW_root+
+            "?cmd=set "+$("body").attr("data-webname")+
+            " rescueTerminate&XHR=1");
+          setTimeout(function(){ location.reload() }, 1000);
+        }});
+
+    } else {
+      html += "Address (rescuer will tell you host and port)<br>";
+      html += "<input type='text' size='20' placeholder='host port' >";
+
+      buttons.push({
+        text:"Start connection",
+        click:function(){
+          FW_cmd(FW_root+
+            "?cmd=set "+$("body").attr("data-webname")+" rescueStart "+
+            $("#rescueDialog input").val()+"&XHR=1");
+          setTimeout(function(){ location.reload() }, 1000);
+        }});
+    }
+  }
+
+  buttons.push({ text:"Cancel", click:function(){ $(this).dialog('close')} });
+
+  $('body').append(html);
+
+  $('#rescueDialog').dialog({
+    modal:true, closeOnEscape:true, width:"auto",
+    close:function(){ $('#rescueDialog').remove(); },
+    buttons:buttons
+  });
+}
+
 /*
 =pod
 
@@ -2027,21 +2421,25 @@ FW_getSVG(emb)
   <li>noArg - show no input field.</li>
   <li>time - show a JavaScript driven timepicker.<br>
       Example: attr FS20dev widgetOverride on-till:time</li>
-  <li>textField - show an input field.<br>
-      Example: attr WEB widgetOverride room:textField</li>
-  <li>textFieldNL - show the input field and hide the label.</li>
-  <li>textField-long - show an input-field, but upon
-      clicking on the input field open a textArea (60x25).</li>
-  <li>textFieldNL-long - the behaviour is the same
+  <li>textField[,placeholder,inputSize] - show an input field.<br>
+      inputSize is the size attribute for the input field, defaults to 30. <br>
+      Example: attr WEB widgetOverride room:textField,Name_Of_The_Room,20</li>
+  <li>textFieldNL[,placeholder,inputSize] - show the input field and hide the
+      label.</li>
+  <li>textField-long[,sizePct,inputSize] - show an input-field, but upon
+      clicking on the input field open a textArea.
+      sizePct specifies the size of the dialog relative to the screen, in
+      percent. Default is 75</li>
+  <li>textFieldNL-long[,sizePct,inputSize] - the behaviour is the same
       as :textField-long, but no label is displayed.</li>
   <li>slider,&lt;min&gt;,&lt;step&gt;,&lt;max&gt;[,1] - show
       a JavaScript driven slider. The optional ,1 at the end
       avoids the rounding of floating-point numbers.</li>
-  <li>multiple,&lt;val1&gt;,&lt;val2&gt;,..." - present a
+  <li>multiple,&lt;val1&gt;,&lt;val2&gt;,...[,#inputSize]" - present a
       multiple-value-selector with an additional textfield. The result is
       comman separated.</li>
-  <li>multiple-strict,&lt;val1&gt;,&lt;val2&gt;,... - like :multiple, but
-      without the textfield.</li>
+  <li>multiple-strict,&lt;val1&gt;,&lt;val2&gt;,...[,#inputSize]
+      - like multiple, but without the textfield.</li>
   <li>selectnumbers,&lt;min&gt;,&lt;step&gt;,&lt;max&gt;,&lt;number of
       digits after decimal point&gt;,lin|log10" - display a select widget
       generated with values from min to max with step.<br>
@@ -2052,6 +2450,11 @@ FW_getSVG(emb)
       <b>NOTE</b>: this is also the fallback, if no modifier is found.</li>
   <li>bitfield,&lt;size&gt;&lt;mask&gt; - show a table of checkboxes (8 per
       line) to set single bits. Default for size is 8 and for mask 2^32-1</li>
+  <li>widgetList,... - show a list of widgets. The arguments are concatenated,
+      and separated be the length of the following argument list.<br>
+      Example: widgetList,3,select,opt1,opt2,1,textField<br>
+      Note: the values will be sent to FHEM as a comma separated list, and only
+      preloaded widgets can be referenced.</li>
 
 =end html
 
@@ -2060,22 +2463,29 @@ FW_getSVG(emb)
   <li>noArg - es wird kein weiteres Eingabefeld angezeigt.</li>
   <li>time - zeigt ein Zeitauswahlmen&uuml;.
       Beispiel: attr FS20dev widgetOverride on-till:time</li>
-  <li>textField - zeigt ein Eingabefeld.<br>
-      Beispiel: attr WEB widgetOverride room:textField</li>
-  <li>textField-long - ist wie textField, aber beim Click im Eingabefeld wird
-      ein Dialog mit einer HTML textarea (60x25) wird ge&ouml;ffnet.</li>
+  <li>textField[,placeholder,inputSize] - zeigt ein Eingabefeld. Mit inputSize
+      kann man die Breite des Eingabefeldes definieren, die Voreinstellung ist
+      30.<br>
+      Beispiel: attr WEB widgetOverride room:textField,Raumname,20</li>
+  <li>textFieldNL[,placeholder,inputSize] - Eingabefeld ohne Label.</li>
+  <li>textField-long[,sizePct,inputSize] - ist wie textField, aber beim Click im
+      Eingabefeld wird ein Dialog mit einer HTML textarea
+      ge&ouml;ffnet.  sizePct ist die relative Gr&ouml;&szlig;e des Dialogs,
+      die Voreinstellung ist 75.</li>
+  <li>textFieldNL-long[,sizePct,inputSize] - wie textField-long, aber kein
+      Label wird angezeigt.</li>
   <li>slider,&lt;min&gt;,&lt;step&gt;,&lt;max&gt;[,1] - zeigt einen
       Schieberegler. Das optionale 1 (isFloat) vermeidet eine Rundung der
       Fliesskommazahlen.</li>
-  <li>multiple,&lt;val1&gt;,&lt;val2&gt;,... - zeigt eine Mehrfachauswahl mit
-      einem zus&auml;tzlichen Eingabefeld. Das Ergebnis ist Komma
-      separiert.</li>
-  <li>multiple-strict,&lt;val1&gt;,&lt;val2&gt;,... - ist wie :multiple,
-      blo&szlig; ohne Eingabefeld.</li>
+  <li>multiple,&lt;val1&gt;,&lt;val2&gt;,...[,#inputSize] - zeigt ein Dialog
+      mit Mehrfachauswahl und Eingabefeld. Das Ergebnis ist Komma separiert.
+      inputSize ist die Breite des Anzeigefeldes, die Voreinstellung ist
+      30.</li>
+  <li>multiple-strict,&lt;val1&gt;,&lt;val2&gt;,...[,#inputSize] - ist wie
+      :multiple, blo&szlig; ohne Eingabefeld im Dialog.</li>
   <li>selectnumbers,&lt;min&gt;,&lt;step&gt;,&lt;max&gt;,&lt;number of
       digits after decimal point&gt;,lin|log10" zeigt ein HTML-select mit einer
-      Zahlenreihe vom Wert min bis Wert max mit Schritten von step
-      angezeigt.<br>
+      Zahlenreihe vom Wert min bis Wert max mit Schritten von step.<br>
       Die Angabe lin erzeugt eine konstant ansteigende Reihe.  Die Angabe
       log10 erzeugt eine exponentiell ansteigende Reihe zur Basis 10,
       step bezieht sich auf den Exponenten, z.B. 0.0625.</li>
@@ -2083,9 +2493,15 @@ FW_getSVG(emb)
       Werten. <b>Achtung</b>: so ein Widget wird auch dann angezeigt, falls
       kein passender Modifier gefunden wurde.</li>
   <li>bitfield,&lt;size&gt;,&lt;mask&gt; - zeigt eine Tabelle von
-      Kontrollk&auml;stchen (8 pro Zeile), um einzelne Bits setzen zu koennen.
-      Die Voreinstellung fuer size ist 8 und fuer mask 2^32-1.</li>
-
+      Kontrollk&auml;stchen (8 pro Zeile), um einzelne Bits setzen zu
+      k&ouml;nnen.  Die Voreinstellung f&uuml;r size ist 8 und f&uuml;r mask
+      2^32-1.</li>
+  <li>widgetList,... - zeigt eine Liste von Widgets. Die Argumente aller
+      widgets sind durch die L&auml;ngenangabe der jeweiligen Argumentliste
+      getrennt.<br>
+      Beispiel: widgetList,3,select,opt1,opt2,1,textField<br>
+      Achtung: die Werte werden Komma separiert zu FHEM gesendet, und es
+      k&ouml;nnen nur bereits geladene widgets definiert werden.</li>
 
 =end html_DE
 

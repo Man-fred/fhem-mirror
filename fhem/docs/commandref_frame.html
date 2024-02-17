@@ -112,6 +112,7 @@
 
   <br>
   <a href="#perl">Perl specials</a><br>
+  <a href="#regexp">Regexp</a><br>
   <a href="#gnuplot-syntax">gnuplot file syntax</a><br>
 </ul>
 
@@ -417,6 +418,15 @@ Device specific attributes are documented in the corresponding device section.
         grouping attribute.
         </li><br>
 
+    <a name="overrideNotifydev"></a>
+    <li>overrideNotifydev<br>
+        if set (the argument is a devspec), the optimization for notifications
+        is using this value instead of the module-set NOTIFYDEV internal.
+        Use it only, if you know it better than the module maintainer.
+        In order to be available, the global or the device userattr must be set
+        first, to include it.
+        </li><br>
+
     <a name="room"></a>
     <li>room<br>
         Filter/group devices in frontends. A device can appear in more than one
@@ -474,7 +484,9 @@ attribute list if you want to know if a device supports these attributes.  <br>
     reading if such a reading for the current device exists. If the value of
     this attribute is enclosed in {}, then it is evaluated. This attribute is
     evaluated each time a reading is updated.<br>
-    The "set magic" described <a href="#set">here</a> is also applied.
+    The "set magic" described <a href="#set">here</a> is also applied.<br>
+    Note: some FHEM modules are setting STATE directly (against the guidelines),
+    in this case the attribute may not work as expected.
     </li>
     <p>
 
@@ -512,14 +524,14 @@ attribute list if you want to know if a device supports these attributes.  <br>
     <a name="timestamp-on-change-reading"></a>
     <li>timestamp-on-change-reading<br>
     The attribute takes a comma-separated list of readings. You may use regular
-    expressions in that list. If set, the timestamps of the listed readings will
-    not be changed if event-on-change-reading is also set and it would not create
+    expressions in that list. If set, the listed readings will not be changed
+    (or created) if event-on-change-reading is also set and it would not create
     an event for this reading.
     </li>
     <p>
 
     <a name="event-aggregator"></a>
-    <li>event-aggregator</li>
+    <li>event-aggregator
     The primary uses of this attribute are to calculate (time-weighted) averages of 
     readings over time periods and to throttle the update rate of readings and thus 
     the amount of data written to the logs.<p>
@@ -539,7 +551,7 @@ attribute list if you want to know if a device supports these attributes.  <br>
     <tr><td>max</td><td>the largest value encountered</td></tr>
     <tr><td>mean</td><td>the arithmetic mean of all values</td></tr>
     <tr><td>sd</td><td>the standard deviation from the mean</td></tr>
-    <tr><td>median</td><td>the median of all values (requires holdTime and function none)</td></tr>
+    <tr><td>median</td><td>the median of all values (requires holdTime and method none)</td></tr>
     <tr><td>integral</td><td>the arithmetic sum (if not time-weighted) or integral area (if time-weighted) of all values</td></tr>
     <tr><td>n</td><td>number of samples</td></tr>
     <tr><td>t</td><td>timestamp of the last value</td></tr>
@@ -598,7 +610,10 @@ attribute list if you want to know if a device supports these attributes.  <br>
     This attribute takes a comma-separated list of readings. You may use
     regular expressions in that list. For each reading in the list FHEM will
     internaly store the previous value if the readings value changes. To access
-    the storead value use the OldReadings.* functions.</li>
+    the storead value use the OldReadings.* functions.
+    If the previous value is always to be stored (even if it didn't changed),
+    then set the last value of the comma-separated list to oldreadingsAlways.
+    </li>
 
     <a name="userReadings"></a>
     <li>userReadings<br>
@@ -679,12 +694,34 @@ The following local attributes are used by a wider range of devices:
         for this type of device. The attribute IODev needs to be used only if
         you attached more than one physical device capable of receiving signals
         for this logical device.</li><br>
-    <li>Special: attribute disable can be toggled<br/>
-        Attribute "disable" can be toggled by issuing the following command:<br/>
-        <br/>
-        <code>attr &lt;device&gt; disable toggle</code><br/>
-        <br/>
-        Attribute "disable" must be offered by the corresponding module</li>
+
+    <a name="disable"></a>
+    <li>disable<br>
+        Disables the corresponding device. Note: it can be toggled by issuing the following command:<br/>
+        <br>
+        <code>attr &lt;device&gt; disable toggle</code>
+        </li><br>
+
+    <a name="disabledForIntervals"></a>
+    <li>disabledForIntervals HH:MM-HH:MM HH:MM-HH:MM ...<br>
+        Space separated list of HH:MM or D@HH:MM tupels. If the current time is
+        between the two time specifications, the current device is disabled.
+        Instead of HH:MM you can also specify HH or HH:MM:SS. D is the day of
+        the week, with 0 indicating Sunday and 3 indicating Wednesday.
+        Specifying the day for the "from" part does _not_ specify it for the
+        "to" part, i.e.  1@00-24 will disable from monday to the end of the
+        week, but not on sunday (as 1@00 is greater than any time on sunday).
+        To specify an interval spawning midnight, you have to specify two
+        intervals, e.g.:
+        <ul>
+          23:00-24:00 00:00-01:00
+        </ul>
+        If parts of the attribute value are enclosed in {}, they are evaluated:
+        <ul>
+          {sunset_abs()}-24 {sunrise_abs()}-08
+        </ul>
+        </li><br>
+
 </ul>
 <!-- attributes end - diese Zeile nicht entfernen! -->
 
@@ -694,7 +731,7 @@ The following local attributes are used by a wider range of devices:
 <a name="attr"></a>
 <h3>attr</h3>
 <ul>
-  <code>attr [-a] [-r] &lt;devspec&gt; &lt;attrname&gt; [&lt;value&gt;]</code>
+  <code>attr [-a|-r|-silent] &lt;devspec&gt; &lt;attrname&gt; [&lt;value&gt;]</code>
   <br>
 
   <br>Set an attribute for a device defined by <a href="#define">define</a>.
@@ -712,6 +749,7 @@ The following local attributes are used by a wider range of devices:
   space will be added automatically to the old value before appending the
   new.<br>
   With the -r option one can remove a part of an attribute value.<br>
+  With the -silent option the command is not recorded in the "save -?" list.<br>
   <br>
 
   Examples:
@@ -772,6 +810,9 @@ The following local attributes are used by a wider range of devices:
       be loaded. Used by fhem.cfg.demo, as using the RSS example requires the
       installation of several uncommon perl modules. 
       </li><br>
+    <li>-silent<br>
+      Do no enter the command in the "save ?" list.
+      </li><br>
   </ul>
 
 </ul>
@@ -780,8 +821,8 @@ The following local attributes are used by a wider range of devices:
 <a name="defmod"></a>
 <h3>defmod</h3>
 <ul>
-  <code>defmod [-temporary] &lt;name&gt; &lt;type&gt; &lt;type-specific&gt;</code><br>
-  <br>
+  <code>defmod [option] &lt;name&gt; &lt;type&gt; &lt;type-specific&gt;</code>
+  <br><br>
   Define a device or modify it, if it already exists. E.g. to switch off a lamp
   10 Minutes after the last message from the motion detector, you may use
   <ul><code>
@@ -789,7 +830,8 @@ The following local attributes are used by a wider range of devices:
   </code></ul>
   Using define here for the mdOff will generate an error if the motion detector
   triggers within the 10 minutes after the first event, as the mdOff at
-  definition still exists.
+  definition still exists.<br>
+  For the options see the define documentation.
   <br>
 </ul>
 <!-- defmod end -->
@@ -816,12 +858,14 @@ The following local attributes are used by a wider range of devices:
 <a name="deleteattr"></a>
 <h3>deleteattr</h3>
 <ul>
-  <code>deleteattr &lt;devspec&gt; [&lt;attrname&gt;]</code> <br>
+  <code>deleteattr [-silent] &lt;devspec&gt; [&lt;attrname&gt;]</code> <br>
   <br>
   Delete either a single attribute (see the <a href="#attr">attr</a> command)
   or all attributes for a device (if no &lt;attrname&gt; is defined).
   See the <a href="#devspec">Device specification</a> section for details on
   &lt;devspec&gt;.<br>
+  &lt;attrname&gt; is in fact a regexp, complemented with ^ and $ as usual, so
+  a range of attributes can be deleted with one command.<br>
   After deleting the attribute, the global event "DELETEATTR" will be generated.
   <br>
 
@@ -837,11 +881,13 @@ The following local attributes are used by a wider range of devices:
 <a name="deletereading"></a>
 <h3>deletereading</h3>
 <ul>
-  <code>deletereading &lt;devspec&gt; &lt;readingname&gt;</code> <br>
+  <code>deletereading &lt;devspec&gt; &lt;readingname&gt;
+        [&lt;older-than-seconds&gt;]</code> <br>
   <br>
   Delete the reading &lt;readingname&gt; 
-  for a device. &lt;readingname&gt; is a perl regular expression that must match the whole name of the reading.
-  Use with greatest care! FHEM might crash if you delete vital readings of a device.
+  for a device. &lt;readingname&gt; is a perl regular expression that must
+  match the whole name of the reading.  Use with greatest care! FHEM might
+  crash if you delete vital readings of a device.
   See the <a href="#devspec">Device specification</a> section for details on
   &lt;devspec&gt;.<br>
   <br>
@@ -1020,7 +1066,7 @@ The following local attributes are used by a wider range of devices:
 <a name="modify"></a>
 <h3>modify</h3>
 <ul>
-  <code>modify &lt;name&gt; &lt;type-dependent-options&gt;</code>
+  <code>modify [-silent] &lt;name&gt; &lt;type-dependent-options&gt;</code>
   <br><br>
 
   Used to modify some definitions. Useful for changing some <a
@@ -1028,8 +1074,9 @@ The following local attributes are used by a wider range of devices:
   one argument to an at type definition, only the time part will be changed. In
   case of a notify type definition, only the regex part will be changed.  All
   other values (state, attributes, etc) will remain intact.
-  After modify, the global event "MODIFIED" will be generated.
-  <br><br>
+  After modify, the global event "MODIFIED" will be generated.<br>
+  With the -silent option the command is not recorded in the "save -?" list.<br>
+  <br>
   Example:
   <ul>
     <code>define lampon at 19:00 set lamp on</code><br>
@@ -1279,12 +1326,14 @@ The following local attributes are used by a wider range of devices:
 <a name="setreading"></a>
 <h3>setreading</h3>
 <ul>
-  <code>setreading &lt;devspec&gt; &lt;reading&gt; &lt;value&gt;</code>
+  <code>setreading &lt;devspec&gt; [YYYY-MM-DD HH:MM:SS] &lt;reading&gt;
+        &lt;value&gt;</code>
   <br><br>
   Set the reading &lt;reading&gt; for the device <code>&lt;name&gt;</code> to
   &lt;value&gt; without sending out commands to the device, but triggering
   events and eventMap/stateFormat transformations as usual. See the set
-  command documentation for replacement description.
+  command documentation for replacement description.<br>
+  If the timespec is omitted (default) the current time will be used.
   <br><br>
   Examples:
   <ul>
@@ -1376,7 +1425,7 @@ The following local attributes are used by a wider range of devices:
   &lt;regex&gt;. The delay can be given<ul>
   <li>in seconds, with millisecond accuracy, as you can specify decimal places,
   </li>
-  <li>as a timespec (HH:MM or HH::MM::SS or {perlfunc})</li>
+  <li>as a timespec (HH:MM or HH:MM:SS or {perlfunc})</li>
   <li>or as a regex (devicename or devicename:event)</li></ul><br>
 
   A sleep with an &lt;id&gt; will replace a sleep with the same &lt;id&gt;
@@ -1432,6 +1481,15 @@ The following local attributes are used by a wider range of devices:
 
   <b>Get</b><ul>N/A</ul><br>
 
+  <b>Internals</b>
+  <ul>
+  <a name="init_errors"></a>
+    <li>init_errors<br>
+      contains configuration errors and security issues collected at FHEM
+      startup.
+    </li><br>
+  </ul><br>
+
   <b>Attributes</b>
   <ul>
     <a name="altitude"></a>
@@ -1460,7 +1518,8 @@ The following local attributes are used by a wider range of devices:
     <li>autosave<br>
         enable some modules to automatically trigger save after a configuration
         change, e.g. after a new device was created. Default is 1 (true), you
-        can deactivate this feature by setting the value to 0.
+        can deactivate this feature by setting the value to 0. Configration
+        errors at startup automatically deactivate this value.
     </li>
 
     <a name="backupcmd"></a>
@@ -1522,10 +1581,10 @@ The following local attributes are used by a wider range of devices:
 
     <a name="commandref"></a>
     <li>commandref<br>
-        If set to "full" (default), then a full commandref will be generated
-        after each update. If set to modular, there is only a short description
-        at the beginning, and the module documentation is loaded from FHEM
-        dynamically.
+        If set to "full", then a full commandref will be generated after each
+        update. If set to modular (default since FHEM 6.1), there is only a
+        short description at the beginning, and the module documentation is
+        loaded from FHEM dynamically.
     </li><br>
 
     <a name="globaldisableFeatures"></a>
@@ -1557,6 +1616,18 @@ The following local attributes are used by a wider range of devices:
         attribute is set, then FHEM specific nonblocking code will be used to
         resolve the given address. If this attribute is not set, the blocking
         OS implementation (inet_aton and gethostbyname) will be used.
+    </li><br>
+
+    <a name="encoding"></a>
+    <li>encoding<br>
+        Set the internal encoding used for storing strings.
+        Possible values: bytestream (default) and unicode.<br>
+        Notes:
+        <ul>
+          <li>Since not all modules were checked, if they work correctly with
+              the internal unicode encoding, this feature is experimental.</li>
+          <li>Changing the attribute value triggers a save and a shutdown restart</li>
+        </ul>
     </li><br>
 
     <a name="featurelevel"></a>
@@ -1668,9 +1739,8 @@ The following local attributes are used by a wider range of devices:
     <li>motd<br>
         Message Of The Day. Displayed on the homescreen of the FHEMWEB package,
         or directly after the telnet logon, before displaying the fhem> prompt.
-        SecurityCheck is setting motd if it is not defined upon startup, to
-        avoid this set the motd value to none.  motd is also used to show
-        collected error messages upon FHEM start.
+        In addition, the content of the internal value init_errors will be
+        displayed. To avoid displaying messages set its value to none.
     </li><br>
 
     <a name="mseclog"></a>
@@ -1684,6 +1754,13 @@ The following local attributes are used by a wider range of devices:
         some Fritzbox installations, and it will be set automatically for
         Windows.
     </li><br>
+
+    <a id="perlSyntaxCheck"></a>
+    <li>perlSyntaxCheck<br>
+        by setting the <b>global</b> attribute perlSyntaxCheck, a syntax check
+        will be executed upon definition or modification, if the command is
+        perl and FHEM is already started.
+        </li><br>
 
     <a name="pidfilename"></a>
     <li>pidfilename<br>
@@ -1744,7 +1821,7 @@ The following local attributes are used by a wider range of devices:
         attributes for all devices. Without specifying them you will not be
         able to set them (in order to prevent typos).<br>
         userattr can also specified for other devices, in this case
-        these additinal attribute names are only valid for this device.
+        these additional attribute names are only valid for this device.
     </li><br>
 
     <a name="dupTimeout"></a>
@@ -1871,7 +1948,7 @@ The following local attributes are used by a wider range of devices:
     </ul>
     $we is equivalent to calling IsWe(), which optionally takes the arguments
     "today", "yesterday", "tomorrow", MM-DD or YYYY-MM-DD. Note: for everything
-    else "today" is assumed without an error message.
+    else the state reading is evaluated, and no error message is issued.
     </li><br>
 
   <li>
@@ -1883,30 +1960,34 @@ The following local attributes are used by a wider range of devices:
     <br>
     <ul>
       <li>Value(&lt;devicename&gt;)<br>
-        returns the state of the device (the string you see in paranthesis in
-        the output of the list command).
+        Returns the STATE of the device (the string you see in parenthesis in
+        the output of the list command). Note: STATE is meant for display
+        purposes, and can be customized by the user via the stateFormat
+        attribute. Use ReadingsVal(&lt;devicename&gt;, 'state', '') instead for
+        computational purposes.
         </li><br>
       <li>OldValue(&lt;devicename&gt;)
       <li>OldTimestamp(&lt;devicename&gt;)<br>
-        returns the old value/timestamp of the device.
+        Returns the old value/timestamp of the device.
         </li><br>
       <li>
         ReadingsVal(&lt;devicename&gt;,&lt;reading&gt;,&lt;defaultvalue&gt;)<br>
-        Return the reading (the value in the Readings section of "list device")
+        Returns the reading (the value in the Readings section of "list device")
         </li><br>
       <li>
         ReadingsNum(&lt;devicename&gt;,&lt;reading&gt;,
                     &lt;defaultvalue&gt;,&lt;round&gt;)<br>
-        Return the first number from a reading value.
-        Round id to &lt;round&gt; devimal places (optional parameter).
+        Returns the first number from a reading value.
+        Round it to &lt;round&gt; decimal places (optional parameter). If &lt;round&gt; exeeds the length of
+          the factional part, 0's will be padded.
         </li><br>
       <li>ReadingsTimestamp(&lt;devicename&gt;,&lt;reading&gt;,&lt;
         defaultvalue&gt;)<br>
-        returns the timestamp of the reading.
+        Returns the timestamp of a reading.
         </li><br>
       <li>ReadingsAge(&lt;devicename&gt;,&lt;reading&gt;,&lt;defaultvalue&gt;)
         <br>
-        returns the age of the reading in seconds.
+        Returns the age of a reading in seconds.
         </li><br>
 
       <li>
@@ -1924,7 +2005,7 @@ The following local attributes are used by a wider range of devices:
 
       <li>
         AttrVal(&lt;devicename&gt;,&lt;attribute&gt;,&lt;defaultvalue&gt;)<br>
-        Return the attribute of the device
+        Returns the attribute of a device
         <br><br>
         { Value("wz") }<br>
         { OldValue("wz") }<br>
@@ -1949,7 +2030,8 @@ The following local attributes are used by a wider range of devices:
         InternalNum(&lt;devicename&gt;,&lt;property&gt;,
                     &lt;defaultvalue&gt;,&lt;round&gt;)<br>
         Return the first number from an internal value.
-        Round id to &lt;round&gt; devimal places (optional parameter).
+        Round it to &lt;round&gt; decimal places (optional parameter). If &lt;round&gt; exeeds the length of
+        the factional part, 0's will be padded.
         </li><br>
       </ul>
       </li><br>
@@ -1968,6 +2050,57 @@ The following local attributes are used by a wider range of devices:
 
   <br>
 <!-- perl end - diese Zeile nicht entfernen! -->
+
+<a name="regexp"></a>
+<h3>Regexp</h3>
+  FHEM makes heavy use of regexp, which is short for regular expressions.
+  Other shorthands are regex or re.<br>
+
+  With a regexp you can check if a text/string contains the substrings what you
+  are looking for, or extract parts of this string for later usage.<br>
+
+  Regexp is not to be confused with glob, which is used in the shell: .* is the
+  regexp equivalent of the glob *<br>
+
+  Some examples:<ul>
+  <table>
+    <tr><th>Regexp</th><th>Explanation</th></tr>
+    <tr><td>.</td>
+        <td>Matches one arbitrary character.</td></tr>
+    <tr><td>x</td>
+        <td>Matches a string containing x: x, xy, but not abc</td></tr>
+    <tr><td>^x</td>
+        <td>Matches a string starting with x: x, xy, but not yx</td></tr>
+    <tr><td>x$</td>
+        <td>Matches a string ending with x: x, yx, but not xy</td></tr>
+    <tr><td>^x?$</td>
+        <td>Matches zero or one x: "", x, but not xx</td></tr>
+    <tr><td>^x*$</td>
+        <td>Matches zero or more x: "", x, xxxx, but not xy or yx</td></tr>
+    <tr><td>^x+$</td>
+        <td>Matches one or more x: x, xxxx, but not ""</td></tr>
+    <tr><td>^(xy|yx)$</td>
+        <td>Matches xy or yx</td></tr>
+    <tr><td>*</td><td>Not a valid regexp! This is a glob</td></tr>
+  </table>
+  </ul>
+  There is a lot more to know about regexps. There is an extensive
+  documentation coming with your perl installation: try in the OS commandline
+  perldoc perlretut first, and perldoc perlre for details.<br>
+
+  If unsure, test your regexp in an online regexp tester, like
+    <a target="_blank" href="https://regex101.com">regex101.com</a>,
+    <a target="_blank" href="https://regexr.com">regexr.com</a> or
+    <a target="_blank" href="https://regextester.com">regextester.com</a>
+  .<br>
+
+  You can also test your regexp in the FHEM commandline:<br>
+  <ul>
+    { "StringToTest" =~ m/^Str/ }<br>
+    { "StringToTest" =~ m/^str$/ }<br>
+    { "StringToTest" =~ m/(To|From)/ }<br>
+  </ul>
+  <br>
 
 <a name="gnuplot-syntax"></a>
 <h3>gnuplot file syntax</h3>

@@ -1,8 +1,8 @@
 ###############################################################################
 #
-# Developed with Kate
+# Developed with VSCodium and richterger perl plugin.
 #
-#  (c) 2017-2019 Copyright: Marko Oldenburg (leongaultier at gmail dot com)
+#  (c) 2017-2022 Copyright: Marko Oldenburg (fhemdevelopment at cooltux dot net)
 #  All rights reserved
 #
 #   Special thanks goes to comitters:
@@ -10,6 +10,7 @@
 #       - Matthias (Kenneth)    Thanks for Wiki entry
 #       - BioS                  Thanks for predefined start points Code
 #       - fettgu                Thanks for Debugging Irrigation Control data flow
+#       - Sebastian (BOFH)      Thanks for new Auth Code after API Change
 #
 #
 #  This script is free software; you can redistribute it and/or modify
@@ -56,8 +57,6 @@
 package FHEM::GardenaSmartBridge;
 use GPUtils qw(GP_Import GP_Export);
 
-# use Data::Dumper;    #only for Debugging
-
 use strict;
 use warnings;
 use POSIX;
@@ -66,27 +65,24 @@ use FHEM::Meta;
 use HttpUtils;
 
 my $missingModul = '';
-eval "use Encode qw(encode encode_utf8 decode_utf8);1"
+eval { use Encode qw /encode_utf8 decode_utf8/; 1 }
   or $missingModul .= "Encode ";
 
-# eval "use JSON;1"            || $missingModul .= 'JSON ';
-eval "use IO::Socket::SSL;1" or $missingModul .= 'IO::Socket::SSL ';
+# eval "use JSON;1" || $missingModul .= 'JSON ';
+eval { use IO::Socket::SSL; 1 }
+  or $missingModul .= 'IO::Socket::SSL ';
 
 # try to use JSON::MaybeXS wrapper
 #   for chance of better performance + open code
 eval {
-    require JSON::MaybeXS;
-    import JSON::MaybeXS qw( decode_json encode_json );
-    1;
-};
-
-if ($@) {
-    $@ = undef;
+  require JSON::MaybeXS;
+  import JSON::MaybeXS qw( decode_json encode_json );
+  1;
+} or do {
 
     # try to use JSON wrapper
     #   for chance of better performance
     eval {
-
         # JSON preference order
         local $ENV{PERL_JSON_BACKEND} =
           'Cpanel::JSON::XS,JSON::XS,JSON::PP,JSON::backportPP'
@@ -95,10 +91,7 @@ if ($@) {
         require JSON;
         import JSON qw( decode_json encode_json );
         1;
-    };
-
-    if ($@) {
-        $@ = undef;
+    } or do {
 
         # In rare cases, Cpanel::JSON::XS may
         #   be installed but JSON|JSON::MaybeXS not ...
@@ -106,10 +99,7 @@ if ($@) {
             require Cpanel::JSON::XS;
             import Cpanel::JSON::XS qw(decode_json encode_json);
             1;
-        };
-
-        if ($@) {
-            $@ = undef;
+        } or do {
 
             # In rare cases, JSON::XS may
             #   be installed but JSON not ...
@@ -117,10 +107,7 @@ if ($@) {
                 require JSON::XS;
                 import JSON::XS qw(decode_json encode_json);
                 1;
-            };
-
-            if ($@) {
-                $@ = undef;
+            } or do {
 
                 # Fallback to built-in JSON which SHOULD
                 #   be available since 5.014 ...
@@ -128,25 +115,21 @@ if ($@) {
                     require JSON::PP;
                     import JSON::PP qw(decode_json encode_json);
                     1;
-                };
-
-                if ($@) {
-                    $@ = undef;
+                } or do {
 
                     # Fallback to JSON::backportPP in really rare cases
                     require JSON::backportPP;
                     import JSON::backportPP qw(decode_json encode_json);
                     1;
-                }
-            }
-        }
-    }
-}
+                };
+            };
+        };
+    };
+};
 
 ## Import der FHEM Funktionen
 #-- Run before package compilation
 BEGIN {
-
     # Import from main context
     GP_Import(
         qw(readingsSingleUpdate
@@ -155,8 +138,11 @@ BEGIN {
           readingsBeginUpdate
           readingsEndUpdate
           Log3
+          devspec2array
+          asyncOutput
           CommandAttr
           AttrVal
+          InternalVal
           ReadingsVal
           CommandDefMod
           modules
@@ -180,7 +166,7 @@ BEGIN {
 GP_Export(
     qw(
       Initialize
-      )
+    )
 );
 
 sub Initialize {
@@ -193,6 +179,7 @@ sub Initialize {
 
     # Consumer
     $hash->{SetFn}    = \&Set;
+    $hash->{GetFn}    = \&Get;
     $hash->{DefFn}    = \&Define;
     $hash->{UndefFn}  = \&Undef;
     $hash->{DeleteFn} = \&Delete;
@@ -202,6 +189,7 @@ sub Initialize {
     $hash->{AttrFn} = \&Attr;
     $hash->{AttrList} =
         'debugJSON:0,1 '
+      . 'debugDEVICE:0,1 '
       . 'disable:1 '
       . 'interval '
       . 'disabledForIntervals '
@@ -231,9 +219,7 @@ sub Define {
     my $name = shift @$aArg;
     $hash->{BRIDGE} = 1;
     $hash->{URL} =
-      AttrVal( $name, 'gardenaBaseURL',
-        'https://sg-api.dss.husqvarnagroup.net' )
-      . '/sg-1';
+      AttrVal( $name, 'gardenaBaseURL', 'https://smart.gardena.com' ) . '/v1';
     $hash->{VERSION}   = version->parse($VERSION)->normal;
     $hash->{INTERVAL}  = 60;
     $hash->{NOTIFYDEV} = "global,$name";
@@ -255,7 +241,7 @@ sub Undef {
     my $hash = shift;
     my $name = shift;
 
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer( $hash, "FHEM::GardenaSmartBridge::getDevices" );
     delete $modules{GardenaSmartBridge}{defptr}{BRIDGE}
       if ( defined( $modules{GardenaSmartBridge}{defptr}{BRIDGE} ) );
 
@@ -276,7 +262,8 @@ sub Attr {
 
     if ( $attrName eq 'disable' ) {
         if ( $cmd eq 'set' && $attrVal eq '1' ) {
-            RemoveInternalTimer($hash);
+            RemoveInternalTimer( $hash,
+                "FHEM::GardenaSmartBridge::getDevices" );
             readingsSingleUpdate( $hash, 'state', 'inactive', 1 );
             Log3 $name, 3, "GardenaSmartBridge ($name) - disabled";
         }
@@ -299,15 +286,17 @@ sub Attr {
     }
     elsif ( $attrName eq 'interval' ) {
         if ( $cmd eq 'set' ) {
-            RemoveInternalTimer($hash);
             return 'Interval must be greater than 0'
               if ( $attrVal == 0 );
+            RemoveInternalTimer( $hash,
+                "FHEM::GardenaSmartBridge::getDevices" );
             $hash->{INTERVAL} = $attrVal;
             Log3 $name, 3,
               "GardenaSmartBridge ($name) - set interval: $attrVal";
         }
         elsif ( $cmd eq 'del' ) {
-            RemoveInternalTimer($hash);
+            RemoveInternalTimer( $hash,
+                "FHEM::GardenaSmartBridge::getDevices" );
             $hash->{INTERVAL} = 60;
             Log3 $name, 3,
 "GardenaSmartBridge ($name) - delete User interval and set default: 60";
@@ -315,12 +304,12 @@ sub Attr {
     }
     elsif ( $attrName eq 'gardenaBaseURL' ) {
         if ( $cmd eq 'set' ) {
-            $hash->{URL} = $attrVal . '/sg-1';
+            $hash->{URL} = $attrVal;
             Log3 $name, 3,
               "GardenaSmartBridge ($name) - set gardenaBaseURL to: $attrVal";
         }
         elsif ( $cmd eq 'del' ) {
-            $hash->{URL} = 'https://sg-api.dss.husqvarnagroup.net/sg-1';
+            $hash->{URL} = 'https://smart.gardena.com/v1';
         }
     }
 
@@ -349,25 +338,21 @@ sub Notify {
                 @{$events} or grep /^DEFINED.$name$/,
                 @{$events} or grep /^MODIFIED.$name$/,
                 @{$events} or grep /^ATTR.$name.gardenaAccountEmail.+/,
+                @{$events} or grep /^DELETEATTR.$name.disable$/,
                 @{$events}
             )
         )
 
-        || (
-            $devtype eq 'GardenaSmartBridge'
-            && (
-                grep /^gardenaAccountPassword.+/,
-                @{$events} || ReadingsVal( '$devname', 'token', '' ) eq 'none'
-            )
-        )
+        || ( $devtype eq 'GardenaSmartBridge'
+            && ( grep /^gardenaAccountPassword.+/, @{$events} ) )
+        && $init_done
       );
 
     getDevices($hash)
       if (
         $devtype eq 'Global'
         && (
-            grep /^DELETEATTR.$name.disable$/,
-            @{$events} or grep /^ATTR.$name.disable.0$/,
+            grep /^ATTR.$name.disable.0$/,
             @{$events} or grep /^DELETEATTR.$name.interval$/,
             @{$events} or grep /^ATTR.$name.interval.[0-9]+/,
             @{$events}
@@ -384,7 +369,6 @@ sub Notify {
         )
       )
     {
-
         InternalTimer( gettimeofday() + $hash->{INTERVAL},
             "FHEM::GardenaSmartBridge::getDevices", $hash );
         Log3 $name, 4,
@@ -394,18 +378,42 @@ sub Notify {
     return;
 }
 
+sub Get {
+    my $hash = shift // return;
+    my $aArg = shift // return;
+
+    my $name = shift @$aArg // return;
+    my $cmd  = shift @$aArg
+      // return qq{"get $name" needs at least one argument};
+
+    if ( lc $cmd eq 'debug_devices_list' ) {
+        my $device = shift @$aArg;
+        $hash->{helper}{debug_device} = $device;
+        Write( $hash, undef, undef, undef, undef );
+        return;
+    }
+    else {
+        my $list = "";
+        $list .=
+          " debug_devices_list:" . join( ',', @{ $hash->{helper}{deviceList} } )
+          if ( AttrVal( $name, "debugDEVICE", "none" ) ne "none"
+            && exists( $hash->{helper}{deviceList} ) );
+        return "Unknown argument $cmd,choose one of $list";
+    }
+}
+
 sub Set {
     my $hash = shift // return;
     my $aArg = shift // return;
 
     my $name = shift @$aArg // return;
-    my $cmd  = shift @$aArg // return qq{"set $name" needs at least one argument};
-    
+    my $cmd  = shift @$aArg
+      // return qq{"set $name" needs at least one argument};
+
 #     Das Argument für das Passwort, also das Passwort an sich darf keine = enthalten!!!
 
     if ( lc $cmd eq 'getdevicesstate' ) {
         getDevices($hash);
-
     }
     elsif ( lc $cmd eq 'gettoken' ) {
         return "please set Attribut gardenaAccountEmail first"
@@ -429,6 +437,15 @@ sub Set {
 
         DeletePassword($hash);
     }
+    elsif ( lc $cmd eq 'debughelper' ) {
+        return "usage: $cmd" if ( scalar( @{$aArg} ) != 2 );
+        my $new_helper       = $aArg->[0];
+        my $new_helper_value = $aArg->[1];
+        Log3( $name, 5,
+"[DEBUG] - GardenaSmartBridge ($name) - override helper $new_helper with $new_helper_value"
+        );
+        $hash->{helper}{$new_helper} = $new_helper_value;
+    }
     else {
 
         my $list = "getDevicesState:noArg getToken:noArg"
@@ -444,25 +461,28 @@ sub Set {
 }
 
 sub Write {
-    my ( $hash, $payload, $deviceId, $abilities ) = @_;
+    my ( $hash, $payload, $deviceId, $abilities, $service_id ) = @_;
     my $name = $hash->{NAME};
 
     my ( $session_id, $header, $uri, $method );
 
-    ( $payload, $session_id, $header, $uri, $method, $deviceId, $abilities ) =
-      createHttpValueStrings( $hash, $payload, $deviceId, $abilities );
+    ( $payload, $session_id, $header, $uri, $method, $deviceId, $service_id ) =
+      createHttpValueStrings( $hash, $payload, $deviceId, $abilities,
+        $service_id );
 
     HttpUtils_NonblockingGet(
         {
-            url       => $hash->{URL} . $uri,
-            timeout   => 15,
-            hash      => $hash,
-            device_id => $deviceId,
-            data      => $payload,
-            method    => $method,
-            header    => $header,
-            doTrigger => 1,
-            callback  => \&ErrorHandling
+            url                => $hash->{URL} . $uri,
+            timeout            => 15,
+            incrementalTimeout => 1,
+            hash               => $hash,
+            device_id          => $deviceId,
+            data               => $payload,
+            method             => $method,
+            header             => $header,
+            doTrigger          => 1,
+            cl                 => $hash->{CL},
+            callback           => \&ErrorHandling
         }
     );
 
@@ -470,8 +490,8 @@ sub Write {
 "GardenaSmartBridge ($name) - Send with URL: $hash->{URL}$uri, HEADER: secret!, DATA: secret!, METHOD: $method"
     );
 
-#     Log3($name, 3,
-#         "GardenaSmartBridge ($name) - Send with URL: $hash->{URL}$uri, HEADER: $header, DATA: $payload, METHOD: $method");
+# Log3($name, 3,
+#     "GardenaSmartBridge ($name) - Send with URL: $hash->{URL}$uri, HEADER: $header, DATA: $payload, METHOD: $method");
 
     return;
 }
@@ -490,7 +510,9 @@ sub ErrorHandling {
 
     my $dname = $dhash->{NAME};
 
-    my $decode_json = eval { decode_json($data) };
+    Log3 $name, 4, "GardenaSmartBridge ($name) - Request: $data";
+
+    my $decode_json = eval { decode_json($data) } if ( length($data) > 0 );
     if ($@) {
         Log3 $name, 3, "GardenaSmartBridge ($name) - JSON error while request";
     }
@@ -506,7 +528,6 @@ sub ErrorHandling {
                 1 );
 
             if ( $err =~ /timed out/ ) {
-
                 Log3 $dname, 5,
 "GardenaSmartBridge ($dname) - RequestERROR: connect to gardena cloud is timed out. check network";
             }
@@ -592,7 +613,7 @@ sub ErrorHandling {
     }
 
     if (
-        $data =~ /Error/
+        $data =~ /Error/ && $data !~ /lastLonaErrorCode/
         || (   defined($decode_json)
             && ref($decode_json) eq 'HASH'
             && defined( $decode_json->{errors} ) )
@@ -607,26 +628,32 @@ sub ErrorHandling {
         if ( $param->{code} == 400 ) {
             if ($decode_json) {
                 if ( ref( $decode_json->{errors} ) eq "ARRAY"
-                    && defined( $decode_json->{errors} ) )
+                    && exists( $decode_json->{errors} ) )
+                    # replace defined with exists
+                    # && defined( $decode_json->{errors} ) )
                 {
-                    readingsBulkUpdate(
+                    # $decode_json->{errors} -> ARRAY
+                    # $decode_json->{errors}[0] -> HASH
+                    if (exists ($decode_json->{errors}[0]{error}) ) {
+                      readingsBulkUpdate(
                         $dhash,
                         "state",
                         $decode_json->{errors}[0]{error} . ' '
                           . $decode_json->{errors}[0]{attribute},
                         1
-                    );
-                    readingsBulkUpdate(
-                        $dhash,
-                        "lastRequestState",
-                        $decode_json->{errors}[0]{error} . ' '
-                          . $decode_json->{errors}[0]{attribute},
-                        1
-                    );
-                    Log3 $dname, 5,
-                        "GardenaSmartBridge ($dname) - RequestERROR: "
-                      . $decode_json->{errors}[0]{error} . " "
-                      . $decode_json->{errors}[0]{attribute};
+                      );
+                      readingsBulkUpdate(
+                          $dhash,
+                          "lastRequestState",
+                          $decode_json->{errors}[0]{error} . ' '
+                            . $decode_json->{errors}[0]{attribute},
+                          1
+                      );
+                      Log3 $dname, 5,
+                          "GardenaSmartBridge ($dname) - RequestERROR: "
+                        . $decode_json->{errors}[0]{error} . " "
+                        . $decode_json->{errors}[0]{attribute};
+                  } # fi exists error
                 }
             }
             else {
@@ -670,6 +697,11 @@ sub ErrorHandling {
               . $param->{code};
         }
 
+        if ( !defined( $hash->{helper}{session_id} ) ) {
+            readingsSingleUpdate( $hash, 'token', 'none', 1 );
+            InternalTimer( gettimeofday() + 5,
+                "FHEM::GardenaSmartBridge::getToken", $hash );
+        }
         readingsEndUpdate( $dhash, 1 );
 
         Log3 $dname, 5,
@@ -682,7 +714,60 @@ sub ErrorHandling {
 
         return;
     }
+    elsif ( defined( $decode_json->{message} )
+        && $decode_json->{message} eq 'Unauthorized' )
+    {
+        Log3 $name, 3,
+          "GardenaSmartBridge ($name) - Unauthorized -> fetch new token ";
 
+        getToken($hash);
+
+        return;
+    }
+
+    if ( defined( $hash->{helper}{debug_device} )
+        && $hash->{helper}{debug_device} ne 'none' )
+    {
+        Log3 $name, 4, "GardenaSmartBridge DEBUG Device";
+        delete $hash->{helper}{debug_device};
+
+        my @device_spec = ( "name", "id", "category" );
+        my $devJson     = $decode_json->{devices};
+        my $output = '.:{ DEBUG OUTPUT for ' . $devJson->{name} . ' }:. \n';
+
+        for my $spec (@device_spec) {
+            $output .= "$spec : $devJson->{$spec} \n";
+        }
+
+        #settings
+        $output .= '\n=== Settings \n';
+        my $i = 0;
+        for my $dev_settings ( @{ $devJson->{settings} } ) {
+            $output .= "[" . $i++ . "]id: $dev_settings->{id} \n";
+            $output .= "name: $dev_settings->{name} \n";
+            if (   ref( $dev_settings->{value} ) eq 'ARRAY'
+                || ref( $dev_settings->{value} ) eq 'HASH' )
+            {
+                $output .= 'N/A \n';
+            }
+            else {
+                $output .= "value: $dev_settings->{value} \n";
+            }
+        }
+
+        $output .= '\n=== Abilities \n';
+        $i = 0;
+
+        for my $dev_settings ( @{ $devJson->{abilities} } ) {
+            $output .= "[" . $i++ . "]id: $dev_settings->{id} \n";
+            $output .= "name: $dev_settings->{name} \n";
+        }
+
+        $hash->{helper}{debug_device_output} = $output;
+        asyncOutput( $param->{cl}, $hash->{helper}{debug_device_output} );
+
+        return;
+    }
     readingsSingleUpdate( $hash, 'state', 'Connected', 1 )
       if ( defined( $hash->{helper}{locations_id} ) );
     ResponseProcessing( $hash, $data )
@@ -710,12 +795,21 @@ sub ResponseProcessing {
         }
     }
 
-    #     print Dumper $decode_json;
+    if (   defined( $decode_json->{data} )
+        && $decode_json->{data}
+        && ref( $decode_json->{data} ) eq 'HASH'
+        && !defined( $hash->{helper}->{user_id} ) )
+    {
 
-    if ( defined( $decode_json->{sessions} ) && $decode_json->{sessions} ) {
+        $hash->{helper}{session_id} = $decode_json->{data}{id};
+        $hash->{helper}{user_id} = $decode_json->{data}{attributes}->{user_id};
+        $hash->{helper}{refresh_token} =
+          $decode_json->{data}{attributes}->{refresh_token};
+        $hash->{helper}{token_expired} =
+          gettimeofday() + $decode_json->{data}{attributes}->{expires_in};
 
-        $hash->{helper}{session_id} = $decode_json->{sessions}{token};
-        $hash->{helper}{user_id}    = $decode_json->{sessions}{user_id};
+        InternalTimer( $hash->{helper}{token_expired},
+            "FHEM::GardenaSmartBridge::getToken", $hash );
 
         Write( $hash, undef, undef, undef );
         Log3 $name, 3, "GardenaSmartBridge ($name) - fetch locations id";
@@ -747,50 +841,35 @@ sub ResponseProcessing {
         && ref( $decode_json->{devices} ) eq 'ARRAY'
         && scalar( @{ $decode_json->{devices} } ) > 0 )
     {
-
         my @buffer = split( '"devices":\[', $json );
 
-        my ( $json, $tail ) = ParseJSON( $hash, $buffer[1] );
+        require SubProcess;
 
-        while ($json) {
+        my $subprocess =
+          SubProcess->new( { onRun => \&ResponseSubprocessing } );
+        $subprocess->{buffer} = $buffer[1];
 
-            Log3 $name, 5,
-                "GardenaSmartBridge ($name) - Decoding JSON message. Length: "
-              . length($json)
-              . " Content: "
-              . $json;
-            Log3 $name, 5,
-                "GardenaSmartBridge ($name) - Vor Sub: Laenge JSON: "
-              . length($json)
-              . " Content: "
-              . $json
-              . " Tail: "
-              . $tail;
+        my $pid = $subprocess->run();
 
-            if ( defined($tail) and $tail ) {
-                $decode_json = eval { decode_json($json) };
-                if ($@) {
-                    Log3 $name, 5,
-"GardenaSmartBridge ($name) - JSON error while request: $@";
-                }
+        if ( !defined($pid) ) {
+            Log3( $name, 1,
+qq{GardenaSmartBridge ($name) - Cannot execute parse json asynchronously}
+            );
 
-                Dispatch( $hash, $json, undef )
-                  if ( $decode_json->{category} ne 'gateway' );
-                WriteReadings( $hash, $decode_json )
-                  if ( defined( $decode_json->{category} )
-                    && $decode_json->{category} eq 'gateway' );
-            }
-
-            ( $json, $tail ) = ParseJSON( $hash, $tail );
-
-            Log3 $name, 5,
-                "GardenaSmartBridge ($name) - Nach Sub: Laenge JSON: "
-              . length($json)
-              . " Content: "
-              . $json
-              . " Tail: "
-              . $tail;
+            CleanSubprocess($hash);
+            readingsSingleUpdate( $hash, 'state',
+                'Cannot execute parse json asynchronously', 1 );
+            return;
         }
+
+        Log3( $name, 4,
+qq{GardenaSmartBridge ($name) - execute parse json asynchronously (PID="$pid")}
+        );
+
+        $hash->{".fhem"}{subprocess} = $subprocess;
+
+        InternalTimer( gettimeofday() + 1,
+            "FHEM::GardenaSmartBridge::PollChild", $hash );
 
         return;
     }
@@ -800,11 +879,147 @@ sub ResponseProcessing {
     return;
 }
 
+sub ResponseProcessingFinalFromSubProcessing {
+    my $hash     = shift;
+    my $response = shift;
+
+    my $name = $hash->{NAME};
+
+    my @response = split '\|,', $response;
+
+    Log3( $name, 4,
+        qq{GardenaSmartBridge ($name) - got result from asynchronous parsing} );
+
+    my $decode_json;
+
+    Log3( $name, 4, qq{GardenaSmartBridge ($name) - asynchronous finished.} );
+
+    if ( scalar(@response) > 0 ) {
+        for my $json (@response) {
+
+            #################
+            $decode_json = eval { decode_json($json) };
+            if ($@) {
+                Log3 $name, 5,
+                  "GardenaSmartBridge ($name) - JSON error while request: $@";
+            }
+
+            Dispatch( $hash, $json, undef )
+              if ( $decode_json->{category} ne 'gateway' );
+            WriteReadings( $hash, $decode_json )
+              if ( defined( $decode_json->{category} )
+                && $decode_json->{category} eq 'gateway' );
+        }
+    }
+
+    return;
+}
+
+sub PollChild {
+    my $hash = shift;
+
+    my $name = $hash->{NAME};
+
+    if ( defined( $hash->{".fhem"}{subprocess} ) ) {
+        my $subprocess = $hash->{".fhem"}{subprocess};
+        my $response   = $subprocess->readFromChild();
+
+        if ( defined($response) ) {
+            ResponseProcessingFinalFromSubProcessing( $hash, $response );
+            $subprocess->wait();
+            CleanSubprocess($hash);
+        }
+
+        Log3( $name, 4,
+qq{GardenaSmartBridge ($name) - still waiting ($subprocess->{lasterror}).}
+        );
+
+        InternalTimer( gettimeofday() + 1,
+            "FHEM::GardenaSmartBridge::PollChild", $hash );
+        return;
+    }
+
+    return;
+}
+
+# ResponseSubprocessin muss in eine async ausgelagert werden
+######################################
+# Begin Childprozess
+######################################
+sub ResponseSubprocessing {
+    my $subprocess = shift;
+    my $buffer     = $subprocess->{buffer};
+    my @response   = ();
+
+    my ( $json, $tail ) = ParseJSON($buffer);
+
+    while ($json) {
+        if ( defined($tail) and $tail ) {
+            push @response, $json;
+        }
+
+        ( $json, $tail ) = ParseJSON($tail);
+    }
+
+    $subprocess->writeToParent( join '|', @response );
+
+    return;
+}
+
+sub ParseJSON {
+    my $buffer = shift;
+
+    my $open  = 0;
+    my $close = 0;
+    my $msg   = '';
+    my $tail  = '';
+
+    if ($buffer) {
+        for my $c ( split //, $buffer ) {
+            if ( $open == $close && $open > 0 ) {
+                $tail .= $c;
+            }
+            else {
+
+                if ( $c eq '{' ) {
+
+                    $open++;
+
+                }
+                elsif ( $c eq '}' ) {
+
+                    $close++;
+                }
+
+                $msg .= $c;
+            }
+        }
+
+        if ( $open != $close ) {
+
+            $tail = $msg;
+            $msg  = '';
+        }
+    }
+
+    return ( $msg, $tail );
+}
+######################################
+# End Childprozess
+######################################
+
+sub CleanSubprocess {
+    my $hash = shift;
+
+    my $name = $hash->{NAME};
+
+    delete( $hash->{".fhem"}{subprocess} );
+    Log3( $name, 4, qq{GardenaSmartBridge ($name) - clean Subprocess} );
+}
+
 sub WriteReadings {
     my $hash        = shift;
     my $decode_json = shift;
-
-    #     print Dumper $decode_json;
 
     my $name = $hash->{NAME};
 
@@ -827,9 +1042,6 @@ sub WriteReadings {
                 $v = encode_utf8($v);
                 readingsBulkUpdateIfChanged( $hash, $t, $v );
             }
-
-            readingsBulkUpdateIfChanged( $hash, 'zones',
-                scalar( @{ $decode_json->{zones} } ) );
         }
         elsif ($decode_json->{id} ne $hash->{helper}{locations_id}
             && ref( $decode_json->{abilities} ) eq 'ARRAY'
@@ -853,12 +1065,8 @@ sub WriteReadings {
                           {name} . '-' . $t,
                         $v
                       )
-                      if (
-                        $decode_json->{abilities}[0]{properties}[$properties]
-                        {name} ne 'ethernet_status'
-                        || $decode_json->{abilities}[0]{properties}
-                        [$properties]{name} ne 'wifi_status' );
-
+                      if ( $decode_json->{abilities}[0]{properties}[$properties]
+                        {name} !~ /ethernet_status|wifi_status/ );
                     if (
                         (
                             $decode_json->{abilities}[0]{properties}
@@ -868,35 +1076,16 @@ sub WriteReadings {
                         )
                         && ref($v) eq 'HASH'
                       )
-                    {
-                        if ( $decode_json->{abilities}[0]{properties}
-                            [$properties]{name} eq 'ethernet_status' )
-                        {
-                            readingsBulkUpdateIfChanged( $hash,
-                                'ethernet_status-mac', $v->{mac} );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'ethernet_status-ip', $v->{ip} )
-                              if ( ref( $v->{ip} ) ne 'HASH' );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'ethernet_status-isconnected',
-                                $v->{isconnected} );
+                      {
+                        if ($v->{is_connected} ) {
+                          readingsBulkUpdateIfChanged( $hash,
+                            $decode_json->{abilities}[0]{properties}[$properties]{name}.'-ip', $v->{ip} )
+                            if ( ref( $v->{ip} ) ne 'HASH' );
+                          readingsBulkUpdateIfChanged( $hash,
+                            $decode_json->{abilities}[0]{properties}[$properties]{name}.'-isconnected', $v->{is_connected} )
+                            if ( $v->{is_connected} );
                         }
-                        elsif ( $decode_json->{abilities}[0]{properties}
-                            [$properties]{name} eq 'wifi_status' )
-                        {
-                            readingsBulkUpdateIfChanged( $hash,
-                                'wifi_status-ssid', $v->{ssid} );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'wifi_status-mac', $v->{mac} );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'wifi_status-ip', $v->{ip} )
-                              if ( ref( $v->{ip} ) ne 'HASH' );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'wifi_status-isconnected', $v->{isconnected} );
-                            readingsBulkUpdateIfChanged( $hash,
-                                'wifi_status-signal', $v->{signal} );
-                        }
-                    }
+                      } # fi ethernet and wifi
                 }
                 $properties--;
 
@@ -918,17 +1107,25 @@ sub getDevices {
     my $hash = shift;
 
     my $name = $hash->{NAME};
-
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer( $hash, "FHEM::GardenaSmartBridge::getDevices" );
 
     if ( not IsDisabled($name) ) {
 
-        Write( $hash, undef, undef, undef );
-        Log3 $name, 4,
-          "GardenaSmartBridge ($name) - fetch device list and device states";
+        delete $hash->{helper}{deviceList};
+        my @list;
+        @list = devspec2array('TYPE=GardenaSmartDevice');
+        for my $gardenaDev (@list) {
+            push( @{ $hash->{helper}{deviceList} }, $gardenaDev );
+        }
+        if ( AttrVal( $name, 'gardenaAccountEmail', 'none' ) ne 'none'
+            && ( defined( ReadPassword( $hash, $name ) ) ) )
+        {
+            Write( $hash, undef, undef, undef );
+            Log3 $name, 4,
+"GardenaSmartBridge ($name) - fetch device list and device states";
+        }    # fi gardenaAccountEmail
     }
     else {
-
         readingsSingleUpdate( $hash, 'state', 'disabled', 1 );
         Log3 $name, 3, "GardenaSmartBridge ($name) - device is disabled";
     }
@@ -950,24 +1147,29 @@ sub getToken {
     readingsSingleUpdate( $hash, 'state', 'get token', 1 );
 
     delete $hash->{helper}{session_id}
-      if ( defined( $hash->{helper}{session_id} )
-        && $hash->{helper}{session_id} );
+      if ( exists( $hash->{helper}{session_id} ) );
     delete $hash->{helper}{user_id}
-      if ( defined( $hash->{helper}{user_id} ) && $hash->{helper}{user_id} );
+      if ( exists( $hash->{helper}{user_id} ) );
     delete $hash->{helper}{locations_id}
-      if ( defined( $hash->{helper}{locations_id} )
-        && $hash->{helper}{locations_id} );
+      if ( exists( $hash->{helper}{locations_id} ) );
 
     Write(
         $hash,
-        '"sessions": {"email": "'
+        '"data": {"type":"token", "attributes":{"username": "'
           . AttrVal( $name, 'gardenaAccountEmail', 'none' )
           . '","password": "'
-          . ReadPassword( $hash, $name ) . '"}',
+          . ReadPassword( $hash, $name )
+          . '", "client_id":"smartgarden-jwt-client"}}',
         undef,
         undef
     );
 
+    Log3 $name, 4,
+        '"data": {"type":"token", "attributes":{"username": "'
+      . AttrVal( $name, 'gardenaAccountEmail', 'none' )
+      . '","password": "'
+      . ReadPassword( $hash, $name )
+      . '", "client_id":"smartgarden-jwt-client"}}';
     Log3 $name, 3,
 "GardenaSmartBridge ($name) - send credentials to fetch Token and locationId";
 
@@ -1018,7 +1220,7 @@ sub ReadPassword {
 
         Log3 $name, 3,
 "GardenaSmartBridge ($name) - unable to read password from file: $err";
-        return undef;
+        return;
 
     }
 
@@ -1044,7 +1246,7 @@ sub ReadPassword {
     else {
 
         Log3 $name, 3, "GardenaSmartBridge ($name) - No password in file";
-        return undef;
+        return;
     }
 
     return;
@@ -1062,99 +1264,68 @@ sub Rename {
     return;
 }
 
-sub ParseJSON {
-    my $hash   = shift;
-    my $buffer = shift;
-
-    my $name  = $hash->{NAME};
-    my $open  = 0;
-    my $close = 0;
-    my $msg   = '';
-    my $tail  = '';
-
-    if ($buffer) {
-        for my $c ( split //, $buffer ) {
-            if ( $open == $close && $open > 0 ) {
-                $tail .= $c;
-                Log3 $name, 5,
-                  "GardenaSmartBridge ($name) - $open == $close and $open > 0";
-
-            }
-            elsif ( ( $open == $close ) && ( $c ne '{' ) ) {
-
-                Log3 $name, 5,
-"GardenaSmartBridge ($name) - Garbage character before message: "
-                  . $c;
-
-            }
-            else {
-
-                if ( $c eq '{' ) {
-
-                    $open++;
-
-                }
-                elsif ( $c eq '}' ) {
-
-                    $close++;
-                }
-
-                $msg .= $c;
-            }
-        }
-
-        if ( $open != $close ) {
-
-            $tail = $msg;
-            $msg  = '';
-        }
-    }
-
-    Log3 $name, 5,
-      "GardenaSmartBridge ($name) - return msg: $msg and tail: $tail";
-    return ( $msg, $tail );
-}
-
 sub createHttpValueStrings {
-    my ( $hash, $payload, $deviceId, $abilities ) = @_;
+    my ( $hash, $payload, $deviceId, $abilities, $service_id ) = @_;
 
     my $session_id = $hash->{helper}{session_id};
     my $header     = "Content-Type: application/json";
     my $uri        = '';
     my $method     = 'POST';
-    $header .= "\r\nX-Session: $session_id"
+    $header .= "\r\nAuthorization: Bearer $session_id"
       if ( defined( $hash->{helper}{session_id} ) );
+    $header .= "\r\nAuthorization-Provider: husqvarna"
+      if ( defined( $hash->{helper}{session_id} ) );
+
+    #  $header .= "\r\nx-api-key: $session_id"
+    #    if ( defined( $hash->{helper}{session_id} ) );
     $payload = '{' . $payload . '}' if ( defined($payload) );
-    $payload = '{}' if ( !defined($payload) );
+    $payload = '{}'                 if ( !defined($payload) );
 
     if ( $payload eq '{}' ) {
-        $method = 'GET';
-        $uri .= '/locations/?user_id=' . $hash->{helper}{user_id}
+        $method  = 'GET' if ( defined( $hash->{helper}{session_id} ) );
+        $payload = '';
+        $uri .= '/locations?locatioId=null&user_id=' . $hash->{helper}{user_id}
           if ( exists( $hash->{helper}{user_id} )
             && !defined( $hash->{helper}{locations_id} ) );
         readingsSingleUpdate( $hash, 'state', 'fetch locationId', 1 )
-          if ( !defined( $hash->{helper}{locations_id} ) );
-        $uri .= '/sessions' if ( !defined( $hash->{helper}{session_id} ) );
+          if ( exists( $hash->{helper}{user_id} )
+            && !defined( $hash->{helper}{locations_id} ) );
         $uri .= '/devices'
           if (!defined($abilities)
             && defined( $hash->{helper}{locations_id} ) );
     }
 
-    $uri .= '/sessions' if ( !defined( $hash->{helper}{session_id} ) );
+    $uri =
+      '/devices/' . InternalVal( $hash->{helper}{debug_device}, 'DEVICEID', 0 )
+      if ( defined( $hash->{helper}{debug_device} )
+        && defined( $hash->{helper}{locations_id} ) );
+    $uri = '/auth/token' if ( !defined( $hash->{helper}{session_id} ) );
 
     if ( defined( $hash->{helper}{locations_id} ) ) {
-        if ( defined($abilities) && $abilities eq 'mower_settings' ) {
+        if ( defined($abilities) && $abilities =~ /.*_settings/ ) {
 
             $method = 'PUT';
             my $dhash = $modules{GardenaSmartDevice}{defptr}{$deviceId};
+
+            $uri .= '/devices/' . $deviceId . '/settings/' . $service_id
+              if ( defined($abilities)
+                && defined($payload)
+                && $abilities =~ /.*_settings/ );
+
+        }    # park until next schedules or override
+        elsif (defined($abilities)
+            && defined($payload)
+            && $abilities eq 'mower_timer' )
+        {
+            my $valve_id;
+            $method = 'PUT';
+
             $uri .=
                 '/devices/'
               . $deviceId
-              . '/settings/'
-              . $dhash->{helper}{STARTINGPOINTID}
-              if ( defined($abilities)
-                && defined($payload)
-                && $abilities eq 'mower_settings' );
+              . '/abilities/'
+              . $abilities
+              . '/properties/mower_timer';
 
         }
         elsif (defined($abilities)
@@ -1162,9 +1333,9 @@ sub createHttpValueStrings {
             && $abilities eq 'watering' )
         {
             my $valve_id;
-            $method = 'PUT';
 
             if ( $payload =~ m#watering_timer_(\d)# ) {
+                $method   = 'PUT';
                 $valve_id = $1;
             }
             $uri .=
@@ -1172,8 +1343,11 @@ sub createHttpValueStrings {
               . $deviceId
               . '/abilities/'
               . $abilities
-              . '/properties/watering_timer_'
-              . $valve_id;
+              . (
+                defined($valve_id)
+                ? '/properties/watering_timer_' . $valve_id
+                : '/command'
+              );
 
         }
         elsif (defined($abilities)
@@ -1189,6 +1363,19 @@ sub createHttpValueStrings {
               . '/abilities/'
               . $abilities
               . '/properties/manual_watering_timer';
+
+        }
+        elsif (defined($abilities)
+            && defined($payload)
+            && $abilities eq 'watering_button_config' )
+        {
+            $method = 'PUT';
+
+            $uri .=
+                '/devices/'
+              . $deviceId
+              . '/abilities/watering'
+              . '/properties/button_config_time';
 
         }
         elsif (defined($abilities)
@@ -1273,7 +1460,6 @@ sub DeletePassword {
     <li>name - Name of your Garden – Default „My Garden“</li>
     <li>state - State of the Bridge</li>
     <li>token - SessionID</li>
-    <li>zones - </li>
   </ul>
   <br><br>
   <a name="GardenaSmartBridgeset"></a>
@@ -1334,8 +1520,7 @@ sub DeletePassword {
     <li>longitude - Längengrad des Grundst&uuml;cks</li>
     <li>name - Name für das Grundst&uuml;ck – Default „My Garden“</li>
     <li>state - Status der Bridge</li>
-    <li>token - SessionID</li>
-    <li>zones - </li>
+    <li>token - SessionID</li> 
   </ul>
   <br><br>
   <a name="GardenaSmartBridgeset"></a>
@@ -1352,7 +1537,7 @@ sub DeletePassword {
   <ul>
     <li>debugJSON - JSON Fehlermeldungen</li>
     <li>disable - Schaltet die Datenübertragung der Bridge ab</li>
-    <li>interval - Abfrageinterval in Sekunden (default: 300)</li>
+    <li>interval - Abfrageinterval in Sekunden (default: 60)</li>
     <li>gardenaAccountEmail - Email Adresse, die auch in der GardenaApp verwendet wurde</li>
   </ul>
 </ul>
@@ -1376,9 +1561,9 @@ sub DeletePassword {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.0.2",
+  "version": "v2.6.1",
   "author": [
-    "Marko Oldenburg <leongaultier@gmail.com>"
+    "Marko Oldenburg <fhemdevelopment@cooltux.net>"
   ],
   "x_fhem_maintainer": [
     "CoolTux"

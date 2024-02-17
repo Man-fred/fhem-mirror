@@ -1,7 +1,7 @@
 # $Id$
 
-VERS=6.0
-DATE=2020-01-26
+VERS=6.3
+DATE=2024-01-28
 
 # used for nightly build
 DATEN=$(shell date +"%Y-%m-%d")
@@ -45,7 +45,7 @@ install:
 	@-$(foreach DIR,$(DEST), if [ ! -e $(DIR) ]; then mkdir -p $(DIR); fi; )
 	@echo "- fixing permissions in fhem.cfg"
 	perl contrib/commandref_join.pl 
-	@find FHEM configDB.pm MAINTAINER.txt docs www contrib \
+	@find FHEM lib configDB.pm MAINTAINER.txt docs www contrib \
 		-type f -print | xargs chmod 644
 	@cp fhem.cfg fhem.cfg.install
 	@-if [ "$(RELATIVE_PATH)" != YES ]; then\
@@ -59,7 +59,7 @@ install:
 	@cp fhem.cfg.install $(RETCDIR)/fhem.cfg
 	@rm fhem.cfg.install
 	@cp fhem.pl $(RBINDIR)
-	@cp -rp FHEM docs www contrib configDB.pm $(RMODDIR)
+	@cp -rp FHEM lib docs www contrib configDB.pm $(RMODDIR)
 	@cp -rp README_DEMO.txt demolog fhem.cfg.demo $(RDEMODIR)
 	@cp docs/fhem.man $(RMANDIR)/fhem.pl.1
 	@gzip -f -9 $(RMANDIR)/fhem.pl.1
@@ -77,7 +77,7 @@ dist:
 	mkdir .f
 	cp -r fhem.pl fhem.cfg CHANGED HISTORY Makefile README.SVN\
 		MAINTAINER.txt demolog fhem.cfg.demo README_DEMO.txt\
-		FHEM configDB.pm contrib docs www .f
+		FHEM lib configDB.pm contrib docs www .f
 	mkdir .f/log
 	touch .f/log/empty_file.txt
 	(cd .f; perl contrib/commandref_join.pl)
@@ -113,10 +113,10 @@ deb:
 	find .f -type f | xargs chmod 644
 	find .f -type d | xargs chmod 755
 	chmod 755 `cat contrib/executables`
-	chown -R root:root .f
+	sudo chown -R root:root .f
 	mv .f $(DESTDIR)
 	dpkg-deb --build $(DESTDIR)
-	rm -rf $(DESTDIR)
+	sudo rm -rf $(DESTDIR)
 
 backup:
 	@echo

@@ -210,6 +210,7 @@ KS300_Parse($$)
     $v[7] = $a[16];
     $v[8] = $a[17];
     $v[9] = KS300_windIndex($v[2]);
+    $v[4] = -$v[4] if(hex($v[8]) & 8); # Negative temp
 
     my $std = AttrVal($name, "strangeTempDiff", 0);
     if($std) {
@@ -220,8 +221,6 @@ KS300_Parse($$)
       }
     }
     
-    # Negative temp
-    $v[4] = -$v[4] if(hex($v[8]) & 8);
 
     Log3 $def, 4, "KS300 $dev: $msg";
 

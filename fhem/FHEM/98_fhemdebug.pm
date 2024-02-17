@@ -8,12 +8,19 @@ use B qw(svref_2object);
 
 my $fhemdebug_enabled;
 my $main_callfn;
+my $main_readingsEndUpdate;
+my $main_setReadingsVal;
 
 sub
 fhemdebug_Initialize($){
   $cmds{"fhemdebug"}{Fn} = "fhemdebug_Fn";
-  $cmds{"fhemdebug"}{Hlp} = "{start|stop|status}";
+  $cmds{"fhemdebug"}{Hlp} =
+    "{enable | disable | status | timerList | ".
+    "addTimerStacktrace | utf8check | sizeInFile}";
 }
+
+sub fhemdebug_utf8check($$$$);
+
 
 sub
 fhemdebug_Fn($$)
@@ -46,9 +53,86 @@ fhemdebug_Fn($$)
     $addTimerStacktrace = $param;
     return;
 
+  } elsif($param =~ m/^forceEvents ([0|1])/) { #123655
+    local $SIG{__WARN__} = sub { };
+    if($1) {
+      $main_readingsEndUpdate = \&readingsEndUpdate;
+      $main_setReadingsVal = \&setReadingsVal;
+      *readingsEndUpdate = sub($$){ 
+        my $dt = $_[1];
+        $dt = 1 if(AttrVal($_[0]->{NAME}, "forceEvents", 0));
+        &{$main_readingsEndUpdate}($_[0], $dt);
+      };
+      *setReadingsVal = sub($$$$) {
+        DoTrigger($_[0]->{NAME}, "$_[1]: $_[2]")
+          if($_[1] && $_[1] eq "IODev" &&
+             AttrVal($_[0]->{NAME}, "forceEvents", 0));
+        &{$main_setReadingsVal}(@_);
+      };
+    } else {
+      *readingsEndUpdate = $main_readingsEndUpdate;
+      *setReadingsVal = $main_setReadingsVal;
+    }
+
+  } elsif($param =~ m/^utf8check/) { #125866
+    my (@ret, %visited, $ret);
+    fhemdebug_utf8check("def", \%defs, \@ret, \%visited);
+    fhemdebug_utf8check("attr", \%attr, \@ret, \%visited);
+    fhemdebug_utf8check("modules", \%modules, \@ret, \%visited);
+    return "Checked ".int(keys %visited)." elements\n".
+           (int(@ret) ?  "Strings with utf8-flag set:\n".join("\n", @ret) :
+                         "Found no strings with utf8-flag");
+
+  } elsif($param =~ m/^sizeInFile *(\d*)$/) {
+    my $top = $1 ? $1 : 20;
+    my %s;
+    for my $d (keys %defs) {
+      next if($defs{$d}{TEMPORARY});
+      $s{$d} = length(CommandList(undef, "-r $d"));
+      $s{$d} += length($d)+length($defs{$d}{FUUID})+10 if($defs{$d}{FUUID});
+    }
+
+    my $total = 26;
+    my @out = map { $total += $s{$_}; sprintf("%6d: %s", $s{$_}, $_) }
+                    sort { $s{$b}<=>$s{$a} } keys %s;
+    return join("\n", @out[0..$top-1])."\nTotal: $total";
+
   } else {
     return "Usage: fhemdebug {enable | disable | status | ".
-                        "timerList | addTimerStacktrace {0|1} }";
+              "timerList | addTimerStacktrace {0|1} | forceEvents {0|1} | ".
+              " utf8check | sizeInFile [num] }";
+  }
+  return;
+}
+
+sub
+fhemdebug_utf8check($$$$)
+{
+  my ($prefix, $hp, $rp, $vp) = @_;
+
+  if(ref($rp) ne "ARRAY") {
+    Log 1, "utf8check problems at $prefix";
+    return;
+  }
+  for my $key (sort keys %{$hp}) {
+    my $path = $prefix."::".$key;
+    next if($vp->{$path} || index($prefix,"::$key") > 0);
+    $vp->{$path} = 1;
+    my $val = $hp->{$key};
+
+    push( @{$rp}, "Key: ".$prefix."::".$key)
+      if(utf8::is_utf8($key) || $key =~ m/[^\x00-\xFF]/);
+
+    my $rv = ref($val);
+    if($rv eq "HASH") {
+      fhemdebug_utf8check($path, $val, $rp, $vp);
+
+    } elsif(!defined($val) || $rv eq "ARRAY") {
+
+    } elsif(utf8::is_utf8($val) || $val =~ m/[^\x00-\xFF]/) {
+      push @{$rp}, "Key: ".$path." Value:".$hp->{$key};
+
+    }
   }
 }
 
@@ -119,8 +203,11 @@ fhemdebug_timerList($)
       my $cv = svref_2object($fnName);
       $fnName = $cv->GV->NAME if($cv); # get function name
     }
-    push(@res, sprintf("%s.%05d %s%s",
-      FmtDateTime($tt), int(($tt-int($tt))*100000), $fnName,
+    push(@res, sprintf("%s.%05d %s %s %s",
+      FmtDateTime($tt), int(($tt-int($tt))*100000), 
+      $fnName,
+      ($h->{ARG} && ref($h->{ARG}) eq "HASH" && $h->{ARG}{NAME} ? 
+       $h->{ARG}{NAME} : ""),
       $h->{STACKTRACE} ? $h->{STACKTRACE} : ""));
   }
   return join("\n", @res);
@@ -160,6 +247,18 @@ fhemdebug_timerList($)
       enable or disable the registering the stacktrace of each InternalTimer
       call. This stacktrace will be shown in the timerList command.
       </li>
+
+    <li>sizeInFile [&lt;num&gt;]<br>
+      returns the name of the devices requiring the most space in storage.
+      If [&lt;num&gt;] is omitted, the top 20 is returned.<br>
+      Note: the total wont include the comment lines.
+      </li>
+
+    <li>utf8check<br>
+      returns the list of strings with the internal utf8-bit set.
+      Such strings may cause various problems.
+      </li>
+
 
   </ul>
 </ul>

@@ -83,11 +83,11 @@ EseraOneWire_Initialize($)
                       $readingFnAttributes;
 
 
-  $hash->{Clients} = ":EseraDigitalInOut:EseraTemp:EseraMulti:EseraAnalogInOut:EseraIButton:EseraCount:EseraShutter:";
+  $hash->{Clients} = ":EseraDigitalInOut:EseraTemp:EseraMulti:EseraAnalogInOut:EseraIButton:EseraCount:EseraShutter:EseraDimmer:";
   $hash->{MatchList} = { "1:EseraDigitalInOut" => "^DS2408|^11220|^11233|^11228|^11229|^11216|^SYS1|^SYS2",
                          "2:EseraTemp" => "^DS1820",
-                         "3:EseraMulti" => "^DS2438|^11121|^11132|^11133|^11134|^11135",
-                         "4:EseraAnalogInOut" => "^SYS3",
+                         "3:EseraMulti" => "^DS2438|^11112|^11121|^11132|^11133|^11134|^11135",
+                         "4:EseraAnalogInOut" => "^SYS3|^DS2450|^11202|^11203|^11208|^11219",
                          "5:EseraIButton" => "^DS2401",
 			 "6:EseraCount" => "^DS2423",
                          "7:EseraShutter" => "^11231|^11209",
@@ -125,7 +125,7 @@ EseraOneWire_Define($$)
   $hash->{DeviceName} = $dev;
 
   $hash->{KAL_PERIOD} = 60;
-  $hash->{RECOMMENDED_FW} = 12027;
+  $hash->{RECOMMENDED_FW} = 12029;
   $hash->{DEFAULT_POLLTIME} = 5;
   $hash->{DEFAULT_DATATIME} = 10;
 
@@ -2087,7 +2087,7 @@ EseraOneWire_processKalMessage($)
   supports serial connections as well, for controllers with serial/USB <br>
   interface. It is tested with EseraStation 200.<br>
   <br>
-  Tested with Esera controller firmware version 12027.<br>
+  Tested with Esera controller firmware version 12029.<br>
   <br>
   <a name="EseraOneWire_Define"></a>
   <b>Define</b>

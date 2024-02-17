@@ -2,6 +2,147 @@
 #
 ##############################################
 #
+# 2024.01.26 v0.2.30
+# - CHANGE:  voice_reading auf neue API umgestellt
+# - FEATURE: Unterstützung A2UONLFQW0PADH Echo Show 8 Gen3
+#
+# 2023.11.15 v0.2.29
+# - FEATURE: Unterstützung A1D6RDUOWH31HF JLR Incontrol
+#
+# 2023.11.12 v0.2.28
+# - FEATURE: Unterstützung A347N36W21919O Yamaha ATS-2090 Soundbar
+#
+# 2023.11.10 v0.2.27
+# - FEATURE: Unterstützung A1WZKXFLI43K86 Fire TV Stick 4K Max
+#            Unterstützung A11QM4H9HGV71H Echo Show 5
+# - CHANGE:  Verbose Settings für HttpUtils
+#
+# 2023.11.08 v0.2.26
+# - BUG:     User-Agent https://forum.fhem.de/index.php?topic=82631.msg1292057#msg1292057
+#
+# 2023.10.31 v0.2.25
+# - FEATURE: Unterstützung ASQZWP4GPYUT7 Echo Plus 2 Gen2
+#
+# 2023.10.31 v0.2.24
+# - CHANGE:  voice_reading TTS Antworten rausfiltern
+#
+# 2023.10.27 v0.2.23
+# - BUG:     Logeinträge bei set "speak" entfernt
+#
+# 2023.10.27 v0.2.22
+# - CHANGE:  voice_reading auf neue API umgestellt
+# - FEATURE  voice_person (Zeigt wer das letzte Voice Command gesagt hat, wenn eingerichtet)
+#
+# 2023.01.19 v0.2.21
+# - BUG:     Refresh Token
+#            Attribut "fhem_home"
+# - FEATURE  Neues Reading "parse_error"
+#
+# 2022.11.22 v0.2.20
+# - FEATURE: Unterstützung A4ZXE0RM7LQ7A Echo Dot Gen5
+#
+# 2022.11.21 v0.2.19
+# - BUG:     Auswertung FHEM Verzeichnis Attribut "fhem_home" eingeführt Standardwert = "/opt/fhem"
+#
+# 2022.11.21 v0.2.18
+# - FEATURE: Unterstützung A2DS1Q2TPDJ48U Echo Dot Gen5 with Clock
+#            Unterstützung AQCGW9PSYWRF Polk React Soundbar
+#            Unterstützung A1VGB7MHSIEYFK Fire TV Cube Gen3
+#	
+# 2022.11.14 v0.2.17
+# - FEATURE: Unterstützung A1EIANJ7PNB0Q7 Echo Show 15
+#
+# 2022.09.12 v0.2.16
+# - BUG:     Activities Result "DISCARDED_NON_DEVICE_DIRECTED_INTENT" entfernt
+#
+# 2022.01.12 v0.2.15
+# - FEATURE: Unterstützung A2Z8O30CD35N8F Sonos Arc
+#            Unterstützung A3EVMLQTU6WL1W Fire TV Stick 4K Max
+#            Unterstützung A39Y3UG1XLEJLZ Fitbit Sense   
+#            Unterstützung A1XWJRHALS1REP Echo Show 5 2. Generation 
+#
+# 2021.10.19 v0.2.14
+# - BUG:     https://forum.fhem.de/index.php/topic,82631.msg1175268.html#msg1175268 (Danke Benutzer JudgeDredd)
+# - FEATURE: Unterstützung A31DTMEEVDDOIV FireTV Stick
+#
+# 2021.09.15 v0.2.13
+# - CHANGE:  Probleme set tunein (Danke Benutzer adn77)
+#
+# 2021.06.24 v0.2.12
+# - FEATURE: Unterstützung A15996VY63BQ2D Echo Show 8 Gen2
+#            Unterstützung A2WFDCBDEXOXR8 Bose Soundbar 700
+#
+# 2021.05.18 v0.2.11
+# - FEATURE: Unterstützung A1DL2DVDQVK3Q Fire Tab HD 10
+#
+# 2021.04.26 v0.2.10
+# - CHANGE:  Logeintrag "[Echodevice] [echodevice_SendCommand] [12] IGNORIERE Command=activities Abfrage in CMD_Queue schon vorhanden!" auf Loglevel 4 geändert
+# - FEATURE: Unterstützung AIPK7MM90V7TB Echo Show Gen3
+#
+# 2021.02.10 v0.2.9
+# - BUG:     Probleme wenn getbehavior keine Antwort liefert.
+# - CHANGE:  CMD_Queue check
+#            ($hash->{model} eq "Reverb" || $hash->{model} eq "Sonos One" || $hash->{model} eq "Sonos Beam" Unterscheidung entfernt 
+# - FEATURE: Geräte Kennung THIRD_PARTY_AVS_SONOS_BOOTLEG hinzugefügt
+#
+# 2021.02.07 v0.2.8
+# - BUG:     Sonso aktualisiert keine voice Readings
+#
+# 2021.01.28 v0.2.7
+# - BUG:     Routinen werden nicht mehr angezeigt
+#
+# 2021.01.18 v0.2.6
+# - BUG:     item_shopping_delete,item_shopping_add,item_task_delete,item_task.add
+# - FEATURE: Unterstützung A23FPV4BT7FH68 Yamaha YAS-209 Soundbar
+#            Untersützung A265XOI9586NML Fire TV Stick 4K
+#
+# 2020.12.11 v0.2.5
+# - FEATURE: Text Kommando an Amazon schicken "set textcommand"
+#            Unterstützung A2WN1FJ2HG09UN Ultimate Alexa
+#
+# 2020.11.19 v0.2.4
+# - CHANGE:  get custom-history-records Dialog angepasst
+# - FEATURE: Unterstützung A2U21SRK4QGSE1 Echo Dot Gen4
+#
+# 2020.11.18 v0.2.3
+# - FEATURE: get custom-history-records
+#            Unterstützung A2H4LV5GIZ1JFT Echo Dot Gen4 with Clock
+#            Unterstützung AVE5HX13UR5NO  Zero Touch (Logitech)
+#            Unterstützung A3GZUE7F9MEB4U Sony WH-100XM3
+#            Unterstützung A2J0R2SD7G9LPA Lenovo P10
+#            Unterstützung A1J16TEDOYCZTN Amazon Tablet
+#            Unterstützung A38EHHIB10L47V Fire HD 8 Tablet
+#            Unterstützung A112LJ20W14H95 Media Display
+#            Unterstützung A1H0CMF1XM0ZP4 Bose Soundtouch
+#            Unterstützung AAMFMBBEW2960  Garmin DriveSmart 65 with Amazon Alexa
+#            Unterstützung A2IVLV5VM2W81  Mobile Voice iOS";}
+#            Unterstützung A2TF17PFR55MTB Mobile Voice Android
+#            Unterstützung A3V3VA38K169FO Fire Tablet
+#            Unterstützung AVD3HM0HOJAAL  Sonos One
+#            Unterstützung A1C66CX2XD756O Fire HD 8 Tablet
+#            Unterstützung A17LGWINFBUTZZ Anker Roav Car Charger
+#            Unterstützung A2XPGY5LRKB9BE FitBit watch
+#            Unterstützung A2Y04QPFCANLPQ Bose QC35 II
+#            Unterstützung A3BW5ZVFHRCQPO Alexa Car
+#            Unterstützung A303PJF6ISQ7IC Echo Auto
+#            Unterstützung A1ZB65LA390I4K Fire HD 10 Tablet
+#            Unterstützung AVU7CPPF2ZRAS  Fire HD 8 Plus (2020)
+#            Unterstützung A24Z7PEXY4MDTK Sony WF-1000X
+#            Unterstützung ABN8JEI7OQF61  Sony WF-1000XM3
+#            Unterstützung A7S41FQ5TWBC9  Sony WH-1000XM4
+#
+# 2020.11.06 v0.2.2
+# - FEATURE: Unterstützung A3RMGO6LYLH7YN Echo Dot Gen4
+#
+# 2020.10.07 v0.2.1
+# - BUG:     Not a HASH reference at ./FHEM/37_echodevice.pm line 2975
+#
+# 2020.10.05 v0.2.0
+# - BUG:     Not a HASH reference at ./FHEM/37_echodevice.pm line 3532
+#
+# 2020.09.25 v0.1.9
+# - BUG:     Not a HASH reference at ./FHEM/37_echodevice.pm line 2687
+#
 # 2020.05.06 v0.1.8
 # - BUG:     Zu viele Loginfos bei set "NPM_login refresh" 
 #
@@ -391,10 +532,12 @@ use Date::Parse;
 use Time::Piece;
 use lib ('./FHEM/lib', './lib');
 use MP3::Info;
+use MIME::Base64;
 
-my $ModulVersion     = "0.1.8";
+my $ModulVersion     = "0.2.30";
 my $AWSPythonVersion = "0.0.3";
 my $NPMLoginTyp		 = "unbekannt";
+my $QueueNumber      = 0;
 
 ##############################################################################
 sub echodevice_Initialize($) {
@@ -434,6 +577,7 @@ sub echodevice_Initialize($) {
 							"npm_refresh_intervall ".
 							"npm_bin ".
 							"npm_bin_node ".
+							"fhem_home ".
 							$readingFnAttributes;
 }
 
@@ -487,25 +631,29 @@ sub echodevice_Define($$$) {
 		InternalTimer(gettimeofday() + 10 , "echodevice_GetSettings", $hash, 0);
 	}
 	else {
+		# Attribute
+		my $DeviceTyp    = $a[2];
+		my $DeviceSerial = $a[3];
+		
 		# Amazon ECHO Device
 		$hash->{STATE} = "INITIALIZED";
 
-		$hash->{model} = echodevice_getModel($a[2]);#$a[2];
+		$hash->{model} = echodevice_getModel($DeviceTyp);#$a[2];
 		
 		readingsBeginUpdate($hash);
 		readingsBulkUpdate($hash, "model", $hash->{model}, 1);
 		readingsBulkUpdate($hash, "state", "INITIALIZED", 1);
 		readingsEndUpdate($hash,1);
 		
-		$hash->{helper}{DEVICETYPE}  = $a[2];
-		$hash->{helper}{".SERIAL"}   = $a[3];
+		$hash->{helper}{DEVICETYPE}  = $DeviceTyp;
+		$hash->{helper}{".SERIAL"}   = $DeviceSerial;
 		$hash->{LOGINMODE}           = "IODEV";
 
-		$modules{$hash->{TYPE}}{defptr}{$a[3]} = $hash;
+		$modules{$hash->{TYPE}}{defptr}{$DeviceSerial} = $hash;
 
 		my $account = $modules{$hash->{TYPE}}{defptr}{"account"};
 		
-		Log3 $name, 0, "[echodevice] load ECHO Device $name";
+		Log3 $name, 0, "[echodevice_Define] load ECHO Devicename=$name Devicetype=" . $DeviceTyp . " Devicemodel=" . $hash->{model};
 		
 		$hash->{IODev} = $account;
 		$attr{$name}{IODev} = $account->{NAME} if( !defined($attr{$name}{IODev}) && $account);
@@ -559,7 +707,7 @@ sub echodevice_Get($@) {
 		$usage .= "help:noArg  " ;
 	}
 	elsif ($hash->{model} eq "ACCOUNT") {
-		$usage .= "settings:noArg devices:noArg actions:noArg tracks:noArg help:noArg conversations:noArg html_results:noArg address status:noArg ";
+		$usage .= "settings:noArg devices:noArg actions:noArg tracks:noArg help:noArg conversations:noArg html_results:noArg address status:noArg customer-history-records:noArg NPM_check:noArg";
 	}
 	else {
 		$usage .= "tunein settings:noArg primeplayeigene_albums primeplayeigene_tracks primeplayeigene_artists primeplayeigeneplaylist:noArg help:noArg html_results:noArg ";
@@ -697,12 +845,20 @@ sub echodevice_Get($@) {
 		$return .= "<tr><td>RUNLOGIN&nbsp;&nbsp;&nbsp;</td><td>Helper</td><td>"  . $hash->{helper}{RUNLOGIN} . "</td></tr>";
 		$return .= "<tr><td>RUNNING_REQUEST&nbsp;&nbsp;&nbsp;</td><td>Helper</td><td>"  . $hash->{helper}{RUNNING_REQUEST} . "</td></tr>";
 		$return .= "<tr><td>LOGINERROR&nbsp;&nbsp;&nbsp;</td><td>Helper</td><td>"  . $hash->{helper}{".LOGINERROR"} . "</td></tr>";
+		$return .= "<tr><td>FHEM_HOME&nbsp;&nbsp;&nbsp;</td><td>Attribut</td><td>"  . AttrVal($name,"fhem_home","/opt/fhem") . "</td></tr>";
 		$return .= "<tr><td>&nbsp</td><td>&nbsp</td><td> </td></tr></tbody></table>";
 		
 		$return .= "</html>";
 
 		return $return;	
 		
+	}
+	
+	if ($command eq "NPM_check") {
+		
+		$return = echodevice_NPMCheck($hash);
+		
+		return $return;	
 	}
 	
 	if ($ConnectState ne "connected") {
@@ -754,6 +910,10 @@ sub echodevice_Get($@) {
 		echodevice_SendCommand($hash,"address",$parameter);
 	}
 	
+	elsif($command eq "customer-history-records") {
+		echodevice_SendCommand($hash,"customer-history-records",$parameter);
+	}
+	
   return undef;
 }
 
@@ -776,7 +936,7 @@ sub echodevice_Set($@) {
 		$usage .= 'AWS_Access_Key AWS_Secret_Key TTS_IPAddress TTS_Filename TTS_TuneIn POM_TuneIn POM_IPAddress POM_Filename AWS_OutputFormat:mp3,ogg_vorbis,pcm textmessage ';# if(defined($hash->{helper}{".COMMSID"}));
 		$usage .= 'config_address_from config_address_to config_address_between mobilmessage ';
 		$usage .= 'login:noArg loginwithcaptcha login2FACode ' if($hash->{LOGINMODE} eq "NORMAL");
-		$usage .= 'NPM_install:noArg NPM_login:new,refresh '   if($hash->{LOGINMODE} eq "NPM");
+		$usage .= 'NPM_install:noArg NPM_login:new,refresh NPM_check:noArg'   if($hash->{LOGINMODE} eq "NPM");
 		
 		# Einkaufsliste
 		my $ShoppingListe = ReadingsVal($name, "list_SHOPPING_ITEM", "");
@@ -789,7 +949,7 @@ sub echodevice_Set($@) {
 	
 	elsif ($hash->{model} eq "Echo Multiroom" || $hash->{model} eq "Sonos Display" || $hash->{model} eq "Echo Stereopaar") {
 		$usage .= 'volume:slider,0,1,100 play:noArg pause:noArg next:noArg previous:noArg forward:noArg rewind:noArg shuffle:on,off repeat:on,off ';
-		$usage .= 'tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long ';
+		$usage .= 'tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long speak speak_ssml ';
 		
 		if(defined($tracks)) {
 				$tracks =~ s/ /_/g;
@@ -805,28 +965,24 @@ sub echodevice_Set($@) {
 		
 	else {
 	
-		if ($hash->{model} eq "Reverb" || $hash->{model} eq "Sonos One" || $hash->{model} eq "Sonos Beam") {
-			$usage .= 'reminder_normal reminder_repeat ';
-		}
+		$usage .= 'volume:slider,0,1,100 play:noArg pause:noArg next:noArg previous:noArg forward:noArg rewind:noArg shuffle:on,off repeat:on,off dnd:on,off volume_alarm:slider,0,1,100 ';
+		$usage .= 'info:Beliebig_Auf_Wiedersehen,Beliebig_Bestaetigung,Beliebig_Geburtstag,Beliebig_Guten_Morgen,Beliebig_Gute_Nacht,Beliebig_Ich_Bin_Zuhause,Beliebig_Kompliment,Erzaehle_Geschichte,Erzaehle_Was_Neues,Erzaehle_Witz,Kalender_Heute,Kalender_Morgen,Kalender_Naechstes_Ereignis,Nachrichten,Singe_Song,Verkehr,Wetter sounds:glocken,kirchenglocke,summer,tuerklingel_1,tuerklingel_2,tuerklingel_3,jubelnde_menschenmenge,publikumsapplaus,flugzeug,katastrophenalarm,motoren_an,schilde_hoch,sirenen,zappen,boing_1,boing_2,kamera,lufthupe,quitschende_tuer,tickende_uhr,trompete,hahn,hundegebell,katzenmauzen,loewengebruell,wolfsgeheul,gruselig_quitschende_tuer,weihnachtsglocken tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist alarm_normal alarm_repeat reminder_normal reminder_repeat speak speak_ssml tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long ';
+		$usage .= 'textcommand ';
+
+		$usage .= 'homescreen ' if ($hash->{model} eq "Echo Show 5" || $hash->{model} eq "Echo Show 8" || $hash->{model} eq "Echo Show" || $hash->{model} eq "Echo Show Gen2" || $hash->{model} eq "Echo Show Gen3"); 
+			
+		# startownplaylist
+		$usage .= echodevice_GetOwnPlaylist($hash);
+			
+		if(defined($tracks)) {
+			$tracks =~ s/ /_/g;
+			$tracks =~ s/:/,/g;
+			$usage .= 'track:'.$tracks.' ';
+		} 
 		else {
-			$usage .= 'volume:slider,0,1,100 play:noArg pause:noArg next:noArg previous:noArg forward:noArg rewind:noArg shuffle:on,off repeat:on,off dnd:on,off volume_alarm:slider,0,1,100 ';
-			$usage .= 'info:Beliebig_Auf_Wiedersehen,Beliebig_Bestaetigung,Beliebig_Geburtstag,Beliebig_Guten_Morgen,Beliebig_Gute_Nacht,Beliebig_Ich_Bin_Zuhause,Beliebig_Kompliment,Erzaehle_Geschichte,Erzaehle_Was_Neues,Erzaehle_Witz,Kalender_Heute,Kalender_Morgen,Kalender_Naechstes_Ereignis,Nachrichten,Singe_Song,Verkehr,Wetter sounds:glocken,kirchenglocke,summer,tuerklingel_1,tuerklingel_2,tuerklingel_3,jubelnde_menschenmenge,publikumsapplaus,flugzeug,katastrophenalarm,motoren_an,schilde_hoch,sirenen,zappen,boing_1,boing_2,kamera,lufthupe,quitschende_tuer,tickende_uhr,trompete,hahn,hundegebell,katzenmauzen,loewengebruell,wolfsgeheul,gruselig_quitschende_tuer,weihnachtsglocken tunein primeplaylist primeplaysender primeplayeigene primeplayeigeneplaylist alarm_normal alarm_repeat reminder_normal reminder_repeat speak speak_ssml tts tts_translate:textField-long playownmusic:textField-long saveownplaylist:textField-long ';
-			
-			$usage .= 'homescreen ' if ($hash->{model} eq "Echo Show 5" || $hash->{model} eq "Echo Show 8" || $hash->{model} eq "Echo Show" || $hash->{model} eq "Echo Show Gen2"); 
-			
-			# startownplaylist
-			$usage .= echodevice_GetOwnPlaylist($hash);
-			
-			if(defined($tracks)) {
-				$tracks =~ s/ /_/g;
-				$tracks =~ s/:/,/g;
-				$usage .= 'track:'.$tracks.' ';
-			} 
-			else {
-				$usage .= 'track ';
-			}
-			$usage .= 'bluetooth_connect:'.$hash->{helper}{bluetooth}.' bluetooth_disconnect:'.$hash->{helper}{bluetooth}.' ' if(defined($hash->{helper}{bluetooth}));
+			$usage .= 'track ';
 		}
+		$usage .= 'bluetooth_connect:'.$hash->{helper}{bluetooth}.' bluetooth_disconnect:'.$hash->{helper}{bluetooth}.' ' if(defined($hash->{helper}{bluetooth}));
 		
 		# Routinen auslesen
 		my $BehaviorName ;
@@ -1004,69 +1160,21 @@ sub echodevice_Set($@) {
 	# Listen
 	elsif($command eq "item_task_delete" ) {
 		return echodevice_getHelpText("no arg") if ( !defined($parameter) );
-		
-		my $json = JSON->new->utf8(1)->encode( {'type' => "TASK",
-												'text' => decode_utf8($parameter),
-										        'createdDate' => int(time),
-											    'itemId' => $hash->{helper}{"ITEMS"}{"TASK"}{"$parameter"},
-											    'complete' => "true",
-											    'deleted' => "true" } );
-
-		$json =~ s/\"true\"/true/g;
-		$json =~ s/\"false\"/false/g;
-		
-		my @TaskList = split(",",$TaskListe);
-		my $Result;
-		foreach my $TaskName (@TaskList) {if ($TaskName ne $parameter) {
-				if ($Result eq "" ){$Result = $TaskName;} else {$Result .= "," .$TaskName;}}
-		}
-		readingsBeginUpdate($hash);
-		
-		if ($Result eq "") {readingsBulkUpdate($hash, "list_SHOPPING_ITEM", "" , 1);}
-		else {readingsBulkUpdate($hash, "list_TASK", $Result , 1);}
-
-		readingsEndUpdate($hash,1);
-		
-		echodevice_SendCommand($hash,"item_task_delete",$json)
+		echodevice_SendCommand($hash,"item_task_delete",$parameter)
 	} 
 
 	elsif($command eq "item_shopping_delete" ) {
 		return echodevice_getHelpText("no arg") if ( !defined($parameter) );
-
-		my $json = JSON->new->utf8(1)->encode( { 'type' => "SHOPPING_ITEM",
-												 'text' => decode_utf8($parameter),
-										  'createdDate' => int(time),
-											   'itemId' => $hash->{helper}{"ITEMS"}{"SHOPPING_ITEM"}{"$parameter"},
-											 'complete' => "true",
-											 'deleted' => "true" } );
-
-		$json =~ s/\"true\"/true/g;
-		$json =~ s/\"false\"/false/g;
-		
-		my @ShoppList = split(",",$ShoppingListe);
-		my $Result;
-		foreach my $ShopName (@ShoppList) {
-			if ($ShopName ne $parameter) {if ($Result eq "" ){$Result = $ShopName;} else {$Result .= "," .$ShopName;}}
-		}
-
-		readingsBeginUpdate($hash);
-		
-		if ($Result eq "") {readingsBulkUpdate($hash, "list_SHOPPING_ITEM", "" , 1);}
-		else {readingsBulkUpdate($hash, "list_SHOPPING_ITEM", $Result , 1);}
-
-		readingsEndUpdate($hash,1);
-		
-		echodevice_SendCommand($hash,"item_shopping_delete",$json)
+		echodevice_SendCommand($hash,"item_shopping_delete",$parameter)
 	} 
 
 	elsif($command eq "item_task_add" ) {
 		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
-		my $json = JSON->new->utf8(1)->encode( { 'type' => "TASK",
-												 'text' => decode_utf8($parameter),
-										  'createdDate' => int(time),
-											   'itemId' => $hash->{helper}{"ITEMS"}{"TASK"}{"$parameter"},
-											 'complete' => "false",
-											 'deleted' => "false" } );
+													
+		my $json = JSON->new->utf8(1)->encode( {	'createdDateTime'	=> int(time),
+													'listId' 			=> $hash->{helper}{TO_DO_LIST_ID},
+													'completed' 		=> "false",
+													'value' 			=> decode_utf8($parameter) } );
 
 		$json =~ s/\"true\"/true/g;
 		$json =~ s/\"false\"/false/g;
@@ -1077,19 +1185,17 @@ sub echodevice_Set($@) {
 		if ($TaskListe eq "") {readingsBulkUpdate($hash, "list_TASK", $parameter , 1);}
 		else {readingsBulkUpdate($hash, "list_TASK", $parameter . "," . $TaskListe , 1); }
 		readingsEndUpdate($hash,1);
-		
+
 		echodevice_SendCommand($hash,"item_task_add",$json)
 	} 
 
 	elsif($command eq "item_shopping_add" ) {
 		return echodevice_getHelpText("no arg") if ( !defined($parameter) );
 
-		my $json = JSON->new->utf8(1)->encode( { 'type' => "SHOPPING_ITEM",
-												 'text' => decode_utf8($parameter),
-										  'createdDate' => int(time),
-											   'itemId' => $hash->{helper}{"ITEMS"}{"SHOPPING_ITEM"}{"$parameter"},
-											 'complete' => "false",
-											 'deleted' => "false" } );
+		my $json = JSON->new->utf8(1)->encode( {	'createdDateTime'	=> int(time),
+													'listId' 			=> $hash->{helper}{SHOPPING_LIST_ID},
+													'completed' 		=> "false",
+													'value' 			=> decode_utf8($parameter) } );
 
 		$json =~ s/\"true\"/true/g;
 		$json =~ s/\"false\"/false/g;
@@ -1100,7 +1206,7 @@ sub echodevice_Set($@) {
 		if ($ShoppingListe eq "") {readingsBulkUpdate($hash, "list_SHOPPING_ITEM", $parameter , 1);}
 		else {readingsBulkUpdate($hash, "list_SHOPPING_ITEM", $parameter . "," . $ShoppingListe , 1); }
 		readingsEndUpdate($hash,1);
-		
+			
 		echodevice_SendCommand($hash,"item_shopping_add",$json)
 	} 
 		
@@ -1530,6 +1636,11 @@ sub echodevice_Set($@) {
 		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
 		echodevice_SendCommand($hash,$command,join(' ',@a));
 	}
+
+	elsif($command eq "textcommand"){
+		return echodevice_getHelpText("no arg") if ( !defined($a[0]) );
+		echodevice_SendCommand($hash,$command,join(' ',@a));
+	} 
 	
 	else {
 		echodevice_SendMessage($hash,$command,$parameter);
@@ -1621,6 +1732,7 @@ sub echodevice_SendCommand($$$) {
 		return undef if(!defined($hash->{helper}{SERVER}));
 		$SendUrl = "https://".$hash->{helper}{SERVER};
 	}
+	
 	else {
 		return undef if(!defined($hash->{IODev}->{helper}{SERVER}));
 		$SendUrl = "https://".$hash->{IODev}->{helper}{SERVER};
@@ -1634,6 +1746,11 @@ sub echodevice_SendCommand($$$) {
         $SendUrl   .= "/api/bluetooth?cached=true&_=".int(time);
 	}
 	
+	elsif ($type eq "endpoints") {
+		$SendUrl    = "https://alexa.amazon.de/api/endpoints";
+		$SendMetode = "GET";
+	}
+	
 	elsif ($type eq "notifications") {
         $SendUrl   .= "/api/notifications?cached=true&_=".int(time);
 	}
@@ -1643,7 +1760,7 @@ sub echodevice_SendCommand($$$) {
 	}
 	
 	elsif ($type eq "getbehavior") {
-        $SendUrl   .= "/api/behaviors/automations?limit=100";
+        $SendUrl   .= "/api/behaviors/v2/automations?limit=100";
 	}	
 	
 	elsif ($type eq "getdevicesettings") {
@@ -1661,8 +1778,23 @@ sub echodevice_SendCommand($$$) {
 	elsif ($type eq "alarmvolume") {
         $SendUrl   .= "/api/device-notification-state?_=".int(time);
 	}
-	
+
 	elsif ($type eq "activities") {
+		#$SendUrl    = "https://www.amazon.de/alexa-privacy/apd/rvh/customer-history-records/?startTime=0&endTime=2005090388459&recordType=VOICE_HISTORY&maxRecordSize=100";
+		$SendUrl    = "https://www.amazon.de/alexa-privacy/apd/rvh/customer-history-records-v2/?startTime=0&endTime=2005090388459&pageType=VOICE_HISTORY";
+		$SendMetode = "POST";
+		$SendDataL  = '{"previousRequestToken": null}';
+		$SendData   = '{"previousRequestToken": null}';
+	}
+
+	elsif ($type eq "csrfPageUrl") {
+		$SendUrl = "https://www.amazon.de/alexa-privacy/apd/activity?ref=activityHistory";
+		$SendMetode = "GET";
+		$SendDataL  = "" ;
+		$SendData   = "";	
+	}
+
+	elsif ($type eq "activities1") {
 		if (int(AttrVal($name,"intervalvoice",999999)) != 999999) {
 			$SendUrl   .= "/api/activities?startTime=&size=10&offset=1&_=".int(time);
 		}
@@ -1690,10 +1822,10 @@ sub echodevice_SendCommand($$$) {
 	}
 	
 	elsif ($type eq "tunein" || $type eq "ttstunein"  ) {
-        $SendUrl   .= "/api/tunein/queue-and-play?deviceSerialNumber=".$hash->{helper}{".SERIAL"}."&deviceType=".$hash->{helper}{DEVICETYPE}."&guideId=".$SendData."&contentType=station&callSign=&mediaOwnerCustomerId=".$hash->{IODev}->{helper}{".CUSTOMER"};
+		$SendUrl   .= "/api/entertainment/v1/player/queue?deviceSerialNumber=".$hash->{helper}{".SERIAL"}."&deviceType=".$hash->{helper}{DEVICETYPE};
+		$SendData   = encode_json( { contentToken => 'music:'. encode_base64(encode_base64('["music/tuneIn/stationId","'.$SendData.'"]|{"previousPageId":"TuneIn_SEARCH"}', ''), '') } );
 		$SendDataL  = $SendData ;
-		$SendData   = "";
-		$SendMetode = "POST";		
+		$SendMetode = "PUT";		
 	}
 	
 	elsif ($type eq "getnotifications" ) {
@@ -1823,15 +1955,58 @@ sub echodevice_SendCommand($$$) {
 		$SendMetode = "POST";		
 	}
 	
+	elsif ($type eq "namedListsIDs") {
+		$SendUrl   .= "/api/namedLists";
+	}
+	
 	elsif ($type eq "listitems_task" || $type eq "listitems_shopping" ) {
         $SendUrl   .= "/api/todos?size=100&startTime=&endTime=&completed=false&type=".$SendData."&deviceSerialNumber=&deviceType=&_=".int(time);
 		$SendDataL  = $SendData ;
 		$SendData   = "";
 	}
+
+	elsif ($type eq "item_shopping_add" ) {
+		$SendUrl   .= "/api/namedLists/" . $hash->{helper}{SHOPPING_LIST_ID} . "/item";
+		$SendMetode = "POST";
+		$SendDataL  = $SendData;
+	}
+
+	elsif ($type eq "item_task_add" ) {
+		$SendUrl   .= "/api/namedLists/" . $hash->{helper}{TO_DO_LIST_ID} . "/item";
+		$SendMetode = "POST";
+		$SendDataL  = $SendData;
+	}
+
+	elsif ($type eq "item_task_delete" ) {
 	
-	elsif ($type eq "item_shopping_delete" || $type eq "item_task_delete" || $type eq "item_task_add" || $type eq "item_shopping_add" ) {
-        $SendUrl   .= "/api/todos/" . $hash->{helper}{".CUSTOMER"};
-		$SendMetode = "PUT";		
+		my $json = JSON->new->utf8(1)->encode( {'value' 			=> $hash->{helper}{"ITEMS"}{TASK}{TEXT}{$SendData},
+												'listId' 			=> $hash->{helper}{TO_DO_LIST_ID},
+											    'id' 				=> $hash->{helper}{"ITEMS"}{TASK}{ID}{$SendData}});
+	
+		$json =~ s/\"true\"/true/g;
+		$json =~ s/\"false\"/false/g;
+	
+		$SendUrl   .= "/api/namedLists/" . $hash->{helper}{TO_DO_LIST_ID} . "/item/" . $hash->{helper}{"ITEMS"}{TASK}{ID}{$SendData};
+		$SendMetode = "DELETE";
+		$SendData   = $json;
+		$SendDataL  = $SendData;
+
+	}
+	
+	elsif ($type eq "item_shopping_delete" ) {
+	
+		my $json = JSON->new->utf8(1)->encode( {'value' 			=> $hash->{helper}{"ITEMS"}{SHOPPING_ITEM}{TEXT}{$SendData},
+												'listId' 			=> $hash->{helper}{SHOPPING_LIST_ID},
+											    'id' 				=> $hash->{helper}{"ITEMS"}{SHOPPING_ITEM}{ID}{$SendData}});
+	
+		$json =~ s/\"true\"/true/g;
+		$json =~ s/\"false\"/false/g;
+	
+		$SendUrl   .= "/api/namedLists/" . $hash->{helper}{SHOPPING_LIST_ID} . "/item/" . $hash->{helper}{"ITEMS"}{SHOPPING_ITEM}{ID}{$SendData};
+		$SendMetode = "DELETE";
+		$SendData   = $json;
+		$SendDataL  = $SendData;
+
 	}
 	
 	elsif ($type eq "account" ) {
@@ -1926,6 +2101,13 @@ sub echodevice_SendCommand($$$) {
 		$SendData   = "";
 	}
 	
+	elsif ($type eq "customer-history-records") {
+		$SendUrl    = "https://www.amazon.de/alexa-privacy/apd/rvh/customer-history-records/?startTime=0&endTime=2005090388459&recordType=VOICE_HISTORY&maxRecordSize=100";
+		$SendMetode = "GET";
+		$SendDataL  = "" ;
+		$SendData   = "";
+	}	
+	
 	elsif ($type eq "config_address_from" || $type eq "config_address_to" || $type eq "config_address_between") {
 		$SendUrl   .= "/api/traffic/settings";
 		$SendMetode = "POST";
@@ -1990,10 +2172,12 @@ sub echodevice_SendCommand($$$) {
 		my $SpeakVolume;
 		$SpeakVolume = int(AttrVal($hash->{IODev}{NAME},"speak_volume",0));
 		$SpeakVolume = int(AttrVal($name,"speak_volume",0)) if($SpeakVolume == 0);
-		
+				
 		if($SpeakVolume > 0){
 		#if(ReadingsVal($name , "volume", 50) < ReadingsVal($name , "volume_alarm", 50)) {
-			$SendData = '{"behaviorId":"PREVIEW","sequenceJson":"{\"@type\":\"com.amazon.alexa.behaviors.model.Sequence\",\"startNode\":{\"@type\":\"com.amazon.alexa.behaviors.model.SerialNode\",\"nodesToExecute\":[{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.DeviceControls.Volume\",\"operationPayload\":{\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"locale\":\"de-DE\",\"value\":\"'.$SpeakVolume.'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\"}},{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.Speak\",\"operationPayload\":{\"locale\":\"de-DE\",\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\",\"textToSpeak\":\"'.$SendData.'\"}},{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.DeviceControls.Volume\",\"operationPayload\":{\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"locale\":\"de-DE\",\"value\":\"'.ReadingsVal($name , "volume", 50).'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\"}}]}}","status":"ENABLED"}'
+			#Log3 $name, 3, "[$name] [SpeakVolume] send...";
+			$SendData = '{"behaviorId":"PREVIEW","sequenceJson":"{\"@type\":\"com.amazon.alexa.behaviors.model.Sequence\",\"startNode\":{\"@type\":\"com.amazon.alexa.behaviors.model.SerialNode\",\"nodesToExecute\":[{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.DeviceControls.Volume\",\"operationPayload\":{\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"locale\":\"de-DE\",\"value\":\"'.$SpeakVolume.'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\"}},{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.Speak\",\"operationPayload\":{\"locale\":\"de-DE\",\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\",\"textToSpeak\":\"'.$SendData.'\"}},{\"@type\":\"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"type\":\"Alexa.DeviceControls.Volume\",\"operationPayload\":{\"deviceSerialNumber\":\"' . $hash->{helper}{".SERIAL"} . '\",\"customerId\":\"' . $hash->{IODev}->{helper}{".CUSTOMER"} .'\",\"locale\":\"de-DE\",\"value\":\"'.ReadingsVal($name , "volume", 50).'\",\"deviceType\":\"' . $hash->{helper}{DEVICETYPE} . '\"}}]}}","status":"ENABLED"}';
+			#Log3 $name, 3, "[$name] [SpeakVolume] send... $SendData";
 		}
 		else {
 			$SendData = echodevice_getsequenceJson($hash,$type,$SendData);
@@ -2037,6 +2221,25 @@ sub echodevice_SendCommand($$$) {
 	
 	}
 	
+	elsif ($type eq "textcommand") {
+		$SendUrl   .= "/api/behaviors/preview";
+		$SendMetode = "POST";
+		my $Messagetext = $SendData;
+		$Messagetext =~ s/"/'/g;
+		$SendData   = '{"behaviorId":"PREVIEW","sequenceJson":"{\"@type\":\"com.amazon.alexa.behaviors.model.Sequence\",\"startNode\":{\"@type\": \"com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode\",\"nodeState\": null,\"name\": null,\"type\": \"Alexa.TextCommand\",\"skillId\": \"amzn1.ask.1p.tellalexa\",\"operationPayload\": {\"customerId\": \"' . $hash->{helper}{".CUSTOMER"} .'\",\"deviceType\": \"' . $hash->{helper}{DEVICETYPE} . '\",\"deviceSerialNumber\": \"' . $hash->{helper}{".SERIAL"} . '\",\"text\": \"' . $Messagetext .'\",\"locale\": \"de-DE\"},\"presentationDataList\": null,\"clientData\": null,\"context\": null,\"tag\": null},\"sequenceId\":\"amzn1.alexa.sequence.8f5aa289-c6d4-4a6f-a1b9-5b182e23be1e\"}","status":"ENABLED"}';
+		$SendDataL = $SendData;
+	}
+	
+	elsif ($type eq "getsmarthome" ) {
+		$SendUrl   .= "/api/phoenix/state";
+		$SendMetode = "POST";	
+		
+		$SendData = '{"stateRequests":[{"entityId":"AlexaBridge_'.$hash->{helper}{".SERIAL"}.'@'.$hash->{helper}{DEVICETYPE}.'_'.$hash->{helper}{".SERIAL"}.'","entityType": "APPLIANCE"}]}';
+		
+		$SendDataL = $SendData;	
+	
+	}
+	
 	else {
 		return;
 	}
@@ -2057,16 +2260,35 @@ sub echodevice_SendCommand($$$) {
 	};
 	
 	#2018.01.14 - PushToCmdQueue
-	push @{$hash->{helper}{CMD_QUEUE}}, $SendParam;  
-	echodevice_HandleCmdQueue($hash);
 	
+	my $QueueSize = scalar  @{$hash->{helper}{CMD_QUEUE}};
+	my $FoundCMDQueue = 0;
+	my $Loglevel = 3;
+	my @GetSettings = ("getnotifications","alarmvolume","bluetoothstate","getdnd","wakeword","listitems_task","listitems_shopping","getdevicesettings","getisonline","devices","namedListsIDs","devicesstate","account","cookielogin6","activities","getbehavior","getsettingstraffic");
+	# Doppelte Queue Einträge herausfiltern
+	foreach my $CMDQueue (@{$hash->{helper}{CMD_QUEUE}}) { 
+		if ($CMDQueue->{type} eq $type) {
+			if ((grep { $_ eq $type } @GetSettings)) {
+				$Loglevel = 4 if ($type eq "activities");
+				Log3 $name, $Loglevel, "[$name] [echodevice_SendCommand] [$QueueSize] IGNORIERE Command=" . $type . ' Abfrage in CMD_Queue schon vorhanden!';
+				$FoundCMDQueue = 1;
+			last;
+			}
+		}
+	}
+
+	if ($FoundCMDQueue == 0) {
+		push @{$hash->{helper}{CMD_QUEUE}}, $SendParam;  
+		echodevice_HandleCmdQueue($hash);
+	}
+
 	return;
 }
 
 sub echodevice_HandleCmdQueue($) {
     my ($hash, $param)  = @_;
     my $name            = $hash->{NAME};
-	
+
 	return undef if(!defined($hash->{helper}{CMD_QUEUE})); 
 	$hash->{helper}{RUNNING_REQUEST} = 0 if(!defined($hash->{helper}{RUNNING_REQUEST})); 
 	
@@ -2081,13 +2303,17 @@ sub echodevice_HandleCmdQueue($) {
 		$UserAgent = join('', map{('a'..'z','A'..'Z',0..9)[rand 62]} 0..20);
 	}
 
+	# Queuenumber
+	$QueueNumber += 1;
+
 	readingsSingleUpdate ($hash, "BrowserUserAgent", $UserAgent ,0);
 	readingsSingleUpdate ($hash, "BrowserLanguage", $HeaderLanguage ,0);
+	$hash->{helper}{CMD_QUEUE_NUMBER} = $QueueNumber ;
 	
 #	if($hash->{model} eq "ACCOUNT") {$AmazonHeader = "Cookie: ".$hash->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
 #	else 							{$AmazonHeader = "Cookie: ".$hash->{IODev}->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{IODev}->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
-	
-	if($hash->{model} eq "ACCOUNT") {$AmazonHeader = "User-Agent: ". $UserAgent ."\r\nAccept-Language: " . $HeaderLanguage . "\r\nDNT: 1\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nCookie:".$hash->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
+
+	if($hash->{model} eq "ACCOUNT") {$AmazonHeader = "User-Agent: ". $UserAgent ."\r\nAccept-Language: " . $HeaderLanguage ."\r\nanti-csrftoken-a2z: " . ReadingsVal($name ,'.csrf-token',"")  . "\r\nDNT: 1\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nCookie:".$hash->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
 	else 							{$AmazonHeader = "User-Agent: ". $UserAgent ."\r\nAccept-Language: " . $HeaderLanguage . "\r\nDNT: 1\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nCookie:".$hash->{IODev}->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{IODev}->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
 	
     if(not($hash->{helper}{RUNNING_REQUEST}) and @{$hash->{helper}{CMD_QUEUE}})
@@ -2105,6 +2331,8 @@ sub echodevice_HandleCmdQueue($) {
                        hash            => $hash,
 					   type            => $param->{type},
 					   httpversion     => $param->{httpversion},
+					   queuenumber     => $QueueNumber,
+					   NAME            => $name,
                        callback        => \&echodevice_Parse
                       };
   
@@ -2116,10 +2344,16 @@ sub echodevice_HandleCmdQueue($) {
 		my $type = $hash->{helper}{".HTTP_CONNECTION"}{type};
         
         $hash->{helper}{RUNNING_REQUEST} = 1;
-        Log3 $name, 4, "[$name] [echodevice_HandleCmdQueue] [$type] send command=" .echodevice_anonymize($hash, $hash->{helper}{".HTTP_CONNECTION"}{url}). " Data=" . $hash->{helper}{".HTTP_CONNECTION"}{data};
+		
+		my $QueueSize = scalar  @{$hash->{helper}{CMD_QUEUE}};
+		
+        Log3 $name, 4, "[$name] [echodevice_HandleCmdQueue] [$type] [$QueueNumber] [$QueueSize] send command=" .echodevice_anonymize($hash, $hash->{helper}{".HTTP_CONNECTION"}{url}). " Data=" . $hash->{helper}{".HTTP_CONNECTION"}{data};
         HttpUtils_NonblockingGet($hash->{helper}{".HTTP_CONNECTION"});
 		
     }
+	else {
+		Log3 $name, 4, "[$name] [echodevice_HandleCmdQueue] RUNNING_REQUEST=" . $hash->{helper}{RUNNING_REQUEST} . " type=" . $hash->{helper}{".HTTP_CONNECTION"}{type} if($hash->{helper}{RUNNING_REQUEST} == 1);
+	}
 }
 
 sub echodevice_SendLoginCommand($$$) {
@@ -2147,6 +2381,9 @@ sub echodevice_SendLoginCommand($$$) {
 
 	readingsSingleUpdate ($hash, "BrowserUserAgent", $UserAgent ,0);
 	readingsSingleUpdate ($hash, "BrowserLanguage", $HeaderLanguage ,0);
+
+	# This allows HttpUtils to use the 'verbose' setting of the device
+	$param->{NAME} = $name;
 	
 	# COOKIE LOGIN
 	if ($type eq "cookielogin1" ) {
@@ -2300,7 +2537,7 @@ sub echodevice_SendLoginCommand($$$) {
 	
 	if ($type eq "cookielogin6" ) {
 		$param->{url}         = "https://".$hash->{helper}{SERVER}."/api/bootstrap";
-		$param->{header}      = 'Cookie: '.$hash->{helper}{".COOKIE"};
+		$param->{header}      = "User-Agent: ".$UserAgent."\r\nCookie: ".$hash->{helper}{'.COOKIE'};
 		$param->{callback}    = \&echodevice_ParseAuth;
 		$param->{noshutdown}  = 1;
 		$param->{keepalive}   = 1;
@@ -2319,15 +2556,28 @@ sub echodevice_Parse($$$) {
 	my $hash = $param->{hash};
 	my $name = $hash->{NAME};
 	my $msgtype = $param->{type};
+	my $msgnumber = $param->{queuenumber};
   
-    Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] ";
-	Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] DATA Dumper=" . Dumper(echodevice_anonymize($hash, $data));
+    Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] ";
+	Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] DATA Dumper=" . Dumper(echodevice_anonymize($hash, $data));
 
 	$hash->{helper}{RUNNING_REQUEST} = 0;
 	
 	if ($msgtype eq "account") {
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] DATA Dumper=" . Dumper(echodevice_anonymize($hash, $data));
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] DATA Dumper=" . Dumper(echodevice_anonymize($hash, $data));
 	}
+	
+	# Rate exceeded: Too many requests https://forum.fhem.de/index.php/topic,82631.msg1251020.html#msg1251020
+	if (Dumper(echodevice_anonymize($hash, $data)) =~ m/Too many requests/ ) {
+		readingsSingleUpdate ($hash, "parse_error", "Too many requests" ,0);
+		Log3 $name, 3, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] Too many requests" ;
+	}
+	else {
+		readingsSingleUpdate ($hash, "parse_error", "OK" ,0);
+	}
+	
+	# Nächsten Auftrag starten
+	echodevice_HandleCmdQueue($hash);
 	
 	# HTML Informationen mit schreiben
 	if (AttrVal($name,"browser_save_data",0) == 1) {
@@ -2352,6 +2602,22 @@ sub echodevice_Parse($$$) {
 		print FH $param->{httpheader};
 		close(FH);
 	
+	}
+
+	if ($msgtype eq "csrfPageUrl") {
+		#Log3 $name, 3, "[$name] [echodevice_Parse] [$msgtype] search csrf-token";	
+
+		readingsBeginUpdate($hash);
+		
+		my $regex = qr/meta name="csrf-token" content="([^"]+)"/;
+
+		while ($data =~ /$regex/g) {
+			my $csrf_token = $1;
+			readingsBulkUpdate($hash, ".csrf-token", $1, 1);
+		}
+	
+		readingsEndUpdate($hash,1);
+		
 	}
 	
 	# COOKIE LOGIN Part
@@ -2501,7 +2767,7 @@ sub echodevice_Parse($$$) {
 		
 		if($cookiestring =~ /doctype html/) {
 			#RemoveInternalTimer($hash);
-			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] Login failed";
+			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] Login failed";
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "state", "unauthorized", 1);
 			readingsEndUpdate($hash,1);
@@ -2528,127 +2794,70 @@ sub echodevice_Parse($$$) {
 		return;
 	}
 	
+	if ($msgtype eq "endpoints") {
+		#Log3 $name, 3, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] $data";
+	}
+	
 	if($msgtype eq "notifications_delete" || $msgtype eq "alarm_on" || $msgtype eq "alarm_off" || $msgtype eq "reminderitem") {
 		
 		my $IODev = $hash->{IODev}->{NAME};
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] sendToFHEM get $IODev settings";
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] sendToFHEM get $IODev settings";
 		print (fhem( "get $IODev settings" )) ;
 		
-		echodevice_HandleCmdQueue($hash);
 		return;
 	}
     
 	if($data =~ /doctype html/ || $data =~ /cookie is missing/){
 		#RemoveInternalTimer($hash);
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] Invalid cookie";
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] Invalid cookie";
 		readingsBeginUpdate($hash);
 		readingsBulkUpdate($hash, "state", "unauthorized", 1);
 		readingsEndUpdate($hash,1);
 		$hash->{STATE} = "COOKIE ERROR";
-		echodevice_HandleCmdQueue($hash);
+
 		return undef;
 	}
 
 	if($err){
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] connection error $msgtype $err";
-		echodevice_HandleCmdQueue($hash);
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] connection error $msgtype $err";
 		return undef;
 	}
   
 	if($data =~ /No routes found/){
-
 		# Spezial set Volume
 		if ($msgtype eq "command") {}
 		else {
-			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] No routes found $msgtype";
+			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] No routes found $msgtype";
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "state", "timeout", 1);	
 			readingsEndUpdate($hash,1);
 		}
-
-		echodevice_HandleCmdQueue($hash);
 		return undef;
 	}
 	
 	if($data =~ /UnknownOperationException/){
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] Unknown Operation";
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] Unknown Operation";
 		readingsBeginUpdate($hash);
 		readingsBulkUpdate($hash, "state", "unknown", 1);
 		readingsEndUpdate($hash,1);
-		echodevice_HandleCmdQueue($hash);
 		return undef;
 	}
 
-	if($msgtype eq "null"){
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "setting") {
+	if($msgtype eq "setting" || $msgtype eq "command"){
 		InternalTimer( gettimeofday() + 3, "echodevice_GetSettings", $hash, 0);
-		echodevice_HandleCmdQueue($hash);
 		return undef;
 	}
 	
-	elsif($msgtype eq "command") {
-		InternalTimer( gettimeofday() + 3, "echodevice_GetSettings", $hash, 0);
-		echodevice_HandleCmdQueue($hash);
+	elsif($msgtype eq "null" || $msgtype eq "primeplayeigeneplaylist" || $msgtype eq "primeplayeigene" || $msgtype eq "primeplaysender" || $msgtype eq "primeplaylist" || $msgtype eq "textmessage" || $msgtype eq "volume_alarm" || $msgtype eq "bluetooth_disconnect" || $msgtype eq "bluetooth_connect" || $msgtype eq "dnd" ||	$msgtype eq "list" || $msgtype eq "track") {
 		return undef;
 	}
-	
-	elsif($msgtype eq "primeplaylist") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "track") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "primeplayeigeneplaylist" || $msgtype eq "primeplayeigene" || $msgtype eq "primeplaysender") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "textmessage") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "volume_alarm") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "bluetooth_disconnect") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "bluetooth_connect") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-	
-	elsif($msgtype eq "dnd") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}
-
-	elsif($msgtype eq "list") {
-		echodevice_HandleCmdQueue($hash);
-		return undef;
-	}	
 
 	elsif($msgtype eq "item_task_delete" || $msgtype eq "item_task_add") {
-		echodevice_HandleCmdQueue($hash);
 		echodevice_SendCommand($hash,"listitems_task","TASK");
 		return undef;
 	}		
 
 	elsif($msgtype eq "item_shopping_delete" || $msgtype eq "item_shopping_add") {
-		echodevice_HandleCmdQueue($hash);
 		echodevice_SendCommand($hash,"listitems_shopping","SHOPPING_ITEM");
 		return undef;
 	}	
@@ -2656,20 +2865,20 @@ sub echodevice_Parse($$$) {
 	if($@) {
 		if($data =~ /doctype html/ || $data =~ /cookie is missing/){
 			#RemoveInternalTimer($hash);
-			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] Invalid cookie";
+			Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] Invalid cookie";
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "state", "unauthorized", 1);
 			readingsEndUpdate($hash,1);
 			$hash->{STATE} = "COOKIE ERROR";
 			#InternalTimer( gettimeofday() + 10, "echodevice_CheckAuth", $hash, 0) if($hash->{model} eq "ACCOUNT");
-			echodevice_HandleCmdQueue($hash);
+	
 			return undef;
 		}
 		readingsBeginUpdate($hash);
 		readingsBulkUpdate($hash, "state", "error", 1);
 		readingsEndUpdate($hash,1);
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] json evaluation error ".$@."\n".Dumper(echodevice_anonymize($hash, $data));
-		echodevice_HandleCmdQueue($hash);
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] json evaluation error ".$@."\n".Dumper(echodevice_anonymize($hash, $data));
+
 		return undef;
 	}
 
@@ -2681,70 +2890,140 @@ sub echodevice_Parse($$$) {
 	if (index($data, '{') == -1) {$data = '{"data": "nodata"}';}
 	
 	my $json = eval { JSON->new->utf8(0)->decode($data) };
-		
+	my $Person ;
 	if($msgtype eq "activities") {
+		if (ref($json) eq "HASH") {
+			if(defined($json->{customerHistoryRecords}) && ref($json->{customerHistoryRecords}) eq "ARRAY") {
+				foreach my $recordKey (@{$json->{customerHistoryRecords}}) {
+					
+					my @recordKeys = split("#",$recordKey->{recordKey});
+					$sourceDeviceIds = @recordKeys[3];
+					$Person = 0;
+					if ($recordKey->{utteranceType} eq "GENERAL") {
+					
+						if(defined($modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds})) {
+							
+							my $echohash = $modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds};
+							my $timestamp = int(ReadingsVal($echohash->{NAME},'voice_timestamp',9999));
 
-		if(defined($json->{activities}) && ref($json->{activities}) eq "ARRAY") {
-			foreach my $card (@{$json->{activities}}) {
-				# Device ID herausfiltern
-				my $sourceDeviceIds = ""; 
-				foreach my $cards (@{$card->{sourceDeviceIds}}) {
-					next if (echodevice_getModel($cards->{deviceType}) eq "Echo Multiroom");
-					next if (echodevice_getModel($cards->{deviceType}) eq "Sonos Display");
-					next if (echodevice_getModel($cards->{deviceType}) eq "Echo Stereopaar");
-					next if (echodevice_getModel($cards->{deviceType}) eq "unbekannt");
-					$sourceDeviceIds = $cards->{serialNumber};
+							if($timestamp >= int($recordKey->{voiceHistoryRecordItems}[0]{timestamp})) {
+								if ($recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName} ne ReadingsVal($echohash->{NAME},'voice_person',"unbekannt") and $recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName} ne "") {
+									$Person = 1;
+								}
+								else {
+									next;
+								}
+							}
+
+							$echohash->{".updateTimestamp"} = FmtDateTime(int($card->{creationTimestamp}/1000));
+							readingsBeginUpdate($echohash);
+							
+							if ($Person eq 1) {
+								readingsBulkUpdate($echohash, "voice_person", $recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName}, 1);
+							}
+							else {
+								if ($recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName} ne "") {
+									readingsBulkUpdate($echohash, "voice_person", $recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName}, 1);	
+								}
+								readingsBulkUpdate($echohash, "voice_timestamp", $recordKey->{voiceHistoryRecordItems}[0]{timestamp}, 1);
+								readingsBulkUpdate($echohash, "voice", $recordKey->{voiceHistoryRecordItems}[0]{transcriptText}, 1);
+							}
+
+							readingsEndUpdate($echohash,1);
+							$echohash->{CHANGETIME}[0] = FmtDateTime(int($card->{creationTimestamp}/1000));
+								
+							
+						}
+					
+					#Log3 $name, 3, "[$name] [echodevice_Parse] [" . $echohash->{NAME} . "] Alexatext = ".$sourceDeviceIds . " transcriptText=" . $recordKey->{voiceHistoryRecordItems}[0]{transcriptText} ." Person=" . $recordKey->{voiceHistoryRecordItems}[0]{personsInfo}[0]{personFirstName};	
+						
+					}
+
+					
 				}
+			}
 			
-				# Informationen in das ECHO Device eintragen
-				if(defined($modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds})) {
-					my $echohash = $modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds};
-					#my $timestamp = int(time - ReadingsAge($echohash->{NAME},'voice',time))-5;
-					my $timestamp = int(ReadingsVal($echohash->{NAME},'voice_timestamp',time));
-					my $IgnoreVoiceCommand = AttrVal($name,"ignorevoicecommand","");
-					#Log3 $name, 3, "[$name] [echodevice_Parse] [" . $echohash->{NAME} . "] timestamp = $timestamp / " . int($card->{creationTimestamp});
-					#Log3 $name, 3, "[$name] [echodevice_Parse] echohash  = ".$echohash->{NAME};
-					
-					#next if($timestamp eq $card->{creationTimestamp});
-					next if($timestamp >= int($card->{creationTimestamp}));
-					#next if($timestamp >= int($card->{creationTimestamp}/1000));
-					next if($card->{description} !~ /firstUtteranceId/);
-					
-					#https://forum.fhem.de/index.php/topic,82631.msg906424.html#msg906424
-					next if($IgnoreVoiceCommand ne "" && $card->{description} =~ m/$IgnoreVoiceCommand/i);
-
-					
-					my $textjson = $card->{description};
-					$textjson =~ s/\\//g;
-					my $cardjson = eval { JSON->new->utf8(0)->decode($textjson) };
-
-					next if($@);
-					next if(!defined($cardjson->{summary}));
-					next if($cardjson->{summary} eq "");
-					
-					$echohash->{".updateTimestamp"} = FmtDateTime(int($card->{creationTimestamp}/1000));
-					readingsBeginUpdate($echohash);
-					readingsBulkUpdate($echohash, "voice", $cardjson->{summary}, 1);
-					readingsBulkUpdate($echohash, "voice_timestamp", $card->{creationTimestamp}, 1);
-					readingsEndUpdate($echohash,1);
-					$echohash->{CHANGETIME}[0] = FmtDateTime(int($card->{creationTimestamp}/1000));
-					#Log3 $name, 3, "[$name] [echodevice_Parse] [" . $echohash->{NAME} . "] Alexatext = ".$cardjson->{summary};
-				}	
+			# Timer für Realtime Check!
+			my $IntervalVoice = int(AttrVal($name,"intervalvoice",999999));
+			
+			if ($IntervalVoice != 999999 && $hash->{STATE} eq "connected" && AttrVal($name,"disable",0) == 0) {
+				Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] refresh voice command IntervalVoice=$IntervalVoice ";
+				$hash->{helper}{echodevice_refreshvoice} = 1;
+				$hash->{helper}{echodevice_refreshvoice_lastdate} = time();
+				RemoveInternalTimer($hash, "echodevice_refreshvoice");
+				InternalTimer(gettimeofday() + $IntervalVoice , "echodevice_refreshvoice", $hash, 0);
+			}
+			else {
+				$hash->{helper}{echodevice_refreshvoice} = 0;
 			}
 		}
-		
-		# Timer für Realtime Check!
-		my $IntervalVoice = int(AttrVal($name,"intervalvoice",999999));
-		
-		if ($IntervalVoice != 999999 && $hash->{STATE} eq "connected" && AttrVal($name,"disable",0) == 0) {
-			Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] refresh voice command IntervalVoice=$IntervalVoice ";
-			$hash->{helper}{echodevice_refreshvoice} = 1;
-			$hash->{helper}{echodevice_refreshvoice_lastdate} = time();
-			RemoveInternalTimer($hash, "echodevice_refreshvoice");
-			InternalTimer(gettimeofday() + $IntervalVoice , "echodevice_refreshvoice", $hash, 0);
+		else {
+			Log3 $name, 3, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] WRONG JSON Type Type=" . ref($json);
+		}
+	} 
+ 
+ 	if($msgtype eq "activities2") {
+		if (ref($json) eq "HASH") {
+			if(defined($json->{activities}) && ref($json->{activities}) eq "ARRAY") {
+				foreach my $card (@{$json->{activities}}) {
+					# Device ID herausfiltern
+					my $sourceDeviceIds = ""; 
+					foreach my $cards (@{$card->{sourceDeviceIds}}) {
+						$sourceDeviceIds = $cards->{serialNumber};
+					}
+				
+					# Informationen in das ECHO Device eintragen
+					if(defined($modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds})) {
+						my $echohash = $modules{$hash->{TYPE}}{defptr}{$sourceDeviceIds};
+						#my $timestamp = int(time - ReadingsAge($echohash->{NAME},'voice',time))-5;
+						my $timestamp = int(ReadingsVal($echohash->{NAME},'voice_timestamp',9999));
+						my $IgnoreVoiceCommand = AttrVal($name,"ignorevoicecommand","");
+						#Log3 $name, 3, "[$name] [echodevice_Parse] [" . $echohash->{NAME} . "] timestamp = $timestamp / " . int($card->{creationTimestamp});
+						
+						#next if($timestamp eq $card->{creationTimestamp});
+						next if($timestamp >= int($card->{creationTimestamp}));
+						#next if($timestamp >= int($card->{creationTimestamp}/1000));
+						next if($card->{description} !~ /firstUtteranceId/);
+						
+						#https://forum.fhem.de/index.php/topic,82631.msg906424.html#msg906424
+						next if($IgnoreVoiceCommand ne "" && $card->{description} =~ m/$IgnoreVoiceCommand/i);
+						next if($card->{activityStatus} eq "DISCARDED_NON_DEVICE_DIRECTED_INTENT");
+						
+						my $textjson = $card->{description};
+						$textjson =~ s/\\//g;
+						my $cardjson = eval { JSON->new->utf8(0)->decode($textjson) };
+
+						next if($@);
+						next if(!defined($cardjson->{summary}));
+						next if($cardjson->{summary} eq "");
+						
+						$echohash->{".updateTimestamp"} = FmtDateTime(int($card->{creationTimestamp}/1000));
+						readingsBeginUpdate($echohash);
+						readingsBulkUpdate($echohash, "voice", $cardjson->{summary}, 1);
+						readingsBulkUpdate($echohash, "voice_timestamp", $card->{creationTimestamp}, 1);
+						readingsEndUpdate($echohash,1);
+						$echohash->{CHANGETIME}[0] = FmtDateTime(int($card->{creationTimestamp}/1000));
+						#Log3 $name, 3, "[$name] [echodevice_Parse] [" . $echohash->{NAME} . "] Alexatext = ".$cardjson->{summary};
+					}	
+				}
+			}
+			
+			# Timer für Realtime Check!
+			my $IntervalVoice = int(AttrVal($name,"intervalvoice",999999));
+			
+			if ($IntervalVoice != 999999 && $hash->{STATE} eq "connected" && AttrVal($name,"disable",0) == 0) {
+				Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] refresh voice command IntervalVoice=$IntervalVoice ";
+				$hash->{helper}{echodevice_refreshvoice} = 1;
+				$hash->{helper}{echodevice_refreshvoice_lastdate} = time();
+				RemoveInternalTimer($hash, "echodevice_refreshvoice");
+				InternalTimer(gettimeofday() + $IntervalVoice , "echodevice_refreshvoice", $hash, 0);
+			}
+			else {
+				$hash->{helper}{echodevice_refreshvoice} = 0;
+			}
 		}
 		else {
-			$hash->{helper}{echodevice_refreshvoice} = 0;
+			Log3 $name, 3, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] WRONG JSON Type Type=" . ref($json);
 		}
 	} 
  
@@ -2914,12 +3193,31 @@ sub echodevice_Parse($$$) {
 			$hash->{helper}{"getbehavior"}{$behavior->{automationId}}{status}   = $behavior->{status};
 		}
 	}
+
+	elsif($msgtype eq "namedListsIDs") {
+		
+		if (ref($json) eq "HASH") {
+			if(!defined($json->{lists})) {}
+			elsif (ref($json->{lists}) ne "ARRAY") {}
+			else {
+				foreach my $device (@{$json->{lists}}) {
+					if ($device->{type} eq "SHOPPING_LIST") {$hash->{helper}{SHOPPING_LIST_ID} = $device->{itemId}}
+					if ($device->{type} eq "TO_DO") 		{$hash->{helper}{TO_DO_LIST_ID} = $device->{itemId}}
+				}
+			}
+		}
+		else {
+			Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] WRONG JSON Type Type=" . ref($json);
+		}
+
+	}
 	
 	elsif($msgtype eq "listitems_task" || $msgtype eq "listitems_shopping" ) {
 		my $listtype ;#= $param->{listtype};
 		my @listitems;
 		my $Firststart = "1";
 		my $Text ;
+		my $TextOriginal;
 		
 		$listtype = "TASK" if ($msgtype eq "listitems_task");
 		$listtype = "SHOPPING_ITEM" if ($msgtype eq "listitems_shopping");
@@ -2931,14 +3229,17 @@ sub echodevice_Parse($$$) {
 				$Firststart = "0";
 			}
 		  
+			$TextOriginal = $item->{text};
+		  
 			next if ($item->{complete});
 			$item->{text} =~ s/,/;/g;
 			$item->{text} =~ s/ /_/g;		  
 			$Text = $item->{text};
 			push @listitems, $item->{text};
 
-			$hash->{helper}{"ITEMS"}{$item->{type}}{$item->{text}} = $item->{itemId};
-		  		  
+			$hash->{helper}{"ITEMS"}{$item->{type}}{"ID"}{$item->{text}} = (split("#", $item->{itemId}))[1];
+			$hash->{helper}{"ITEMS"}{$item->{type}}{"TEXT"}{$item->{text}} = $TextOriginal;
+
 		}
 		readingsBeginUpdate($hash);
 		
@@ -2961,232 +3262,233 @@ sub echodevice_Parse($$$) {
 		my $TimerReTime = 99999999 ;
 		my $iFrom ;
 		my $HelperNotifyID ;
-		
-		foreach my $device (@{$json->{notifications}}) {
-			
-			#next if ($device->{status} eq "OFF" && (lc($device->{type}) ne "reminder" || lc($device->{type}) ne "timer"));
 
-			$HelperNotifyID = $device->{notificationIndex};
-			
-			my $ncstring ;
+		if (ref($json) eq "HASH") {	
+			foreach my $device (@{$json->{notifications}}) {
 				
-			if(lc($device->{type}) eq "reminder") {
-				$ncstring  = $device->{type} . "_" . FmtDateTime($device->{alarmTime}/1000) . "_";
-				$ncstring .= $device->{recurringPattern} . "_" if (defined($device->{recurringPattern}));
-				$ncstring .= $device->{reminderLabel} ;
-			}
-			elsif(lc($device->{type}) eq "timer") {
-				$ncstring = $device->{type} . "_" . $device->{remainingTime}
-			}
-			else {
-				$ncstring = $device->{type} . "_" . $device->{originalTime} ;			
-			}
-			$hash->{helper}{"notifications"}{$device->{deviceSerialNumber}}{$device->{notificationIndex}} = $ncstring;
-			
-			#Reading anlegen
-			my $echohash = $modules{$hash->{TYPE}}{defptr}{$device->{deviceSerialNumber}};
-			
-			if (!defined($hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}})) {
-				$NotifiCount = 1;
-			}
-			else {
-				$NotifiCount = int($hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}}) + 1
-			}
-			
-			next if(!defined($echohash));
-			
-			readingsBeginUpdate($echohash);
-			if(lc($device->{type}) eq "reminder") {
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_alarmtime"  , FmtDateTime($device->{alarmTime}/1000), 1 );
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_alarmticks"  , $device->{alarmTime}/1000, 1 );
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring"  , $device->{recurringPattern},1) if (defined($device->{recurringPattern}));
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring"  , 0,1) if (!defined($device->{recurringPattern}));
-			}
-			elsif(lc($device->{type}) eq "timer") {
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_remainingtime"  , int($device->{remainingTime} / 1000), 1 );
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
+				#next if ($device->{status} eq "OFF" && (lc($device->{type}) ne "reminder" || lc($device->{type}) ne "timer"));
+
+				$HelperNotifyID = $device->{notificationIndex};
 				
-				if (int($device->{remainingTime} / 1000) < $TimerReTime) {
-					$TimerReTime = int($device->{remainingTime} / 1000);
-					readingsBulkUpdate( $echohash, lc($device->{type}) . "_remainingtime"  , int($device->{remainingTime} / 1000), 1 );
-					readingsBulkUpdate( $echohash, lc($device->{type}) . "_id"  , $device->{notificationIndex},1);
+				my $ncstring ;
+					
+				if(lc($device->{type}) eq "reminder") {
+					$ncstring  = $device->{type} . "_" . FmtDateTime($device->{alarmTime}/1000) . "_";
+					$ncstring .= $device->{recurringPattern} . "_" if (defined($device->{recurringPattern}));
+					$ncstring .= $device->{reminderLabel} ;
 				}
-				
-				if ($TimerReTime <$NotifiReTime) {$NotifiReTime = $TimerReTime;}
-			}
-			else {
-
-				$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID} = ();
-				
-				if ($device->{musicEntity} eq "") {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicEntity"} = "null";
+				elsif(lc($device->{type}) eq "timer") {
+					$ncstring = $device->{type} . "_" . $device->{remainingTime}
 				}
 				else {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicEntity"} = '"'.$device->{musicEntity}.'"';
+					$ncstring = $device->{type} . "_" . $device->{originalTime} ;			
 				}
-
-				if ($device->{musicAlarmId} eq "") {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicAlarmId"} = "null";
+				$hash->{helper}{"notifications"}{$device->{deviceSerialNumber}}{$device->{notificationIndex}} = $ncstring;
+				
+				#Reading anlegen
+				my $echohash = $modules{$hash->{TYPE}}{defptr}{$device->{deviceSerialNumber}};
+				
+				if (!defined($hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}})) {
+					$NotifiCount = 1;
 				}
 				else {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicAlarmId"} = '"'.$device->{musicAlarmId}.'"';
+					$NotifiCount = int($hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}}) + 1
 				}
 				
-				if ($device->{recurringPattern} eq "") {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"recurringPattern"} = "null";
+				next if(!defined($echohash));
+				
+				readingsBeginUpdate($echohash);
+				if(lc($device->{type}) eq "reminder") {
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_alarmtime"  , FmtDateTime($device->{alarmTime}/1000), 1 );
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_alarmticks"  , $device->{alarmTime}/1000, 1 );
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring"  , $device->{recurringPattern},1) if (defined($device->{recurringPattern}));
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring"  , 0,1) if (!defined($device->{recurringPattern}));
+				}
+				elsif(lc($device->{type}) eq "timer") {
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_remainingtime"  , int($device->{remainingTime} / 1000), 1 );
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
+					
+					if (int($device->{remainingTime} / 1000) < $TimerReTime) {
+						$TimerReTime = int($device->{remainingTime} / 1000);
+						readingsBulkUpdate( $echohash, lc($device->{type}) . "_remainingtime"  , int($device->{remainingTime} / 1000), 1 );
+						readingsBulkUpdate( $echohash, lc($device->{type}) . "_id"  , $device->{notificationIndex},1);
+					}
+					
+					if ($TimerReTime <$NotifiReTime) {$NotifiReTime = $TimerReTime;}
 				}
 				else {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"recurringPattern"} = $device->{recurringPattern};
+
+					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID} = ();
+					
+					if ($device->{musicEntity} eq "") {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicEntity"} = "null";
+					}
+					else {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicEntity"} = '"'.$device->{musicEntity}.'"';
+					}
+
+					if ($device->{musicAlarmId} eq "") {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicAlarmId"} = "null";
+					}
+					else {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"musicAlarmId"} = '"'.$device->{musicAlarmId}.'"';
+					}
+					
+					if ($device->{recurringPattern} eq "") {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"recurringPattern"} = "null";
+					}
+					else {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"recurringPattern"} = $device->{recurringPattern};
+					}
+					
+					if ($device->{provider} eq "") {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"provider"} = "null";
+					}
+					else {
+						$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"provider"} = '"'.$device->{provider}.'"';
+					}
+
+					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"remainingTime"}    = $device->{remainingTime};
+					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"alarmTime"}        = $device->{alarmTime};
+					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"originalDate"}     = $device->{originalDate};
+					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"originalTime"}     = $device->{originalTime};
+					
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_originalTime"  , $device->{originalTime}, 1 );
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_originalDate"  , $device->{originalDate}, 1 );
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_status"  , lc($device->{status}),1);
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring" , $device->{recurringPattern},1) if (defined($device->{recurringPattern}));
+					readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring" , 0,1) if (!defined($device->{recurringPattern}));
+					
+				}
+				# Infos im Hash hinterlegen
+				$hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}} = $NotifiCount;
+				$hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{lc($device->{type})."_aktiv"} = 1;
+				readingsEndUpdate($echohash,1);
+			}
+
+			# Notifications Counter setzen
+			foreach my $DeviceID (sort keys %{$modules{$hash->{TYPE}}{defptr}}) { 
+				foreach my $NotifyCounter (sort keys %{$hash->{helper}{"notifications"}{"_".$DeviceID}}) { 
+					if ($NotifyCounter =~ m/count/ ) { 
+						my $echohash = $modules{$hash->{TYPE}}{defptr}{$DeviceID};
+						readingsSingleUpdate($echohash, lc((split ("_", $NotifyCounter))[1]). "_count" ,$hash->{helper}{"notifications"}{"_".$DeviceID}{$NotifyCounter} , 1);
+					}
+				}
+			}
+
+			# Timer neu setzen wenn der Timer gleich abläuft
+			if ($NotifiReTime < 60 && $NotifiReTime > 0) {InternalTimer(gettimeofday() + $NotifiReTime , "echodevice_GetSettings", $hash, 0);}
+			
+			# Readings bereinigen
+			my $nextupdate = int(AttrVal($name,"intervalsettings",60));
+			
+			foreach my $DeviceID (sort keys %{$modules{$hash->{TYPE}}{defptr}}) {
+
+				next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Echo Multiroom");
+				next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Sonos Display");
+				next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Echo Stereopaar");
+				next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "unbekannt");
+			
+				my $DeviceName = $modules{$hash->{TYPE}}{defptr}{$DeviceID}{NAME};
+				my $echohash   = $modules{$hash->{TYPE}}{defptr}{$DeviceID};
+				readingsBeginUpdate($echohash);
+
+				# Timer auswerten
+				my $TimerAktiv = 0;
+				foreach my $i (1..20) {
+					my $ReadingAge = int(ReadingsAge($DeviceName, "timer_" . sprintf("%02d",$i) . "_remainingtime", 2000));
+					
+					if ($ReadingAge == 2000){last;} 
+					elsif ($ReadingAge > $nextupdate) {
+						readingsDelete($echohash, "timer_" . sprintf("%02d",$i) . "_id") ;
+						readingsDelete($echohash, "timer_" . sprintf("%02d",$i) . "_remainingtime") ;
+					}
+					else {$TimerAktiv=1;}
 				}
 				
-				if ($device->{provider} eq "") {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"provider"} = "null";
+				if ($TimerAktiv == 0) {
+					readingsBulkUpdate( $echohash, "timer_count"  , 0,1);
+					readingsBulkUpdate( $echohash, "timer_id"  , "-",1);
+					readingsBulkUpdate( $echohash, "timer_remainingtime"  , 0,1);
+				}
+
+				# Erinnerungen auswerten			
+				my $ReminderAktiv = 0;
+				$ReminderAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"}));
+			
+				if ($ReminderAktiv eq "0") {
+					readingsBulkUpdate( $echohash, "reminder_count"  , 0,1);
 				}
 				else {
-					$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"provider"} = '"'.$device->{provider}.'"';
+					$hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"} = 0
 				}
 
-				$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"remainingTime"}    = $device->{remainingTime};
-				$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"alarmTime"}        = $device->{alarmTime};
-				$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"originalDate"}     = $device->{originalDate};
-				$hash->{helper}{$device->{type}}{$device->{deviceSerialNumber}}{$HelperNotifyID}{"originalTime"}     = $device->{originalTime};
+				$iFrom = int(ReadingsVal($DeviceName, "reminder_count", 0)) +1 ;
 				
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_originalTime"  , $device->{originalTime}, 1 );
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_originalDate"  , $device->{originalDate}, 1 );
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_id"  , $device->{notificationIndex},1);
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_status"  , lc($device->{status}),1);
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring" , $device->{recurringPattern},1) if (defined($device->{recurringPattern}));
-				readingsBulkUpdate( $echohash, lc($device->{type}) . "_" . sprintf("%02d",$NotifiCount) . "_recurring" , 0,1) if (!defined($device->{recurringPattern}));
-				
-			}
-			# Infos im Hash hinterlegen
-			$hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{"count_" . $device->{type}} = $NotifiCount;
-			$hash->{helper}{"notifications"}{"_".$device->{deviceSerialNumber}}{lc($device->{type})."_aktiv"} = 1;
-			readingsEndUpdate($echohash,1);
-		}
-
-		# Notifications Counter setzen
-		foreach my $DeviceID (sort keys %{$modules{$hash->{TYPE}}{defptr}}) { 
-			foreach my $NotifyCounter (sort keys %{$hash->{helper}{"notifications"}{"_".$DeviceID}}) { 
-				if ($NotifyCounter =~ m/count/ ) { 
-					my $echohash = $modules{$hash->{TYPE}}{defptr}{$DeviceID};
-					readingsSingleUpdate($echohash, lc((split ("_", $NotifyCounter))[1]). "_count" ,$hash->{helper}{"notifications"}{"_".$DeviceID}{$NotifyCounter} , 1);
+				foreach my $i ($iFrom..20) {
+					
+					if (ReadingsVal($DeviceName, "reminder_" . sprintf("%02d",$i) . "_alarmticks", "none") ne "none"){
+						readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_id") ;
+						readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_alarmticks") ;
+						readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_alarmtime") ;
+						readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_recurring") ;
+					}
+					else {last;}
 				}
-			}
-		}
-
-		# Timer neu setzen wenn der Timer gleich abläuft
-		if ($NotifiReTime < 60 && $NotifiReTime > 0) {InternalTimer(gettimeofday() + $NotifiReTime , "echodevice_GetSettings", $hash, 0);}
-		
-		# Readings bereinigen
-		my $nextupdate = int(AttrVal($name,"intervalsettings",60));
-		
-		foreach my $DeviceID (sort keys %{$modules{$hash->{TYPE}}{defptr}}) {
-
-			next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Echo Multiroom");
-			next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Sonos Display");
-			next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "Echo Stereopaar");
-			next if (echodevice_getModel($modules{$hash->{TYPE}}{defptr}{$DeviceID}{model}) eq "unbekannt");
-		
-			my $DeviceName = $modules{$hash->{TYPE}}{defptr}{$DeviceID}{NAME};
-			my $echohash   = $modules{$hash->{TYPE}}{defptr}{$DeviceID};
-			readingsBeginUpdate($echohash);
-
-			# Timer auswerten
-			my $TimerAktiv = 0;
-			foreach my $i (1..20) {
-				my $ReadingAge = int(ReadingsAge($DeviceName, "timer_" . sprintf("%02d",$i) . "_remainingtime", 2000));
 				
-				if ($ReadingAge == 2000){last;} 
-				elsif ($ReadingAge > $nextupdate) {
-					readingsDelete($echohash, "timer_" . sprintf("%02d",$i) . "_id") ;
-					readingsDelete($echohash, "timer_" . sprintf("%02d",$i) . "_remainingtime") ;
+				# Alarm auswerten
+				my $AlarmAktiv = 0;
+				$AlarmAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"}));
+			
+				if ($AlarmAktiv eq "0") {
+					readingsBulkUpdate( $echohash, "alarm_count"  , 0,1);
 				}
-				else {$TimerAktiv=1;}
-			}
-			
-			if ($TimerAktiv == 0) {
-				readingsBulkUpdate( $echohash, "timer_count"  , 0,1);
-				readingsBulkUpdate( $echohash, "timer_id"  , "-",1);
-				readingsBulkUpdate( $echohash, "timer_remainingtime"  , 0,1);
-			}
+				else {
+					$hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"} = 0
+				}
 
-			# Erinnerungen auswerten			
-			my $ReminderAktiv = 0;
-			$ReminderAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"}));
-		
-			if ($ReminderAktiv eq "0") {
-				readingsBulkUpdate( $echohash, "reminder_count"  , 0,1);
-			}
-			else {
-				$hash->{helper}{"notifications"}{"_".$DeviceID}{"reminder_aktiv"} = 0
-			}
-
-			$iFrom = int(ReadingsVal($DeviceName, "reminder_count", 0)) +1 ;
-			
-			foreach my $i ($iFrom..20) {
+				$iFrom = int(ReadingsVal($DeviceName, "alarm_count", 0)) +1 ;
 				
-				if (ReadingsVal($DeviceName, "reminder_" . sprintf("%02d",$i) . "_alarmticks", "none") ne "none"){
-					readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_id") ;
-					readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_alarmticks") ;
-					readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_alarmtime") ;
-					readingsDelete($echohash, "reminder_" . sprintf("%02d",$i) . "_recurring") ;
+				foreach my $i ($iFrom..20) {
+					
+					if (ReadingsVal($DeviceName, "alarm_" . sprintf("%02d",$i) . "_id", "none") ne "none"){
+						readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_id") ;
+						readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_originalTime") ;
+						readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_originalDate") ;
+						readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_status") ;
+						readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_recurring") ;
+					}
+					else {last;}
 				}
-				else {last;}
-			}
-			
-			# Alarm auswerten
-			my $AlarmAktiv = 0;
-			$AlarmAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"}));
-		
-			if ($AlarmAktiv eq "0") {
-				readingsBulkUpdate( $echohash, "alarm_count"  , 0,1);
-			}
-			else {
-				$hash->{helper}{"notifications"}{"_".$DeviceID}{"alarm_aktiv"} = 0
-			}
-
-			$iFrom = int(ReadingsVal($DeviceName, "alarm_count", 0)) +1 ;
-			
-			foreach my $i ($iFrom..20) {
 				
-				if (ReadingsVal($DeviceName, "alarm_" . sprintf("%02d",$i) . "_id", "none") ne "none"){
-					readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_id") ;
-					readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_originalTime") ;
-					readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_originalDate") ;
-					readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_status") ;
-					readingsDelete($echohash, "alarm_" . sprintf("%02d",$i) . "_recurring") ;
-				}
-				else {last;}
-			}
+				# Musikalarm auswerten
+				my $MusikAlarmAktiv = 0;
+				$MusikAlarmAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"musikalarm_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"musicalarm_aktiv"}));
 			
-			# Musikalarm auswerten
-			my $MusikAlarmAktiv = 0;
-			$MusikAlarmAktiv = $hash->{helper}{"notifications"}{"_".$DeviceID}{"musikalarm_aktiv"} if (defined($hash->{helper}{"notifications"}{"_".$DeviceID}{"musicalarm_aktiv"}));
-		
-			if ($MusikAlarmAktiv eq "0") {
-				readingsBulkUpdate( $echohash, "musicalarm_count"  , 0,1);
-			}
-			else {
-				$hash->{helper}{"notifications"}{"_".$DeviceID}{"musicalarm_aktiv"} = 0
-			}
+				if ($MusikAlarmAktiv eq "0") {
+					readingsBulkUpdate( $echohash, "musicalarm_count"  , 0,1);
+				}
+				else {
+					$hash->{helper}{"notifications"}{"_".$DeviceID}{"musicalarm_aktiv"} = 0
+				}
 
-			$iFrom = int(ReadingsVal($DeviceName, "musicalarm_count", 0)) +1 ;
-			
-			foreach my $i ($iFrom..20) {
+				$iFrom = int(ReadingsVal($DeviceName, "musicalarm_count", 0)) +1 ;
 				
-				if (ReadingsVal($DeviceName, "musicalarm_" . sprintf("%02d",$i) . "_id", "none") ne "none"){
-					readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_id") ;
-					readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_originalTime") ;
-					readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_originalDate") ;
-					readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_status") ;
-					readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_recurring") ;
+				foreach my $i ($iFrom..20) {
+					
+					if (ReadingsVal($DeviceName, "musicalarm_" . sprintf("%02d",$i) . "_id", "none") ne "none"){
+						readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_id") ;
+						readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_originalTime") ;
+						readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_originalDate") ;
+						readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_status") ;
+						readingsDelete($echohash, "musicalarm_" . sprintf("%02d",$i) . "_recurring") ;
+					}
+					else {last;}
 				}
-				else {last;}
+				readingsEndUpdate($echohash,1);
 			}
-			
-			readingsEndUpdate($echohash,1);
 		}
 	} 
 		
@@ -3436,7 +3738,7 @@ sub echodevice_Parse($$$) {
 				#next if($device->{deviceFamily} eq "FIRE_TV");
 				#next if($device->{deviceFamily} =~ /AMAZON/);
 				$isautocreated = 0;
-				if($autocreate && ($device->{deviceFamily} eq "UNKNOWN" || $device->{deviceFamily} eq "FIRE_TV" || $device->{deviceFamily} eq "TABLET" || $device->{deviceFamily} eq "ECHO" || $device->{deviceFamily} eq "KNIGHT" || $device->{deviceFamily} eq "THIRD_PARTY_AVS_MEDIA_DISPLAY"  || $device->{deviceFamily} eq "WHA" || $device->{deviceFamily} eq "ROOK" )) {
+				if($autocreate && ($device->{deviceFamily} eq "UNKNOWN" || $device->{deviceFamily} eq "FIRE_TV" || $device->{deviceFamily} eq "TABLET" || $device->{deviceFamily} eq "ECHO" || $device->{deviceFamily} eq "KNIGHT" || $device->{deviceFamily} eq "THIRD_PARTY_AVS_SONOS_BOOTLEG" || $device->{deviceFamily} eq "THIRD_PARTY_AVS_MEDIA_DISPLAY" || $device->{deviceFamily} eq "WHA" || $device->{deviceFamily} eq "ROOK" )) {
 					if( defined($modules{$hash->{TYPE}}{defptr}{"$device->{serialNumber}"}) ) {
 						Log3 $name, 4, "[$name] [echodevice_Parse] device '$device->{serialNumber}' already defined";
 						if (AttrVal($name, "autocreate_refresh", 0) == 1) {
@@ -3471,6 +3773,7 @@ sub echodevice_Parse($$$) {
 
 				}
 				elsif($device->{deviceFamily} eq "ECHO") {
+					Log3 $name, 4, "[echodevice_GetSettings] SET 2 DEF=" . $hash->{DEF} . " TYPE=".$device->{deviceType} . 'SN Hash=' . $hash->{helper}{".SERIAL"} . ' SN Result=' . $device->{serialNumber} ;
 					$hash->{helper}{VERSION} = $device->{softwareVersion} if(!defined($hash->{helper}{VERSION}));
 					$hash->{helper}{".CUSTOMER"} = $device->{deviceOwnerCustomerId} if(!defined($hash->{helper}{".CUSTOMER"}));
 					$hash->{helper}{".SERIAL"} = $device->{serialNumber} if(!defined($hash->{helper}{".SERIAL"}));
@@ -3508,6 +3811,7 @@ sub echodevice_Parse($$$) {
 				$devicehash->{helper}{".CUSTOMER"} = $device->{deviceOwnerCustomerId};
 
 				if ($device->{deviceFamily} eq "ECHO" || $device->{deviceFamily} eq "KNIGHT") {
+					Log3 $name, 4, "[echodevice_GetSettings] SET 4 DEF=" . $devicehash->{DEF} . " TYPE=".$device->{deviceType} . 'SN Hash=' . $devicehash->{helper}{".SERIAL"} . ' SN Result=' . $device->{serialNumber} ;
 					$hash->{helper}{".SERIAL"} = $device->{serialNumber};
 					$hash->{helper}{DEVICETYPE} = $device->{deviceType};
 				}
@@ -3525,33 +3829,52 @@ sub echodevice_Parse($$$) {
 	}
 	
 	elsif($msgtype eq "devicesstate") {
-		if(!defined($json->{devices})) {}
-		elsif (ref($json->{devices}) ne "ARRAY") {}
-		else {
-			foreach my $device (@{$json->{devices}}) {
-				my $devicehash = $modules{$hash->{TYPE}}{defptr}{"$device->{serialNumber}"};
-				next if( !defined($devicehash) );
-	
-				$devicehash->{model} = echodevice_getModel($device->{deviceType});#$device->{deviceType};
+		if (ref($json) eq "HASH") {
+			if(!defined($json->{devices})) {}
+			elsif (ref($json->{devices}) ne "ARRAY") {}
+			else {
+				foreach my $device (@{$json->{devices}}) {
+					my $devicehash = $modules{$hash->{TYPE}}{defptr}{"$device->{serialNumber}"};
+					next if( !defined($devicehash) );
+		
+					$devicehash->{model} = echodevice_getModel($device->{deviceType});#$device->{deviceType};
+					Log3 $name, 4, "[echodevice_GetSettings] SET 6 DEF=" . $devicehash->{DEF} . " TYPE=".$device->{deviceType}. 'SN Hash=' . $devicehash->{helper}{".SERIAL"} . ' SN Result=' . $device->{serialNumber} . " Model=" .$devicehash->{model} ;
+					readingsBeginUpdate($devicehash);
+					readingsBulkUpdate($devicehash, "model", $devicehash->{model}, 1);
+					readingsBulkUpdate($devicehash, "presence", ($device->{online}?"present":"absent"), 1);
+					#readingsBulkUpdate($devicehash, "state", "absent", 1) if(!$device->{online});
+					readingsBulkUpdate($devicehash, "version", $device->{softwareVersion}, 1);
+					
+					$devicehash->{helper}{".SERIAL"} = $device->{serialNumber};
+					$devicehash->{helper}{DEVICETYPE} = $device->{deviceType};
+					$devicehash->{helper}{NAME} = $device->{accountName};
+					$devicehash->{helper}{FAMILY} = $device->{deviceFamily};
+					$devicehash->{helper}{VERSION} = $device->{softwareVersion};
+					$devicehash->{helper}{".CUSTOMER"} = $device->{deviceOwnerCustomerId};
 
-				readingsBeginUpdate($devicehash);
-				readingsBulkUpdate($devicehash, "model", $devicehash->{model}, 1);
-				readingsBulkUpdate($devicehash, "presence", ($device->{online}?"present":"absent"), 1);
-				#readingsBulkUpdate($devicehash, "state", "absent", 1) if(!$device->{online});
-				readingsBulkUpdate($devicehash, "version", $device->{softwareVersion}, 1);
-				readingsEndUpdate($devicehash,1);
-				$devicehash->{helper}{".SERIAL"} = $device->{serialNumber};
-				$devicehash->{helper}{DEVICETYPE} = $device->{deviceType};
-				$devicehash->{helper}{NAME} = $device->{accountName};
-				$devicehash->{helper}{FAMILY} = $device->{deviceFamily};
-				$devicehash->{helper}{VERSION} = $device->{softwareVersion};
-				$devicehash->{helper}{".CUSTOMER"} = $device->{deviceOwnerCustomerId};
-
-				if ($device->{deviceFamily} eq "ECHO" || $device->{deviceFamily} eq "KNIGHT") {
-					$hash->{helper}{".SERIAL"} = $device->{serialNumber};
-					$hash->{helper}{DEVICETYPE} = $device->{deviceType};
+					# Multiroom
+					if ($device->{deviceType} eq "A3C9PE6TNYLTCH") {
+						Log3 $name, 4, "[echodevice_GetSettings] Multiroom Device erkannt" ;
+						my $EchoMembers = "";
+						foreach my $clusterMember (@{$device->{clusterMembers}}) { 
+							if ($EchoMembers eq "") {$EchoMembers = $clusterMember;} else {$EchoMembers = $EchoMembers . "," . $clusterMember;}
+						}
+						Log3 $name, 4, "[echodevice_GetSettings] Multiroom Devices $EchoMembers" ;
+						readingsBulkUpdate($devicehash, "clusterMembers", $EchoMembers, 1);
+					}
+					
+					readingsEndUpdate($devicehash,1);
+					
+					if ($device->{deviceFamily} eq "ECHO" || $device->{deviceFamily} eq "KNIGHT") {
+						Log3 $name, 4, "[echodevice_GetSettings] SET 5 DEF=" . $devicehash->{DEF} . " TYPE=".$device->{deviceType}. 'SN Hash=' . $devicehash->{helper}{".SERIAL"} . ' SN Result=' . $device->{serialNumber} ;
+						$hash->{helper}{".SERIAL"} = $device->{serialNumber};
+						$hash->{helper}{DEVICETYPE} = $device->{deviceType};
+					}
 				}
 			}
+		}
+		else {
+			Log3 $name, 5, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] WRONG JSON Type Type=" . ref($json);
 		}
 	}
 	
@@ -3770,14 +4093,94 @@ sub echodevice_Parse($$$) {
 			asyncOutput( $param->{CL}, $return );
 		}
 	}
+
+	elsif($msgtype eq "customer-history-records") {
+	
+		my $addresscount = 0;
+		my $Voicetext;
+		my $return = '<html><table align="" border="0" cellspacing="0" cellpadding="3" width="100%" height="100%" class="mceEditable"><tbody>';
+		$return   .= "<p>Sprachaufnahmen-Verlauf:</p>";
+		$return   .= "<tr><td><strong>Datum</strong></td><td><strong>&nbsp;&nbsp;&nbsp;Echoname</strong></td><td><strong>&nbsp;&nbsp;&nbsp;Aufname</strong></td></tr>";			
+	
+		if (!defined($json->{customerHistoryRecords})) {}
+		elsif (ref($json->{customerHistoryRecords}) ne "ARRAY") {}
+		else {
+			# Play on Device
+			foreach my $result (@{$json->{customerHistoryRecords}}) {
+				foreach my $Voicerecords (@{$result->{voiceHistoryRecordItems}}) {
+				
+					next if ($Voicerecords->{recordItemType} eq "TTS_REPLACEMENT_TEXT") ;
+					my ($S, $M, $H, $d, $m, $Y) = localtime($result->{timestamp} / 1000);
+					$m += 1;
+					$Y += 1900;
+					my $dt = sprintf("%02d.%02d.%04d %02d:%02d:%02d", $d,$m, $Y, $H, $M, $S);
+					$addresscount ++;
+									
+					if ($Voicerecords->{transcriptText} eq "") {$Voicetext = "Falsch erkannt";} else {$Voicetext=$Voicerecords->{transcriptText};}
+					
+					my $MP3Filename = $Voicerecords->{recordItemKey} . ".mp3";
+					$MP3Filename =~ s/#//g;
+					
+					$return .= "<tr><td>" . $dt . " &nbsp;&nbsp;&nbsp;</td><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;". $result->{device}{"deviceName"} . '</td><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . '<audio controls><source src="' . $FW_ME . '/echodevice/VoiceRecords/' . $MP3Filename .'" type="audio/wav">' . '<a target="_blank" href=' . '"' . $FW_ME . '/echodevice/VoiceRecords/' . $MP3Filename .'"' . '>play' . "</a>"  .  '</audio>' . "</td><td><p>" . $Voicetext . "</p> &nbsp;&nbsp;&nbsp;</td></tr>";
+					
+					if ((-e $FW_dir . "/echodevice/VoiceRecords/". $MP3Filename)) { 
+						Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] Use EXIST MP3File  = " . $MP3Filename ;
+					}
+					else {
+						Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] Download MP3File  = " . $MP3Filename ;
+
+						#Header auslesen
+						my $AmazonHeader;
+
+						# Browser User Agent
+						my $HeaderLanguage = AttrVal($name,"browser_language","de,en-US;q=0.7,en;q=0.3");
+						my $UserAgent = AttrVal($name,"browser_useragent","Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:62.0) Gecko/20100101 Firefox/62.0"); 
+						
+						if (AttrVal($name,"browser_useragent_random",0) == 1) {
+							$UserAgent = join('', map{('a'..'z','A'..'Z',0..9)[rand 62]} 0..20);
+						}
+					
+						if($hash->{model} eq "ACCOUNT") {$AmazonHeader = "User-Agent: ". $UserAgent ."\r\nAccept-Language: " . $HeaderLanguage . "\r\nDNT: 1\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nCookie:".$hash->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
+						else 							{$AmazonHeader = "User-Agent: ". $UserAgent ."\r\nAccept-Language: " . $HeaderLanguage . "\r\nDNT: 1\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nCookie:".$hash->{IODev}->{helper}{".COOKIE"}."\r\ncsrf: ".$hash->{IODev}->{helper}{".CSRF"}."\r\nContent-Type: application/json; charset=UTF-8";}
+						
+						my $params =  {
+						   url             => "https://www.amazon.de/alexa-privacy/apd/rvh/audio?uid=" . urlEncode($Voicerecords->{utteranceId}),
+						   header          => $AmazonHeader,
+						   timeout         => 10,
+						   noshutdown      => 1,
+						   keepalive       => 1,
+						   method          => "GET",
+						   CL              => $param->{CL},
+						   hash            => $hash,
+						   type            => $MP3Filename,
+						   httpversion     => $param->{httpversion},
+						   NAME            => $name,
+						   callback        => \&echodevice_AmazonVoiceMP3
+						};
+
+						HttpUtils_NonblockingGet($params);						
+					}
+				}
+			}
+		}
+		
+		$return .= "</tbody></table>";
+		$return .= "<p><strong>".$addresscount. " Sprachaufnahmen gefunden</strong></p>";
+		$return .= "</html>";
+		$return =~ s/'/&#x0027/g;
+		
+		if ($addresscount == 0) {
+			asyncOutput( $param->{CL}, "Es konnten keine Sprachaufnahmen gefunden werden!" );
+		}
+		else {
+			asyncOutput( $param->{CL}, $return );
+		}
+	}
 	
 	else {
-		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] json for unknown message \n".Dumper(echodevice_anonymize($hash, $json));
+		Log3 $name, 4, "[$name] [echodevice_Parse] [$msgtype] [$msgnumber] json for unknown message \n".Dumper(echodevice_anonymize($hash, $json));
 	}
-  
-	echodevice_HandleCmdQueue($hash);
 
-	return undef;
 }
 
 ##########################
@@ -3811,6 +4214,8 @@ sub echodevice_GetSettings($) {
 	if ($ConnectState eq "connected") {
 
 		if($hash->{model} eq "ACCOUNT") {
+			echodevice_SendCommand($hash,"csrfPageUrl","");
+			echodevice_SendCommand($hash,"endpoints","");
 			echodevice_SendCommand($hash,"getnotifications","");
 			echodevice_SendCommand($hash,"alarmvolume","");
 			echodevice_SendCommand($hash,"bluetoothstate","");
@@ -3822,6 +4227,7 @@ sub echodevice_GetSettings($) {
 			echodevice_SendCommand($hash,"getisonline","");
 
 			echodevice_SendCommand($hash,"devices","")     if ($hash->{helper}{VERSION} eq "");
+			echodevice_SendCommand($hash,"namedListsIDs","")     if ($hash->{helper}{SHOPPING_LIST_ID} eq "");
 			echodevice_SendCommand($hash,"devicesstate","");
 			
 			echodevice_SendCommand($hash,"account","") if ($hash->{helper}{".COMMSID"} eq "");
@@ -3854,6 +4260,8 @@ sub echodevice_GetSettings($) {
 		}
 		else {
 		
+			Log3 $name, 4, "[echodevice_GetSettings] Devicename=$name DEF=" . $hash->{DEF} . " DEVICETYPE=" . $hash->{helper}{DEVICETYPE} . " Model=" . $hash->{model};
+		
 			if ($hash->{model} eq "Reverb" || $hash->{model} eq "Sonos One" || $hash->{model} eq "Sonos Beam") {
 				if ($hash->{IODev}{STATE} eq "connected") {
 					readingsBeginUpdate($hash);
@@ -3874,6 +4282,7 @@ sub echodevice_GetSettings($) {
 				if ($hash->{IODev}{STATE} eq "connected") {
 					echodevice_SendCommand($hash,"player","");
 					echodevice_SendCommand($hash,"media","");
+					echodevice_SendCommand($hash,"getsmarthome","");
 				}
 				else {
 					$nextupdate = 10;
@@ -3933,7 +4342,7 @@ sub echodevice_FirstStart($) {
 		if (index($hash->{helper}{".COOKIE"}, "{") != -1) { 
 			# NPM Login erkannt
 			readingsSingleUpdate ($hash, "COOKIE_TYPE", "READING_NPM" ,0);
-			$hash->{helper}{".COOKIE"} =~ /"localCookie":".*session-id=(.*)","?/;
+			$hash->{helper}{".COOKIE"} =~ /"localCookie":".*session-id=(.*?)","?/;
 			$hash->{helper}{".COOKIE"} = "session-id=" . $1;
 			$hash->{helper}{".COOKIE"} =~ /csrf=([-\w]+)[;\s]?(.*)?$/ if(defined($hash->{helper}{".COOKIE"}));
 			$hash->{helper}{".CSRF"}   = $1  if(defined($hash->{helper}{".COOKIE"}));
@@ -4147,52 +4556,103 @@ sub echodevice_LostConnect($$){
 ##########################
 sub echodevice_getModel($){
 	my ($ModelNumber) = @_;
+	my $name = $hash->{NAME};
 	
-	if   ($ModelNumber eq "AB72C64C86AW2"  || $ModelNumber eq "Echo")            		{return "Echo";}
-	elsif($ModelNumber eq "A3S5BH2HU6VAYF" || $ModelNumber eq "Echo Dot")        		{return "Echo Dot";}
-	elsif($ModelNumber eq "A32DOYMUN6DTXA" || $ModelNumber eq "Echo Dot")        		{return "Echo Dot Gen3";}
-	elsif($ModelNumber eq "A32DDESGESSHZA" || $ModelNumber eq "Echo Dot")				{return "Echo Dot Gen3";}
-	elsif($ModelNumber eq "A1RABVCI4QCIKC" || $ModelNumber eq "Echo Dot")				{return "Echo Dot Gen3";}
-	elsif($ModelNumber eq "A10A33FOX2NUBK" || $ModelNumber eq "Echo Spot")				{return "Echo Spot";}
-	elsif($ModelNumber eq "A1NL4BVLQ4L3N3" || $ModelNumber eq "Echo Show")				{return "Echo Show";}
-	elsif($ModelNumber eq "AWZZ5CVHX2CD"   || $ModelNumber eq "Echo Show")				{return "Echo Show Gen2";}
-	elsif($ModelNumber eq "A4ZP7ZC4PI6TO"  || $ModelNumber eq "Echo Show 5")            {return "Echo Show 5";}
-	elsif($ModelNumber eq "A1Z88NGR2BK6A2" || $ModelNumber eq "Echo Show 8")            {return "Echo Show 8";}
-	elsif($ModelNumber eq "A2M35JJZWCQOMZ" || $ModelNumber eq "Echo Plus")				{return "Echo Plus";}
-	elsif($ModelNumber eq "A1JJ0KFC4ZPNJ3" || $ModelNumber eq "Echo Input")				{return "Echo Input";}
-	elsif($ModelNumber eq "A18O6U1UQFJ0XK" || $ModelNumber eq "Echo Plus 2")			{return "Echo Plus 2";}
-	elsif($ModelNumber eq "A3VRME03NAXFUB" || $ModelNumber eq "Echo Flex")				{return "Echo Flex";}
-	elsif($ModelNumber eq "A3FX4UWTP28V1P" || $ModelNumber eq "Echo")					{return "Echo Gen3";}
-	elsif($ModelNumber eq "A30YDR2MK8HMRV" || $ModelNumber eq "Echo")					{return "Echo Gen3";}
-	elsif($ModelNumber eq "A3RBAYBE7VM004" || $ModelNumber eq "Echo Studio")			{return "Echo Studio";}
-	elsif($ModelNumber eq "A3SSG6GR8UU7SN" || $ModelNumber eq "Echo Sub")				{return "Echo Sub";}
-	elsif($ModelNumber eq "AILBSA2LNTOYL"  || $ModelNumber eq "Reverb")					{return "Reverb";}
-	elsif($ModelNumber eq "A15ERDAKK5HQQG" || $ModelNumber eq "Sonos Display")			{return "Sonos Display";}
-	elsif($ModelNumber eq "A2OSP3UA4VC85F" || $ModelNumber eq "Sonos One")				{return "Sonos One";}
-	elsif($ModelNumber eq "A3NPD82ABCPIDP" || $ModelNumber eq "Sonos Beam")				{return "Sonos Beam";}
-	elsif($ModelNumber eq "A7WXQPH584YP"   || $ModelNumber eq "Echo Gen2")				{return "Echo Gen2";}
-	elsif($ModelNumber eq "A3C9PE6TNYLTCH" || $ModelNumber eq "Echo Multiroom")  		{return "Echo Multiroom";}
-	elsif($ModelNumber eq "AP1F6KUH00XPV"  || $ModelNumber eq "Echo Stereopaar")		{return "Echo Stereopaar";}
-	elsif($ModelNumber eq "A3R9S4ZZECZ6YL" || $ModelNumber eq "Fire Tab HD 10")			{return "Fire Tab HD 10";}
-	elsif($ModelNumber eq "A3L0T0VL9A921N" || $ModelNumber eq "Fire Tab HD 8")			{return "Fire Tab HD 8";}
-	elsif($ModelNumber eq "A2M4YX06LWP8WI" || $ModelNumber eq "Fire Tab 7")				{return "Fire Tab 7";}	
-	elsif($ModelNumber eq "A2E0SNTXJVT7WK" || $ModelNumber eq "Fire TV V1")				{return "Fire TV V1";}
-	elsif($ModelNumber eq "A2GFL5ZMWNE0PX" || $ModelNumber eq "Fire TV")				{return "Fire TV";}
-	elsif($ModelNumber eq "A12GXV8XMS007S" || $ModelNumber eq "Fire TV")				{return "Fire TV";}
-	elsif($ModelNumber eq "A3HF4YRA2L7XGC" || $ModelNumber eq "Fire TV Cube")			{return "Fire TV Cube";}
-	elsif($ModelNumber eq "ADVBD696BHNV5"  || $ModelNumber eq "Fire TV Stick V1")		{return "Fire TV Stick V1";}
-	elsif($ModelNumber eq "A2LWARUGJLBYEW" || $ModelNumber eq "Fire TV Stick V2")		{return "Fire TV Stick V2";}
-	elsif($ModelNumber eq "AKPGW064GI9HE"  || $ModelNumber eq "Fire TV Stick 4K")		{return "Fire TV Stick 4K";}
-	elsif($ModelNumber eq "A2JKHJ0PX4J3L3" || $ModelNumber eq "ECHO FireTv Cube 4K")	{return "ECHO FireTv Cube 4K";}
-	elsif($ModelNumber eq "A10L5JEZTKKCZ8" || $ModelNumber eq "VOBOT")           		{return "VOBOT";}
-	elsif($ModelNumber eq "A37SHHQ3NUL7B5" || $ModelNumber eq "Bose Home Speaker 500")	{return "Bose Home Speaker 500";}
-	elsif($ModelNumber eq "AVN2TMX8MU2YM"  || $ModelNumber eq "Bose Home Speaker 500")	{return "Bose Home Speaker 500";}
-	elsif($ModelNumber eq "A1RTAM01W29CUP" || $ModelNumber eq "Alexa App for PC")       {return "Alexa App for PC";}
-	elsif($ModelNumber eq "A21Z3CGI8UIP0F" || $ModelNumber eq "HEOS")                   {return "HEOS";}
-	elsif($ModelNumber eq "AKOAGQTKAS9YB"  || $ModelNumber eq "Echo Connect")			{return "Echo Connect";}
-	elsif($ModelNumber eq "A3NTO4JLV9QWRB" || $ModelNumber eq "Gigaset L800HX")			{return "Gigaset L800HX";}
-	elsif($ModelNumber eq "A1HNT9YTOBE735" || $ModelNumber eq "Telekom Smart Speaker")	{return "Telekom Smart Speaker";}
-	elsif($ModelNumber eq "A1WAR447VT003J" || $ModelNumber eq "Yamaha MusicCast 20")	{return "Yamaha MusicCast 20";}
+	if   ($ModelNumber eq "AB72C64C86AW2"  || $ModelNumber eq "Echo")            			{return "Echo";}
+	elsif($ModelNumber eq "A3S5BH2HU6VAYF" || $ModelNumber eq "Echo Dot")        			{return "Echo Dot";}
+	elsif($ModelNumber eq "A32DOYMUN6DTXA" || $ModelNumber eq "Echo Dot")        			{return "Echo Dot Gen3";}
+	elsif($ModelNumber eq "A32DDESGESSHZA" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen3";}
+	elsif($ModelNumber eq "A1RABVCI4QCIKC" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen3";}
+	elsif($ModelNumber eq "A3RMGO6LYLH7YN" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen4";}
+	elsif($ModelNumber eq "A2U21SRK4QGSE1" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen4";}
+	elsif($ModelNumber eq "A2H4LV5GIZ1JFT" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen4 with Clock";}
+	elsif($ModelNumber eq "A2DS1Q2TPDJ48U" || $ModelNumber eq "Echo Dot")					{return "Echo Dot Gen5 with Clock";}
+ 	elsif($ModelNumber eq "A10A33FOX2NUBK" || $ModelNumber eq "Echo Spot")					{return "Echo Spot";}
+	elsif($ModelNumber eq "A1NL4BVLQ4L3N3" || $ModelNumber eq "Echo Show")					{return "Echo Show";}
+	elsif($ModelNumber eq "AWZZ5CVHX2CD"   || $ModelNumber eq "Echo Show")					{return "Echo Show Gen2";}
+	elsif($ModelNumber eq "AIPK7MM90V7TB"  || $ModelNumber eq "Echo Show")					{return "Echo Show Gen3";}
+	elsif($ModelNumber eq "A4ZP7ZC4PI6TO"  || $ModelNumber eq "Echo Show 5")        	    {return "Echo Show 5";}
+	elsif($ModelNumber eq "A1XWJRHALS1REP" || $ModelNumber eq "Echo Show 5")				{return "Echo Show 5 Gen2";}
+	elsif($ModelNumber eq "A11QM4H9HGV71H" || $ModelNumber eq "Echo Show 5")				{return "Echo Show 5 Gen3";}
+	elsif($ModelNumber eq "A4ZXE0RM7LQ7A"  || $ModelNumber eq "Echo Show 5")				{return "Echo Show 5 Gen5";}
+	elsif($ModelNumber eq "A1Z88NGR2BK6A2" || $ModelNumber eq "Echo Show 8")				{return "Echo Show 8";}
+	elsif($ModelNumber eq "A15996VY63BQ2D" || $ModelNumber eq "Echo Show 8")				{return "Echo Show 8 Gen2";}
+	elsif($ModelNumber eq "A2UONLFQW0PADH" || $ModelNumber eq "Echo Show 8")				{return "Echo Show 8 Gen3";}
+	elsif($ModelNumber eq "A1EIANJ7PNB0Q7" || $ModelNumber eq "Echo Show 15")				{return "Echo Show 15 Gen1";}
+	elsif($ModelNumber eq "A2M35JJZWCQOMZ" || $ModelNumber eq "Echo Plus")					{return "Echo Plus";}
+	elsif($ModelNumber eq "A1JJ0KFC4ZPNJ3" || $ModelNumber eq "Echo Input")					{return "Echo Input";}
+	elsif($ModelNumber eq "A18O6U1UQFJ0XK" || $ModelNumber eq "Echo Plus 2")				{return "Echo Plus 2";}
+	elsif($ModelNumber eq "ASQZWP4GPYUT7"  || $ModelNumber eq "Echo Plus 2 gen2")			{return "Echo Plus 2";}
+	elsif($ModelNumber eq "A3VRME03NAXFUB" || $ModelNumber eq "Echo Flex")					{return "Echo Flex";}
+	elsif($ModelNumber eq "A3FX4UWTP28V1P" || $ModelNumber eq "Echo")						{return "Echo Gen3";}
+	elsif($ModelNumber eq "A30YDR2MK8HMRV" || $ModelNumber eq "Echo")						{return "Echo Gen3";}
+	elsif($ModelNumber eq "A3RBAYBE7VM004" || $ModelNumber eq "Echo Studio")				{return "Echo Studio";}
+	elsif($ModelNumber eq "A3SSG6GR8UU7SN" || $ModelNumber eq "Echo Sub")					{return "Echo Sub";}
+	elsif($ModelNumber eq "AILBSA2LNTOYL"  || $ModelNumber eq "Reverb")						{return "Reverb";}
+	elsif($ModelNumber eq "A15ERDAKK5HQQG" || $ModelNumber eq "Sonos Display")				{return "Sonos Display";}
+	elsif($ModelNumber eq "A2OSP3UA4VC85F" || $ModelNumber eq "Sonos One")					{return "Sonos One";}
+	elsif($ModelNumber eq "A3NPD82ABCPIDP" || $ModelNumber eq "Sonos Beam")					{return "Sonos Beam";}
+	elsif($ModelNumber eq "A2Z8O30CD35N8F" || $ModelNumber eq "Sonos Arc")					{return "Sonos Arc";}
+	elsif($ModelNumber eq "A7WXQPH584YP"   || $ModelNumber eq "Echo Gen2")					{return "Echo Gen2";}
+	elsif($ModelNumber eq "A3C9PE6TNYLTCH" || $ModelNumber eq "Echo Multiroom")  			{return "Echo Multiroom";}
+	elsif($ModelNumber eq "AP1F6KUH00XPV"  || $ModelNumber eq "Echo Stereopaar")			{return "Echo Stereopaar";}
+	elsif($ModelNumber eq "A1DL2DVDQVK3Q"  || $ModelNumber eq "Fire Tab HD 10")				{return "Fire Tab HD 10";}
+	elsif($ModelNumber eq "A3R9S4ZZECZ6YL" || $ModelNumber eq "Fire Tab HD 10")				{return "Fire Tab HD 10";}
+	elsif($ModelNumber eq "A3L0T0VL9A921N" || $ModelNumber eq "Fire Tab HD 8")				{return "Fire Tab HD 8";}
+	elsif($ModelNumber eq "A2M4YX06LWP8WI" || $ModelNumber eq "Fire Tab 7")					{return "Fire Tab 7";}	
+	elsif($ModelNumber eq "A2E0SNTXJVT7WK" || $ModelNumber eq "Fire TV V1")					{return "Fire TV V1";}
+	elsif($ModelNumber eq "A2GFL5ZMWNE0PX" || $ModelNumber eq "Fire TV")					{return "Fire TV";}
+	elsif($ModelNumber eq "A12GXV8XMS007S" || $ModelNumber eq "Fire TV")					{return "Fire TV";}
+	elsif($ModelNumber eq "A3HF4YRA2L7XGC" || $ModelNumber eq "Fire TV Cube")				{return "Fire TV Cube";}
+	elsif($ModelNumber eq "A1VGB7MHSIEYFK" || $ModelNumber eq "Fire TV Cube Gen3")			{return "Fire TV Cube Gen3";}
+	elsif($ModelNumber eq "ADVBD696BHNV5"  || $ModelNumber eq "Fire TV Stick V1")			{return "Fire TV Stick V1";}
+	elsif($ModelNumber eq "A2LWARUGJLBYEW" || $ModelNumber eq "Fire TV Stick V2")			{return "Fire TV Stick V2";}
+	elsif($ModelNumber eq "AKPGW064GI9HE"  || $ModelNumber eq "Fire TV Stick 4K")			{return "Fire TV Stick 4K";}
+	elsif($ModelNumber eq "A265XOI9586NML" || $ModelNumber eq "Fire TV Stick 4K")			{return "Fire TV Stick 4K";}
+	elsif($ModelNumber eq "A3EVMLQTU6WL1W" || $ModelNumber eq "Fire TV Stick 4K Max")		{return "Fire TV Stick 4K Max";}
+	elsif($ModelNumber eq "A31DTMEEVDDOIV" || $ModelNumber eq "Fire TV Stick 4K")			{return "Fire TV";}
+	elsif($ModelNumber eq "A1WZKXFLI43K86" || $ModelNumber eq "Fire TV Stick 4K Max")		{return "Fire TV Stick 4K Max Gen2";}
+	elsif($ModelNumber eq "A2JKHJ0PX4J3L3" || $ModelNumber eq "ECHO FireTv Cube 4K")		{return "ECHO FireTv Cube 4K";}
+	elsif($ModelNumber eq "A10L5JEZTKKCZ8" || $ModelNumber eq "VOBOT")           			{return "VOBOT";}
+	elsif($ModelNumber eq "A37SHHQ3NUL7B5" || $ModelNumber eq "Bose Home Speaker 500")		{return "Bose Home Speaker 500";}
+	elsif($ModelNumber eq "AVN2TMX8MU2YM"  || $ModelNumber eq "Bose Home Speaker 500")		{return "Bose Home Speaker 500";}
+	elsif($ModelNumber eq "A1RTAM01W29CUP" || $ModelNumber eq "Alexa App for PC")			{return "Alexa App for PC";}
+	elsif($ModelNumber eq "A21Z3CGI8UIP0F" || $ModelNumber eq "HEOS")						{return "HEOS";}
+	elsif($ModelNumber eq "AKOAGQTKAS9YB"  || $ModelNumber eq "Echo Connect")				{return "Echo Connect";}
+	elsif($ModelNumber eq "A3NTO4JLV9QWRB" || $ModelNumber eq "Gigaset L800HX")				{return "Gigaset L800HX";}
+	elsif($ModelNumber eq "A1HNT9YTOBE735" || $ModelNumber eq "Telekom Smart Speaker")		{return "Telekom Smart Speaker";}
+	elsif($ModelNumber eq "A1WAR447VT003J" || $ModelNumber eq "Yamaha MusicCast 20")		{return "Yamaha MusicCast 20";}
+	elsif($ModelNumber eq "AVE5HX13UR5NO"  || $ModelNumber eq "Zero Touch (Logitech)")		{return "Zero Touch (Logitech)";}
+	elsif($ModelNumber eq "A3GZUE7F9MEB4U" || $ModelNumber eq "Sony WH-100XM3")				{return "Sony WH-100XM3";}
+	elsif($ModelNumber eq "A2J0R2SD7G9LPA" || $ModelNumber eq "Lenovo P10")					{return "Lenovo P10";}
+	elsif($ModelNumber eq "A1J16TEDOYCZTN" || $ModelNumber eq "Amazon Tablet")				{return "Amazon Tablet";}
+	elsif($ModelNumber eq "A38EHHIB10L47V" || $ModelNumber eq "Fire HD 8 Tablet")			{return "Fire HD 8 Tablet";}
+	elsif($ModelNumber eq "A112LJ20W14H95" || $ModelNumber eq "Media Display")				{return "Media Display";}
+	elsif($ModelNumber eq "A1H0CMF1XM0ZP4" || $ModelNumber eq "Bose Soundtouch")			{return "Bose Soundtouch";}
+	elsif($ModelNumber eq "AAMFMBBEW2960"  || $ModelNumber eq "Garmin DriveSmart 65 with Amazon Alexa")	{return "Garmin DriveSmart 65 with Amazon Alexa";}
+	elsif($ModelNumber eq "A2IVLV5VM2W81"  || $ModelNumber eq "Mobile Voice iOS")			{return "Mobile Voice iOS";}
+	elsif($ModelNumber eq "A2TF17PFR55MTB" || $ModelNumber eq "Mobile Voice Android")		{return "Mobile Voice Android";}
+	elsif($ModelNumber eq "A3V3VA38K169FO" || $ModelNumber eq "Fire Tablet")				{return "Fire Tablet";}
+	elsif($ModelNumber eq "AVD3HM0HOJAAL"  || $ModelNumber eq "Sonos One")					{return "Sonos One";}
+	elsif($ModelNumber eq "A1C66CX2XD756O" || $ModelNumber eq "Fire HD 8 Tablet")			{return "Fire HD 8 Tablet";}
+	elsif($ModelNumber eq "A17LGWINFBUTZZ" || $ModelNumber eq "Anker Roav Car Charger")		{return "Anker Roav Car Charger";}
+	elsif($ModelNumber eq "A2XPGY5LRKB9BE" || $ModelNumber eq "FitBit watch")				{return "FitBit watch";}
+	elsif($ModelNumber eq "A2Y04QPFCANLPQ" || $ModelNumber eq "Bose QC35 II")				{return "Bose QC35 II";}
+	elsif($ModelNumber eq "A2WFDCBDEXOXR8" || $ModelNumber eq "Bose Soundbar")				{return "Bose Soundbar";}
+	elsif($ModelNumber eq "A3BW5ZVFHRCQPO" || $ModelNumber eq "Alexa Car")					{return "Alexa Car";}
+	elsif($ModelNumber eq "A303PJF6ISQ7IC" || $ModelNumber eq "Echo Auto")					{return "Echo Auto";}
+	elsif($ModelNumber eq "A1ZB65LA390I4K" || $ModelNumber eq "Fire HD 10 Tablet")			{return "Fire HD 10 Tablet";}
+	elsif($ModelNumber eq "AVU7CPPF2ZRAS"  || $ModelNumber eq "Fire HD 8 Plus (2020)")		{return "Fire HD 8 Plus (2020)";}
+	elsif($ModelNumber eq "A24Z7PEXY4MDTK" || $ModelNumber eq "Sony WF-1000X")				{return "Sony WF-1000X";}
+	elsif($ModelNumber eq "ABN8JEI7OQF61"  || $ModelNumber eq "Sony WF-1000XM3")			{return "Sony WF-1000XM3";}
+	elsif($ModelNumber eq "A7S41FQ5TWBC9"  || $ModelNumber eq "Sony WH-1000XM4")			{return "Sony WH-1000XM4";}
+	elsif($ModelNumber eq "A2WN1FJ2HG09UN" || $ModelNumber eq "Ultimate Alexa")				{return "Ultimate Alexa";}
+	elsif($ModelNumber eq "A23FPV4BT7FH68" || $ModelNumber eq "Yamaha YAS-209 Soundbar")	{return "Yamaha YAS-209 Soundbar";}
+	elsif($ModelNumber eq "A347N36W21919O" || $ModelNumber eq "Yamaha ATS-2090 Soundbar")	{return "Yamaha ATS-2090 Soundbar";}
+	elsif($ModelNumber eq "A39Y3UG1XLEJLZ" || $ModelNumber eq "Fitbit Sense")				{return "Fitbit Sense";}
+	elsif($ModelNumber eq "A1D6RDUOWH31HF" || $ModelNumber eq "JLR Incontrol")				{return "JLR Incontrol";}
+	elsif($ModelNumber eq "AQCGW9PSYWRF"   || $ModelNumber eq "Polk React Soundbar")		{return "Polk React Soundbar";}
+
 	elsif($ModelNumber eq "")               {return "";}
 	elsif($ModelNumber eq "ACCOUNT")        {return "ACCOUNT";}
 	else {return "unbekannt";}
@@ -4427,6 +4887,13 @@ sub echodevice_NPMInstall($){
 	
 	my $InstallResult = '<html><p><strong>Installationsergebnis</strong></p><br>';
 	my $npm_bin = AttrVal($name,"npm_bin","/usr/bin/npm");
+
+	my $npm_fhem_home = AttrVal($name,"fhem_home","/opt/fhem");
+
+	if (!(-d $npm_fhem_home)) {
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginRefresh] npm_fhem_home $npm_fhem_home existiert nicht!! Bitte das Attribut fhem_home entsprechend einrichten " ;
+		return;
+	}
 	
 	# Prüfen ob npm installiert ist
 	if (!(-e $npm_bin)) {
@@ -4441,24 +4908,24 @@ sub echodevice_NPMInstall($){
 	}
 
 	# Verzeichnis anlegen
-	mkdir("cache", 0777) unless(-d "cache" );
-	mkdir("cache/alexa-cookie", 0777) unless(-d "cache/alexa-cookie" );
-	mkdir("cache/alexa-cookie/node_modules", 0777) unless(-d "cache/alexa-cookie/node_modules" );
+	mkdir($npm_fhem_home . "/cache", 0777) unless(-d "cache" );
+	mkdir($npm_fhem_home . "/cache/alexa-cookie", 0777) unless(-d $npm_fhem_home . "/cache/alexa-cookie" );
+	mkdir($npm_fhem_home . "/cache/alexa-cookie/node_modules", 0777) unless(-d $npm_fhem_home . "/cache/alexa-cookie/node_modules" );
 	
 	# Prüfen ob schon eine Installation vorhanden ist ggf. Modul löschen
-	if (-e "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js") {
+	if (-e $npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js") {
 		$InstallResult .= "Vorhandene Installation wird aktualisiert<br>";
 		unlink "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js";
 	}
 	else {$InstallResult .= "Installation wird angestartet<br>";}
 
-	open CMD,'-|','sudo ' . $npm_bin . ' install --prefix ./cache/alexa-cookie alexa-cookie2' or die $@;
+	open CMD,'-|','sudo ' . $npm_bin . ' install --prefix ' . $npm_fhem_home . '/cache/alexa-cookie alexa-cookie2' or die $@;
 	my $line;
 	while (defined($line=<CMD>)) {$InstallResult .= $line. "<br>";}
 	close CMD;
 	
 	# Prüfen ob das alexa-cookie Modul vorhanden ist
-	if (-e "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js") {$InstallResult .= '<p><strong><font color="green">Installation erfolgreich durchgefuehrt</font></strong></p>';}
+	if (-e $npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js") {$InstallResult .= '<p><strong><font color="green">Installation erfolgreich durchgefuehrt</font></strong></p>';}
 	else {$InstallResult .= '<p><strong><font color="red">!!Installation fehlgeschlagen!!</font></strong></p>';}
 	
 	# Zurückbutton
@@ -4475,6 +4942,8 @@ sub echodevice_NPMLoginNew($){
 	my $number = $hash->{NR};
 	my $InstallResult = '<html><p><strong>Login Ergebnis</strong></p><br>';
 	my $npm_bin_node  = AttrVal($name,"npm_bin_node","/usr/bin/node");
+	my $npm_fhem_home = AttrVal($name,"fhem_home","/opt/fhem");
+	
 	$NPMLoginTyp   = "NPM Login New " . localtime();
 	
 	# Prüfen ob node installiert ist
@@ -4520,7 +4989,7 @@ sub echodevice_NPMLoginNew($){
 	} while ($NodeLoop eq "1");
 	
 	# Prüfen ob das alexa-cookie Mdoul vorhanden ist
-	if (!(-e "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js")) {
+	if (!(-e $npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js")) {
 		$InstallResult .= '<p>Das alexa-cookie Modul wurde nicht gefunden. Bitte fuehrt am Amazon Account Device einen set "<strong>NPM_install</strong>" durch </p>';
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
@@ -4530,7 +4999,7 @@ sub echodevice_NPMLoginNew($){
 	}
 	
 	# Version prüfen;
-	echodevice_NPMCheckVersion($hash,"cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginNew");
+	echodevice_NPMCheckVersion($hash, $npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginNew");
 	
 	my $ProxyPort = AttrVal($name,"npm_proxy_port","3002");
 	my $OwnIP     = "127.0.0.1";
@@ -4631,14 +5100,14 @@ sub echodevice_NPMLoginNew($){
 	$SkriptContent    .= "" . "\n";
 	$SkriptContent    .= "alexaCookie.generateAlexaCookie('LoginFHEM', 'xxxx', config, (err, result) => {" . "\n";
 	$SkriptContent    .= "    console.log('RESULT: ' + err + ' / ' + JSON.stringify(result));" . "\n";
-	$SkriptContent    .= "    fs.writeFileSync('./cache/alexa-cookie/" . $number . "result.json', JSON.stringify(result) , 'utf-8'); " . "\n";
+	$SkriptContent    .= "    fs.writeFileSync('" . $npm_fhem_home . "/cache/alexa-cookie/" . $number . "result.json', JSON.stringify(result) , 'utf-8'); " . "\n";
 	$SkriptContent    .= "    if (result && result.csrf) {" . "\n";
 	$SkriptContent    .= "        alexaCookie.stopProxyServer();" . "\n";
 	$SkriptContent    .= "    }" . "\n";
 	$SkriptContent    .= "});" . "\n";
 	$SkriptContent    .= "" . "\n";
 
-	my $filename  = "cache/alexa-cookie/" . $number . "create-cookie.js";
+	my $filename  = $npm_fhem_home . "/cache/alexa-cookie/" . $number . "create-cookie.js";
 
 	# Altes Skript löschen
 	if ((-e $filename)) {unlink $filename};
@@ -4654,7 +5123,7 @@ sub echodevice_NPMLoginNew($){
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
 		$InstallResult =~ s/'/&#x0027/g;
-		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] create-cookie.js not found" ;
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginNew] $filename not found" ;
 		return $InstallResult;
 	}
 	
@@ -4665,7 +5134,7 @@ sub echodevice_NPMLoginNew($){
 		
 	# Skript ausführen
 	close CMD;
-	open CMD,'-|', $npm_bin_node . ' ./' . $filename or die $@;
+	open CMD,'-|', $npm_bin_node . ' ' . $filename or die $@;
 	my $line;
 	my $Loop = "1";
 	my $LoopCount = 0;
@@ -4724,8 +5193,14 @@ sub echodevice_NPMLoginRefresh($){
 
 	my $InstallResult = '<html><p><strong>Login Ergebnis</strong></p><br>';
 	my $npm_bin_node  = AttrVal($name,"npm_bin_node","/usr/bin/node");
+	my $npm_fhem_home = AttrVal($name,"fhem_home","/opt/fhem");
 	
 	$NPMLoginTyp   = "NPM Login Refresh " . localtime();
+	
+	if (!(-d $npm_fhem_home)) {
+		Log3 $name, 3, "[$name] [echodevice_NPMLoginRefresh] npm_fhem_home $npm_fhem_home existiert nicht!! Bitte das Attribut fhem_home entsprechend einrichten " ;
+		return;
+	}
 	
 	# Prüfen ob npm installiert ist
 	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check $npm_bin_node" ;
@@ -4742,7 +5217,7 @@ sub echodevice_NPMLoginRefresh($){
 
 	# Prüfen ob das alexa-cookie Mdoul vorhanden ist
 	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check alexa-cookie.js" ;
-	if (!(-e "cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js")) {
+	if (!(-e $npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/alexa-cookie.js")) {
 		$InstallResult .= '<p>Das alexa-cookie Modul wurde nicht gefunden. Bitte fuehrt am Amazon Account Device einen set "<strong>NPM_install</strong>" durch </p>';
 		$InstallResult .= '<br><form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form>';
 		$InstallResult .= "</html>";
@@ -4752,7 +5227,7 @@ sub echodevice_NPMLoginRefresh($){
 	}
 	
 	# Version prüfen;
-	echodevice_NPMCheckVersion($hash,"cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginRefresh");
+	echodevice_NPMCheckVersion($hash,$npm_fhem_home . "/cache/alexa-cookie/node_modules/alexa-cookie2/package.json","echodevice_NPMLoginRefresh");
 	
 	# Prüfen ob das Refresh Cookie gültig ist!
 	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] check Refresh Cookie String" ;
@@ -4776,11 +5251,11 @@ sub echodevice_NPMLoginRefresh($){
 	$SkriptContent    .= "" . "\n";
 	$SkriptContent    .= "alexaCookie.refreshAlexaCookie(config, (err, result) => {" . "\n";
 	$SkriptContent    .= "    console.log('RESULT: ' + err + ' / ' + JSON.stringify(result));" . "\n";
-	$SkriptContent    .= "    fs.writeFileSync('./cache/alexa-cookie/" . $number . "result.json', JSON.stringify(result) , 'utf-8'); " . "\n";
+	$SkriptContent    .= "    fs.writeFileSync('" . $npm_fhem_home . "/cache/alexa-cookie/" . $number . "result.json', JSON.stringify(result) , 'utf-8'); " . "\n";
 	$SkriptContent    .= "});" . "\n";
 	$SkriptContent    .= "" . "\n";
 	
-	my $filename  = "cache/alexa-cookie/" . $number . "refresh-cookie.js";
+	my $filename  = $npm_fhem_home . "/cache/alexa-cookie/" . $number . "refresh-cookie.js";
 	#$InstallResult .= '<form><input type="button" value="Zur&uuml;ck" onClick="history.go(-1);return true;"></form><br>';
 	
 	# Altes Skript löschen
@@ -4805,7 +5280,7 @@ sub echodevice_NPMLoginRefresh($){
 	# Skript ausführen
 	close CMD;
 	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] start $npm_bin_node $filename";
-	open CMD,'-|',$npm_bin_node . ' ./' . $filename . ' &';
+	open CMD,'-|',$npm_bin_node . ' ' . $filename . ' &';
 	
 	Log3 $name, 4, "[$name] [echodevice_NPMLoginRefresh] start InternalTimer echodevice_NPMWaitForCookie";
 	InternalTimer(gettimeofday() + 1 , "echodevice_NPMWaitForCookie" , $hash, 0);
@@ -4818,16 +5293,18 @@ sub echodevice_NPMWaitForCookie($){
 	my ($hash) = @_;
 	my $name        = $hash->{NAME};
 	my $number      = $hash->{NR};
-	my $filename    = "cache/alexa-cookie/" . $number . "result.json";
+	my $npm_fhem_home = AttrVal($name,"fhem_home","/opt/fhem");
+
+	my $filename    = $npm_fhem_home . "/cache/alexa-cookie/" . $number . "result.json";
 	my $CanDelete   = 0;
 	my $ExistSkript = "false";
 	my $CookieResult;
 	
 	if ($NPMLoginTyp =~ m/Refresh/) {
-		$ExistSkript = $number . "refresh-cookie.js = true"  if (-e "cache/alexa-cookie/" . $number . "refresh-cookie.js");
+		$ExistSkript = $number . "refresh-cookie.js = true"  if (-e $npm_fhem_home . "/cache/alexa-cookie/" . $number . "refresh-cookie.js");
 	}
 	else {
-		$ExistSkript = $number . "create-cookie.js = true" if (-e "cache/alexa-cookie/" . $number . "create-cookie.js");
+		$ExistSkript = $number . "create-cookie.js = true" if (-e $npm_fhem_home . "/cache/alexa-cookie/" . $number . "create-cookie.js");
 	}
 	
 	if (-e $filename) {
@@ -4843,15 +5320,15 @@ sub echodevice_NPMWaitForCookie($){
 				readingsSingleUpdate( $hash, "COOKIE_TYPE", "NPM_Login",1 );
 
 				$hash->{helper}{".COOKIE"} = $CookieResult;
-				$hash->{helper}{".COOKIE"} =~ /"localCookie":".*session-id=(.*)","?/;
+				$hash->{helper}{".COOKIE"} =~ /"localCookie":".*session-id=(.*?)","?/;
 				$hash->{helper}{".COOKIE"} = "session-id=" . $1;
 				$hash->{helper}{".COOKIE"} =~ /csrf=([-\w]+)[;\s]?(.*)?$/ if(defined($hash->{helper}{".COOKIE"}));
 				$hash->{helper}{".CSRF"}   = $1  if(defined($hash->{helper}{".COOKIE"}));
 
 				# result.json & Skripte löschen
 				if (-e $filename) {unlink $filename;}
-				if (-e "cache/alexa-cookie/" . $number . "create-cookie.js")  {unlink "cache/alexa-cookie/" . $number . "create-cookie.js";}
-				if (-e "cache/alexa-cookie/" . $number . "refresh-cookie.js") {unlink "cache/alexa-cookie/" . $number . "refresh-cookie.js";}
+				if (-e $npm_fhem_home . "cache/alexa-cookie/" . $number . "create-cookie.js")  {unlink $npm_fhem_home . "cache/alexa-cookie/" . $number . "create-cookie.js";}
+				if (-e $npm_fhem_home . "cache/alexa-cookie/" . $number . "refresh-cookie.js") {unlink $npm_fhem_home . "cache/alexa-cookie/" . $number . "refresh-cookie.js";}
 					
 				echodevice_setState($hash,"connected");				
 			}
@@ -4888,6 +5365,35 @@ sub echodevice_NPMCheckVersion ($$$) {
 	else {Log3 $name, 4, "[$name] [$LogBereich] Version alexa-cookie.js = unknown";}
 	
 	return $Modulversion;
+}
+
+sub echodevice_NPMCheck($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+
+	# Attribute auslesen
+	my $npm_fhem_home = AttrVal($name,"fhem_home","/opt/fhem");
+	
+	# Cache Verzeichnis prüfen
+	my $InstallResult = '<html><p><strong>ERGEBNIS ls -l ' . $npm_fhem_home .'/cache</strong></p><br>';
+	open CMD,'-|','ls -l ' . $npm_fhem_home . '/cache' or die $@;
+	my $line;
+	while (defined($line=<CMD>)) {$InstallResult .= $line. "<br>";}
+	close CMD;
+
+	# alexa-cookie Verzeichnis prüfen
+	$InstallResult .= '<html><p><strong>ERGEBNIS ls -l ' . $npm_fhem_home .'/cache/alexa-cookie</strong></p><br>';
+	open CMD,'-|','ls -l ' . $npm_fhem_home . '/cache/alexa-cookie' or die $@;
+	my $line;
+	while (defined($line=<CMD>)) {$InstallResult .= $line. "<br>";}
+	close CMD;
+
+	# Zurückbutton
+	$InstallResult .= "</html>";
+	$InstallResult =~ s/'/&#x0027/g;
+	
+	return $InstallResult;
+	
 }
 
 ##########################
@@ -5053,6 +5559,7 @@ sub echodevice_Amazon($$$) {
 		data            => '{"OutputFormat": "' . $AWS_Format . '","Text": "' . $parameter .'","TextType": "text","VoiceId": "' . @VoiceName[2] . '"}',
         hash            => $hash,
 		type            => $type,
+		NAME            => $name,
         callback        => \&echodevice_ParseTTSMP3
     };
 	
@@ -5088,10 +5595,44 @@ sub echodevice_Google($$$) {
 		method          => "GET",
         hash            => $hash,
 		type            => $type,
+		NAME            => $name,
         callback        => \&echodevice_ParseTTSMP3
     };
 
 	HttpUtils_NonblockingGet($params);
+}
+
+sub echodevice_AmazonVoiceMP3($) {
+	my ($param, $err, $data) = @_;
+	my $hash = $param->{hash};
+	my $name = $hash->{NAME};
+	my $type = $param->{type};
+	Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] [$type] URL      = " . $param->{url};
+	Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] [$type] HEADER   = " . $param->{header};
+	Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] [$type] KEY      = " . $param->{type};
+	Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] [$type] ERROR    = " . $err if ($err);
+	Log3 $name, 5, "[$name] [echodevice_AmazonVoiceMP3] [$type] DATA     = " . $data;
+
+	#ReadingsVal($hash->{IODev}->{NAME} , lc("TTS_Filename"), "")
+	my $MP3Filename = $param->{type};
+	
+	Log3 $name, 4, "[$name] [echodevice_AmazonVoiceMP3] [$type] MP3File  = " . $MP3Filename;
+
+	if ($data eq "") {
+		Log3 $name, 3, "[$name] [echodevice_AmazonVoiceMP3] [$type] no data received";
+		readingsSingleUpdate( $hash, "tts_error", "no data received",1 );
+		return;
+	}
+	
+	#Verzeichnis echodevice anlegen
+	mkdir($FW_dir . "/echodevice", 0777) unless(-d $FW_dir . "/echodevice" );
+	mkdir($FW_dir . "/echodevice/VoiceRecords", 0777) unless(-d $FW_dir . "/echodevice/VoiceRecords" );
+
+	# MP3 Datei anlegen
+	open(FH, ">$FW_dir/echodevice/VoiceRecords/$MP3Filename");
+	print FH $data;
+	close(FH);
+
 }
 
 sub echodevice_ParseTTSMP3($) {
@@ -5208,7 +5749,7 @@ sub echodevice_PlayOwnMP3($$) {
 	print FH $M3UContentWR;
 	close(FH);
 		
-	echodevice_SendCommand($hash,"tunein",ReadingsVal($hash->{IODev}->{NAME} , "POM_TuneIn", "s167655"));
+	echodevice_SendCommand($hash,"tunein",ReadingsVal($hash->{IODev}->{NAME} , lc("POM_TuneIn"), "s167655"));
 }
 
 sub echodevice_SaveOwnPlaylist($$) {
@@ -5325,7 +5866,7 @@ sub echodevice_StartTTSMessage($) {
 	my $name = $hash->{NAME};
 	
 	# TTS starten
-	echodevice_SendCommand($hash,"ttstunein",ReadingsVal($hash->{IODev}->{NAME} , "TTS_TuneIn", "s237481"));
+	echodevice_SendCommand($hash,"ttstunein",ReadingsVal($hash->{IODev}->{NAME} , lc("TTS_TuneIn"), "s237481"));
 }
 
 1;

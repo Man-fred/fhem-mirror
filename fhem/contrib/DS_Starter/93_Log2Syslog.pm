@@ -1,9 +1,9 @@
 ##########################################################################################################################
-# $Id: 93_Log2Syslog.pm 21923 2020-05-12 20:00:24Z DS_Starter $
+# $Id: 93_Log2Syslog.pm 23076 2020-11-02 18:50:38Z DS_Starter $
 ##########################################################################################################################
 #       93_Log2Syslog.pm
 #
-#       (c) 2017-2020 by Heiko Maaz
+#       (c) 2017-2021 by Heiko Maaz
 #       e-mail: Heiko dot Maaz at t-online dot de
 #
 #       This script is part of fhem.
@@ -106,6 +106,8 @@ BEGIN {
 
 # Versions History intern:
 my %vNotesIntern = (
+  "5.12.4" => "27.02.2021  don't split data by CRLF if EOF is used (in getIfData) ",
+  "5.12.3" => "02.11.2020  avoid do Logfile archiving which was executed in seldom (unknown) cases ",
   "5.12.2" => "15.05.2020  permit content of 'exclErrCond' to fhemLog strings ",
   "5.12.1" => "12.05.2020  add dev to check regex of 'exclErrCond' ",
   "5.12.0" => "16.04.2020  improve IETF octet count again, internal code changes for PBP ",
@@ -544,14 +546,16 @@ sub Read {                                                  ## no critic 'comple
   if($hash->{TEMPORARY}) {
       my $sname = $hash->{SNAME};
       $rhash    = $defs{$sname};
-  } else {
+  } 
+  else {
       $rhash = $hash;
   }
           
   my $pp = $rhash->{PROFILE};
   if($pp =~ /BSD/) {                                                    # Framelänge BSD-Format
       $len = $RFC3164len{DL};
-  } elsif ($pp =~ /IETF/) {                                             # Framelänge IETF-Format   
+  } 
+  elsif ($pp =~ /IETF/) {                                               # Framelänge IETF-Format   
       $len = $RFC5425len{DL};     
   } 
 
@@ -561,9 +565,11 @@ sub Read {                                                  ## no critic 'comple
   
   my $name   = $hash->{NAME};
   return if(IsDisabled($name) || isMemLock($hash));
-  my $mevt   = AttrVal($name, "makeEvent", "intern");                   # wie soll Reading/Event erstellt werden
-  my $sevevt = AttrVal($name, "respectSeverity", "");                   # welcher Schweregrad soll berücksichtigt werden (default: alle)
-      
+  
+  my $mevt   = AttrVal($name, "makeEvent",       "intern");             # wie soll Reading/Event erstellt werden
+  my $sevevt = AttrVal($name, "respectSeverity", ""      );             # welcher Schweregrad soll berücksichtigt werden (default: alle)
+  my $uef    = AttrVal($name, "useEOF",          0       );             # verwende EOF
+  
   if($socket) {
       ($st,$data,$hash) = getIfData($hash,$len,$mlen,$reread);
   }
@@ -578,9 +584,11 @@ sub Read {                                                  ## no critic 'comple
           $tail   = $+{tail}; 
           $msg    = substr($tail,0,$ocount);
           push @load, $msg;
+          
           if(length($tail) >= $ocount) {
               $tail = substr($tail,$ocount);
-          } else {
+          } 
+          else {
               $tail = substr($tail,length($msg));
           }
           
@@ -596,9 +604,11 @@ sub Read {                                                  ## no critic 'comple
               next if(!$tail); 
               $msg    = substr($tail,0,$ocount);
               push @load, $msg;
+              
               if(length($tail) >= $ocount) {
                   $tail = substr($tail,$ocount);
-              } else {
+              } 
+              else {
                   $tail = substr($tail,length($msg));
               }   
               
@@ -606,10 +616,15 @@ sub Read {                                                  ## no critic 'comple
               Log3slog ($hash, 5, "Log2Syslog $name -> MSG$i       : $msg");
               Log3slog ($hash, 5, "Log2Syslog $name -> LENGTH_MSG$i: ".length($msg)); 
               Log3slog ($hash, 5, "Log2Syslog $name -> TAIL$i      : $tail");  
-          }   
-      
-      } else {
-          @load = split("[\r\n]",$data);
+          }
+      } 
+      else {
+          if($uef) {
+              push @load, $data;
+          }
+          else {
+              @load = split("[\r\n]",$data);
+          }
       }
 
       for my $line (@load) {
@@ -621,17 +636,21 @@ sub Read {                                                  ## no critic 'comple
               $pen++;
               readingsSingleUpdate($hash, 'Parse_Err_No', $pen, 1);
               $st = "parse error - see logfile";
-          } elsif ($ignore) {
+          } 
+          elsif ($ignore) {
               Log3slog ($hash, 5, "Log2Syslog $name -> dataset was ignored by parseFn");
-          } else {
+          } 
+          else {
               return if($sevevt && $sevevt !~ m/$sev/x);                                # Message nicht berücksichtigen
               $st = "active";
               if($mevt =~ /intern/) {                                                   # kein Reading, nur Event
                   $pl = "$phost: $pl";
                   Trigger($hash,$ts,$pl);
-              } elsif ($mevt =~ /reading/x) {                                           # Reading, Event abhängig von event-on-.*
+              } 
+              elsif ($mevt =~ /reading/x) {                                           # Reading, Event abhängig von event-on-.*
                   readingsSingleUpdate($hash, "MSG_$phost", $pl, 1);
-              } else {                                                                  # Reading ohne Event
+              } 
+              else {                                                                  # Reading ohne Event
                   readingsSingleUpdate($hash, "MSG_$phost", $pl, 0);
               }
           }
@@ -663,12 +682,15 @@ return;
 #   (sSiehe auch "list TYPE=FHEMWEB", bzw. "man -s2 accept")
 # 
 ###############################################################################
-sub getIfData {                                                     ## no critic 'complexity'
-  my ($hash,$len,$mlen,$reread) = @_;
-  my $name                      = $hash->{NAME};
-  my $socket                    = $hash->{SERVERSOCKET};
-  my $protocol                  = lc(AttrVal($name, "protocol", "udp"));
-  my ($eof,$buforun)            = (0,0);
+sub getIfData {                                       ## no critic 'complexity'
+  my $hash           = shift;
+  my $len            = shift;
+  my $mlen           = shift;
+  my $reread         = shift;
+  my $name           = $hash->{NAME};
+  my $socket         = $hash->{SERVERSOCKET};
+  my $protocol       = lc(AttrVal($name, "protocol", "udp"));
+  my ($eof,$buforun) = (0,0);
   
   if($hash->{TEMPORARY}) {
       # temporäre Instanz abgelegt durch TcpServer_Accept
@@ -688,7 +710,8 @@ sub getIfData {                                                     ## no critic
               Log3slog ($hash, 3, "Log2Syslog $name - Seq \"$hash->{SEQNO}\" invalid data: $data"); 
               $data = '' if(length($data) == 0);
               $st   = "receive error - see logfile";
-          } else {
+          } 
+          else {
               my $dl = length($data);
               Log3slog ($hash, 5, "Log2Syslog $name - Buffer ".$dl." chars ready to parse:\n$data");
           } 
@@ -727,21 +750,22 @@ sub getIfData {                                                     ## no critic
               $shash->{HELPER}{TCPPADDR} = $hash->{PEER};             
               my $buf;
               my $off = 0;
-              $ret = sysread($c, $buf, $len);                       # returns undef on error, 0 at end of file and Integer, number of bytes read on success.                
+              $ret    = sysread($c, $buf, $len);                    # returns undef on error, 0 at end of file and Integer, number of bytes read on success.                
               
               if(!defined($ret) && $! == EWOULDBLOCK()){            # error
                   $hash->{wantWrite} = 1 if(TcpServer_WantWrite($hash));
                   $hash = $shash;
                   Log3slog ($hash, 2, "Log2Syslog $sname - ERROR - TCP stack error:  $!");   
-                  return ($st,undef,$hash); 
-
-              } elsif (!$ret) {                                     # EOF or error
+                  return ($st,undef,$hash);
+              } 
+              elsif (!$ret) {                                       # EOF or error
                   Log3slog ($shash, 4, "Log2Syslog $sname - Connection closed for $cname: ".(defined($ret) ? 'EOF' : $!));
                   if(!defined($ret)) {                              # error
                       CommandDelete(undef, $cname);
                       $hash = $shash;
                       return ($st,undef,$hash);
-                  } else {                                          # EOF
+                  } 
+                  else {                                            # EOF
                       $eof  = 1;
                       $data = $hash->{BUF};
                       CommandDelete(undef, $cname);     
@@ -2290,8 +2314,6 @@ sub Log3slog {
 
   my ($seconds, $microseconds) = gettimeofday();
   my @t = localtime($seconds);
-  my $nfile = ResolveDateWildcards($attr{global}{logfile}, @t);
-  OpenLogfile($nfile) if(!$currlogfile || $currlogfile ne $nfile);
 
   my $tim = sprintf("%04d.%02d.%02d %02d:%02d:%02d",
           $t[5]+1900,$t[4]+1,$t[3], $t[2],$t[1],$t[0]);
@@ -2439,12 +2461,12 @@ sub setVersionInfo {
   if($modules{$type}{META}{x_prereqs_src} && !$hash->{HELPER}{MODMETAABSENT}) {
       # META-Daten sind vorhanden
       $modules{$type}{META}{version} = "v".$v;                                        # Version aus META.json überschreiben, Anzeige mit {Dumper $modules{Log2Syslog}{META}}
-      if($modules{$type}{META}{x_version}) {                                          # {x_version} ( nur gesetzt wenn $Id: 93_Log2Syslog.pm 21923 2020-05-12 20:00:24Z DS_Starter $ im Kopf komplett! vorhanden )
+      if($modules{$type}{META}{x_version}) {                                          # {x_version} ( nur gesetzt wenn $Id: 93_Log2Syslog.pm 23076 2020-11-02 18:50:38Z DS_Starter $ im Kopf komplett! vorhanden )
           $modules{$type}{META}{x_version} =~ s/1\.1\.1/$v/gx;
       } else {
           $modules{$type}{META}{x_version} = $v; 
       }
-      return $@ unless (FHEM::Meta::SetInternals($hash));                             # FVERSION wird gesetzt ( nur gesetzt wenn $Id: 93_Log2Syslog.pm 21923 2020-05-12 20:00:24Z DS_Starter $ im Kopf komplett! vorhanden )
+      return $@ unless (FHEM::Meta::SetInternals($hash));                             # FVERSION wird gesetzt ( nur gesetzt wenn $Id: 93_Log2Syslog.pm 23076 2020-11-02 18:50:38Z DS_Starter $ im Kopf komplett! vorhanden )
       if(__PACKAGE__ eq "FHEM::$type" || __PACKAGE__ eq $type) {
           # es wird mit Packages gearbeitet -> Perl übliche Modulversion setzen
           # mit {<Modul>->VERSION()} im FHEMWEB kann Modulversion abgefragt werden
@@ -2856,9 +2878,9 @@ Aug 18 21:26:54 fhemtest.myds.me 1 2017-08-18T21:26:54 fhemtest.myds.me Test_eve
 attr &lt;name&gt; exclErrCond Error: none, 
                         Errorcode: none,
                         Dum.Energy PV: 2853.0,, Error: none,
-                        .*Seek_Error_Rate_.*,
-                        .*Raw_Read_Error_Rate_.*,
-                        .*sabotageError:.*,
+                        Seek_Error_Rate_,
+                        Raw_Read_Error_Rate_,
+                        sabotageError:,
         </pre>
     </li>
     </ul>
@@ -3630,9 +3652,9 @@ Aug 18 21:26:54 fhemtest.myds.me 1 2017-08-18T21:26:54 fhemtest.myds.me Test_eve
 attr &lt;name&gt; exclErrCond Error: none, 
                         Errorcode: none,
                         Dum.Energy PV: 2853.0,, Error: none,
-                        .*Seek_Error_Rate_.*,
-                        .*Raw_Read_Error_Rate_.*,
-                        .*sabotageError:.*,
+                        Seek_Error_Rate_,
+                        Raw_Read_Error_Rate_,
+                        sabotageError:,
         </pre>
     </li>
     </ul>

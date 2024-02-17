@@ -44,7 +44,7 @@ sub COE_Node_Initialize {
   $hash->{GetFn}       = "COE_Node_Get";
   $hash->{SetFn}       = "COE_Node_Set";
 
-  $hash->{AttrList} = "readingsConfigAnalog readingsConfigDigital " . $readingFnAttributes;
+  $hash->{AttrList} = "readingsConfigAnalog:textField-long readingsConfigDigital:textField-long " . $readingFnAttributes;
   $hash->{Match} = "^.*";
 
   return undef;
@@ -167,6 +167,7 @@ sub COE_Node_HandleAnalogValues {
     my $existingConfig = exists $readingsMapping[$entryId];
     my $value = $values[$i];
     my $type = $types[$i];
+    my $vorz = (substr $value, 0,1);
 
     if ($existingConfig) {
 
@@ -176,6 +177,9 @@ sub COE_Node_HandleAnalogValues {
         $value = (substr $value, 0, (length $value)-2) . "." . (substr $value, -2);
       }
 
+      if ( COE_Node_BeginsWith($value, '-.') ) {
+          $value = "-0." . (substr $value, 2, (length $value));
+      }
       if ( COE_Node_BeginsWith($value, '.') ) {
           $value = "0$value";
       }

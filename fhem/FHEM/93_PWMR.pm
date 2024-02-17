@@ -54,7 +54,16 @@
 # 20.11.18 GA add change default for w_regexp from ".*Open.*" to ".*[Oo]pen.*" to fit for MAX window contacts
 # 11.02.19 GA add redesign of maxOffTime
 # 21.01.20 GA fix remove default tempRule if only tempRule1 or tempRule2 is defined
-
+# 28.12.20 GA fix reset maxOffTimeApply to 0 if heating is needed (decision depends on calculation model) 
+# 20.01.21 GA fix remove DoTrigger; 
+#                 the below due to hints from phys1
+#             fix prevent parallel InternalTimer calls
+#             fix remove attribute loglevel
+#             fix reading actorState to correct when non default regex is used
+#             add clear PID helper structure when PWM or PWMR object gets disabled
+# 31.01.21 GA fix wrong time logged for "desired-temp was manualy set until"
+# 02.02.21 GA fix handle access to not yet defined iodev on startup
+# 13.03.22 GA fix handle error in attr desiredTempFrom when device is not yet defined during startup 
 
 # module for PWM (Pulse Width Modulation) calculation
 # this module defines a room for calculation 
@@ -126,7 +135,7 @@ PWMR_Initialize($)
   $hash->{UndefFn}   = "PWMR_Undef";
   $hash->{AttrFn}    = "PWMR_Attr";
 
-  $hash->{AttrList}  = "disable:1,0 loglevel:0,1,2,3,4,5 ".
+  $hash->{AttrList}  = "disable:1,0 ".
 			"frostProtect:0,1 ".
 			"autoCalcTemp:0,1 ".
 			"desiredTempFrom ".
@@ -293,11 +302,28 @@ PWMR_CalcDesiredTemp($)
       my $offset = ((((int($min/ 5)) +1 ) * 5 ) - $min) * 60;
       #Log3 ($hash, 4, "offset $min -> ".int($min / 5)." $offset ".($offset / 60));
 
+      RemoveInternalTimer($hash, "PWMR_CalcDesiredTemp");
       InternalTimer($n + $offset, "PWMR_CalcDesiredTemp", $hash, 0);
 
     } else {
+      RemoveInternalTimer($hash, "PWMR_CalcDesiredTemp");
       InternalTimer(gettimeofday()+$hash->{INTERVAL}, "PWMR_CalcDesiredTemp", $hash, 0);
       #Log3 ($hash, 4, "interval not 300");
+    }
+  }
+
+  # as suggested by phys1
+  # If this device or the IODevice have been disabled, the actor state
+  # and the I- and D-Buffer are no longer valid and have to be reset
+  my $iodev = $hash->{IODev};
+  my $IODev_Disabled = (defined($iodev->{NAME})&&IsDevice($iodev->{NAME},"PWM")&&IsDisabled($iodev->{NAME}))? 1:0;
+  if (IsDisabled($name) || $IODev_Disabled) {
+    readingsSingleUpdate ($hash, "actorState", "unknown", 1); # forces PWMR_ReadRoom to read actorState from device when enabled again
+    if ($hash->{c_PID_useit} != 0) {
+      delete ($hash->{helper}{PID_I_previousTemps}) if (defined (($hash->{helper}{PID_I_previousTemps})));
+      delete ($hash->{helper}{PID_D_previousTemps}) if (defined (($hash->{helper}{PID_D_previousTemps})));
+      $hash->{helper}{PID_I_previousTemps} = [] if ($hash->{c_PID_useit} == 1);
+      $hash->{helper}{PID_D_previousTemps} = [];
     }
   }
 
@@ -307,7 +333,7 @@ PWMR_CalcDesiredTemp($)
       if ($hash->{READINGS}{"desired-temp-until"}{VAL} gt TimeNow()) {
 
         Log3 ($hash, 4, "PWMR_CalcDesiredTemp $name: desired-temp was manualy set until ".
-          $hash->{READINGS}{"desired-temp"}{TIME});
+          $hash->{READINGS}{"desired-temp-until"}{VAL});
         return undef;
       }
       else
@@ -333,8 +359,6 @@ PWMR_CalcDesiredTemp($)
     #$hash->{READINGS}{"desired-tem"}{TIME} = TimeNow();
     #$hash->{READINGS}{"desired-temp"}{VAL} = $hash->{c_tempFrostProtect};
 
-    #push @{$hash->{CHANGED}}, "desired-temp $hash->{c_tempFrostProtect}";
-    #DoTrigger($name, undef);
  
     #$hash->{STATE}     = "FrostProtect";
     readingsSingleUpdate ($hash,  "state", "FrostProtect", 1);
@@ -379,7 +403,6 @@ PWMR_CalcDesiredTemp($)
     readingsSingleUpdate ($hash,  "state", "Manual", 1);
   }
 
-  #DoTrigger($name, undef);
   return undef;
 
 }
@@ -408,7 +431,6 @@ PWMR_Get($@)
     return "unknown get value, valid is status";
   }
   $hash->{LOCAL} = 1;
-  RemoveInternalTimer($hash);
   my $v = PWMR_CalcDesiredTemp($hash);
   delete $hash->{LOCAL};
 
@@ -512,8 +534,6 @@ PWMR_Set($@)
     #$hash->{READINGS}{$cmd}{VAL} = $val;
 
 
-    #push @{$hash->{CHANGED}}, "$cmd: $val";
-    #DoTrigger($hash, undef);
     return undef
   } 
 
@@ -597,6 +617,7 @@ PWMR_Define($$)
 
   $hash->{c_desiredTempFrom}  = "";
 
+
   $hash->{p_factor}           = $factor;
   $hash->{p_tsensor}          = $tsensor;
   $hash->{p_actor}            = $actor;
@@ -609,7 +630,7 @@ PWMR_Define($$)
     return "unknown device $iodevname" if ($init_done == 1);
   }
 
-  if ( $defs{$iodevname}->{TYPE} ne "PWM" ) {
+  if ( defined($defs{$iodevname}) and $defs{$iodevname}->{TYPE} ne "PWM" ) {
     return "wrong type of $iodevname (not PWM)" if ($init_done == 1);
   }
 
@@ -862,6 +883,7 @@ PWMR_Define($$)
   $hash->{c_tempRule3}        = "";
   $hash->{c_tempRule4}        = "";
   $hash->{c_tempRule5}        = "";
+  $hash->{c_tempRuleS}        = "D" unless defined($hash->{c_tempRuleS});
 
   $hash->{INTERVAL}           = 300;
 
@@ -874,6 +896,7 @@ PWMR_Define($$)
   }
 
   if($hash->{INTERVAL}) {
+    RemoveInternalTimer($hash, "PWMR_CalcDesiredTemp");
     InternalTimer(gettimeofday()+10, "PWMR_CalcDesiredTemp", $hash, 0);
   }
   return undef;
@@ -934,14 +957,12 @@ PWMR_SetRoom(@)
     if (!defined($ret)) {    # sucessfull
       Log3 ($room, 2, "PWMR_SetRoom $room->{NAME}: set $room->{actor} $newState");
        
-      #$room->{actorState}                 = $newState;
-
       readingsBulkUpdate ($room,  "actorState", $newState);
       readingsBulkUpdate ($room,  "lastswitch", time());
       readingsEndUpdate($room, 1);
 
-      push @{$room->{CHANGED}}, "actor $newState";
-      DoTrigger($name, undef);
+      #push @{$room->{CHANGED}}, "actor $newState";
+      #DoTrigger($name, undef);
 
     } else {
       Log3 ($room, 2, "PWMR_SetRoom $name: set $room->{actor} $newState failed ($ret)");
@@ -966,6 +987,8 @@ PWMR_ReadRoom(@)
 
   my ($temperaturV, $actorV, $factor, $oldpulse, $newpulse, $newpulsePID, $prevswitchtime, $windowV, $maxOffTimeApply, $maxOffTime, $maxOffTimePeriod, $maxOffTimeAct) = 
     (99, "off", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+  my $maxOffTimeApplyPossible = 0;
 
   #Log3 ($room, 4, "PWMR_ReadRoom $name <$room->{t_sensor}> <$room->{actor}>");
 
@@ -992,29 +1015,23 @@ PWMR_ReadRoom(@)
 
   if (defined($room->{actor}))
   {
+    my $a_regexp_on = $room->{a_regexp_on};
+
     # starting from 26.01.2013 -> try to read act status .. (may also be invalid if struct)
     if ($defs{$room->{actor}}->{TYPE} eq "RBRelais") {
-      $actorV =  $defs{$room->{actor}}->{STATE};
+      #$actorV =  $defs{$room->{actor}}->{STATE};
+      $actorV = ($defs{$room->{actor}}->{STATE} =~ /^$a_regexp_on$/) ? "on" : "off";
       $room->{READINGS}{actorState}{VAL} = $actorV;
     } elsif (defined($defs{$room->{actor}}->{STATE})) {
-      $actorV =  $defs{$room->{actor}}->{STATE};
+      $actorV = ($defs{$room->{actor}}->{STATE} =~ /^$a_regexp_on$/) ? "on" : "off";
       $room->{READINGS}{actorState}{VAL} = $actorV if ($room->{READINGS}{actorState}{VAL} eq "unknown");
     } elsif (defined($defs{$room->{actor}}->{READINGS}{state}{VAL})) {
-      $actorV = $room->{READINGS}{actorState}{VAL};
+      $actorV = ($defs{$room->{actor}}->{STATE} =~ /^$a_regexp_on$/) ? "on" : "off";
       $room->{READINGS}{actorState}{VAL} = $actorV if ($room->{READINGS}{actorState}{VAL} eq "unknown");
     } else {
       #$actorV = $room->{actorState};
       $actorV = $room->{READINGS}{actorState}{VAL};
     } 
-
-    #my $actorVOrg = $actorV;
-    
-    my $a_regexp_on = $room->{a_regexp_on};
-    if ($actorV =~ /^$a_regexp_on$/) {
-      $actorV = "on";
-    } else {
-      $actorV = "off";
-    }
     #Log3 ($room, 2, "$name actorV $actorV org($actorVOrg) regexp($a_regexp_on)");
   }
 
@@ -1094,6 +1111,8 @@ PWMR_ReadRoom(@)
 
     Log3 ($room, 4, "PWMR_ReadRoom $name: desT($desiredTemp), actT($temperaturV von($temperaturT)), state($actorV)");
     Log3 ($room, 4, "PWMR_ReadRoom $name: newpulse($newpulse/$PWMOnTime), oldpulse($oldpulse), lastSW($prevswitchtime = $prevswitchtimeT), window($windowV)");
+
+    $maxOffTimeApplyPossible = 1 if ($temperaturV >= $desiredTemp); # equals $newpulse == 0 for PID calculation model
 
   } elsif ($room->{c_PID_useit} eq 1) {
 
@@ -1176,6 +1195,8 @@ PWMR_ReadRoom(@)
 
     $newpulse = $newpulsePID;
 
+    $maxOffTimeApplyPossible = 1 if ($newpulse == 0);
+
   } elsif($room->{c_PID_useit} >= 2) {
 
     my $DBuffer = $room->{helper}{PID_D_previousTemps};
@@ -1236,6 +1257,8 @@ PWMR_ReadRoom(@)
     Log3 ($room, 4, "PWMR_ReadRoom $name: newpulse($newpulsePID/$PWMOnTimePID), oldpulse($oldpulse), lastSW($prevswitchtime = $prevswitchtimeT), window($windowV)");
 
     $newpulse = $newpulsePID;
+
+    $maxOffTimeApplyPossible = 1 if ($newpulse == 0);
   }
 
   readingsEndUpdate($room, 1);
@@ -1269,6 +1292,13 @@ PWMR_ReadRoom(@)
             my $time = sprintf ("%02d:%02d:%02d", $maxOffTimeAct / 60 / 60, ($maxOffTimeAct / 60) % 60, $maxOffTimeAct % 60);
             Log3 ($room, 4, "PWMR_ReadRoom $name: candidate for maxOffTime actor($actorV) since $time");
           }
+
+          # reset maxOffTimeApply based on calculation model 
+          # generally: if heating is required this calculation is preceeding; only if no heating is required maxOffTime should be taken into account
+          # for PID calculation maxOffTime is possible if $newpulse == 0 
+          # for P calculation maxOffTime is possible if desiredTemp is already reached
+          #
+          $maxOffTimeApply = 0 if ($maxOffTimeApplyPossible == 0);
         }
       }
     }
@@ -1615,7 +1645,12 @@ PWMR_Attr(@)
 
     # check if device exist 
     unless (defined($defs{$hash->{d_name}})) {
-      return "error: $hash->{d_name} does not exist.";
+      my $msg = "error: $hash->{d_name} does not exist.";
+      if ($init_done == 1) {
+        return $msg;
+      } else { # during startup only log error because device maybe defined later
+        Log3 ($hash, 3, "PWMR_Attr desiredTempFrom $msg (maybe defined later)");
+      }
     }
     PWMR_NormalizeRules($hash);
 

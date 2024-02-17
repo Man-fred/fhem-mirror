@@ -57,6 +57,9 @@
 # 2019-02-08 V 0221 new Attribute devName to set personal name instead of 'iPhone'
 # 2019-05-26 V 0222 correct parse of result in EnduserAPISetupGateways
 # 2019-06-15 V 0222 new Attribute levelRound
+# 2021-03-05 V 0223 new Attributes intervalLoginMin and intervalLoginMax
+# 2021-06-08 V 0224 response 'TOO_MANY_OPERATIONS_IN_PROGRESS' didn't start a re-login
+# 2022-01-22 V 0225 reconnect after disable removed
 
 package main;
 
@@ -97,6 +100,8 @@ sub tahoma_Initialize($)
                       "intervalRefresh ".
                       "intervalEvents ".
                       "intervalStates ".
+                      "intervalLoginMin ".
+                      "intervalLoginMax ".
                       "logfile ".
                       "url ".
                       "placeClasses ".
@@ -134,7 +139,7 @@ sub tahoma_Define($$)
 
   my @a = split("[ \t][ \t]*", $def);
 
-  my $ModuleVersion = "0221";
+  my $ModuleVersion = "0225";
   
   my $subtype;
   my $name = $a[0];
@@ -218,6 +223,8 @@ sub tahoma_Define($$)
     $hash->{getEventsInterval} = 2;
     $hash->{refreshStatesInterval} = 120;
     $hash->{getStatesInterval} = 0;
+    $hash->{getLoginIntervalMin} = 5;
+    $hash->{getLoginIntervalMax} = 160;
 
   } else {
     return "Usage: define <name> tahoma device\
@@ -303,8 +310,9 @@ sub tahoma_login($)
   $hash->{userAgent} = $attr{$name}{userAgent} if (defined $attr{$name}{userAgent});
   $hash->{timeout} = 10;
   $hash->{HTTPCookies} = undef;
-  $hash->{loginRetryTimer} = 5 if (!defined $hash->{loginRetryTimer});
-  $hash->{loginRetryTimer} *= 2 if ($hash->{loginRetryTimer} < 160);
+  $hash->{loginRetryTimer} = $hash->{getLoginIntervalMin} if (!defined $hash->{loginRetryTimer});
+  $hash->{loginRetryTimer} *= 2 if ($hash->{loginRetryTimer} < $hash->{getLoginIntervalMax});
+  $hash->{loginRetryTimer} = $hash->{getLoginIntervalMax} if ($hash->{loginRetryTimer} > $hash->{getLoginIntervalMax});
   $hash->{eventId} = undef;
   
   Log3 $name, 2, "$name: login start";
@@ -505,6 +513,22 @@ sub tahoma_readStatusTimer($)
   }
 
   InternalTimer(gettimeofday()+2, "tahoma_readStatusTimer", $hash, 0);
+}
+
+sub tahoma_disconnect($)
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+  Log3 $name, 3, "$name: tahoma_disconnect";
+
+  RemoveInternalTimer($hash);
+  HttpUtils_Close($hash);
+  $hash->{socket} = undef;
+  $hash->{request_active} = undef;
+  $hash->{logged_in} = undef;
+  $hash->{startup_run} = undef;
+  $hash->{startup_done} = undef;
+  $hash->{STATE} = 'Disconnected';
 }
 
 sub tahoma_connect($)
@@ -780,6 +804,12 @@ sub tahoma_applyRequest($$$)
     return;
   }
   
+  if (!$hash->{IODev}->{logged_in})
+  {
+    Log3 $name, 3, "$name: tahoma_applyRequest failed - not logged in";
+    return;
+  }
+  
   my @devices = ();
   if ( defined($hash->{device}) ) {
     push ( @devices, { device => $hash->{device}, class => $hash->{inClass}, commands => $hash->{COMMANDS}, levelInvert => $attr{$hash->{NAME}}{levelInvert} } );
@@ -851,6 +881,12 @@ sub tahoma_scheduleActionGroup($$)
     return;
   }
 
+  if (!$hash->{IODev}->{logged_in})
+  {
+    Log3 $name, 3, "$name: tahoma_scheduleActionGroup failed - not logged in";
+    return;
+  }
+  
   $delay = 1 if(!defined($delay));
   $delay = ($delay+time)*1000;
   $delay = $delay . '';
@@ -879,6 +915,12 @@ sub tahoma_launchActionGroup($)
     return;
   }
 
+  if (!$hash->{IODev}->{logged_in})
+  {
+    Log3 $name, 3, "$name: tahoma_launchActionGroup failed - not logged in";
+    return;
+  }
+  
   tahoma_UserAgent_NonblockingGet({
     timeout => 10,
     noshutdown => 1,
@@ -975,7 +1017,7 @@ sub tahoma_dispatch($$$)
 
     if( (ref $json eq 'HASH') && ($json->{error}) ) {
       $hash->{lastError} = $json->{error};
-      $hash->{logged_in} = 0;
+      $hash->{logged_in} = 0 if ($json->{errorCode} ne 'TOO_MANY_OPERATIONS_IN_PROGRESS');
       Log3 $name, 3, "$name: tahoma_dispatch error: $hash->{lastError}";
       return;
     }
@@ -1119,7 +1161,7 @@ sub tahoma_parseLogin($$)
   } else {
     $hash->{inVersion} = $json->{version};
     $hash->{logged_in} = 1;
-    $hash->{loginRetryTimer} = 5;
+    $hash->{loginRetryTimer} = $hash->{getLoginIntervalMin};
   }
   Log3 $name, 2, "$name: login end, logged_in=".$hash->{logged_in};
 }
@@ -1537,7 +1579,7 @@ sub tahoma_Set($$@)
   }
 
   if( $hash->{SUBTYPE} eq "ACCOUNT") {
-    $list = "cancel:noArg reset:noArg refreshAllStates:noArg getStates:noArg";
+    $list = "cancel:noArg reset:noArg disconnect:noArg reconnect:noArg refreshAllStates:noArg getStates:noArg";
 
     if( $cmd eq "cancel" ) {
       tahoma_cancelExecutions($hash);
@@ -1547,6 +1589,15 @@ sub tahoma_Set($$@)
       HttpUtils_Close($hash);
       $hash->{logged_in} = undef;
       $hash->{loginRetryTimer} = undef;
+      return undef;
+    }
+    elsif( $cmd eq "disconnect" ) {
+      tahoma_disconnect($hash);
+      return undef;
+    }
+    elsif( $cmd eq "reconnect" ) {
+      tahoma_disconnect($hash);
+      tahoma_connect($hash);
       return undef;
     }
     elsif( $cmd eq "refreshAllStates" ) {
@@ -1598,12 +1649,27 @@ sub tahoma_Attr($$$)
     $attrVal = int($attrVal);
     $attrVal = 2 if ($attrVal < 2 && $attrVal != 0);
     $hash->{getEventsInterval} = $attrVal;
+  } elsif( $attrName eq "intervalLoginMin" ) {
+    my $hash = $defs{$name};
+    return "Attribute 'intervalLoginMin' only usable for type ACCOUNT" if $hash->{SUBTYPE} ne "ACCOUNT";
+    $attrVal = defined $attrVal ? int($attrVal) : 2;
+    $attrVal = int($attrVal);
+    $attrVal = 2 if ($attrVal < 2 && $attrVal != 0);
+    $hash->{getLoginIntervalMin} = $attrVal;
+  } elsif( $attrName eq "intervalLoginMax" ) {
+    my $hash = $defs{$name};
+    return "Attribute 'intervalLoginMax' only usable for type ACCOUNT" if $hash->{SUBTYPE} ne "ACCOUNT";
+    $attrVal = defined $attrVal ? int($attrVal) : 2;
+    $attrVal = int($attrVal);
+    $attrVal = 160 if ($attrVal < 160 && $attrVal != 0);
+    $hash->{getLoginIntervalMax} = $attrVal;
   } elsif( $attrName eq "disable" ) {
     my $hash = $defs{$name};
-    RemoveInternalTimer($hash);
     if( $cmd eq "set" && $attrVal ne "0" ) {
+      tahoma_disconnect($hash) if $hash->{SUBTYPE} eq "ACCOUNT";
     } else {
       $attr{$name}{$attrName} = 0;
+      tahoma_connect($hash) if $hash->{SUBTYPE} eq "ACCOUNT";
     }
   } elsif( $attrName eq "blocking" ) {
     my $hash = $defs{$name};
@@ -1724,6 +1790,7 @@ sub tahoma_GetCookies($$)
     my ($hash, $header) = @_;
     my $name = $hash->{NAME};
     Log3 $name, 5, "$name: tahoma_GetCookies looking for Cookies in header";
+    Log3 $name, 5, "$name: tahoma_GetCookies header=$header";
     foreach my $cookie ($header =~ m/set-cookie: ?(.*)/gi) {
         Log3 $name, 5, "$name: Set-Cookie: $cookie";
         $cookie =~ /([^,; ]+)=([^,; ]+)[;, ]*(.*)/;
@@ -1855,7 +1922,17 @@ sub tahoma_decrypt($)
     <ul>
       The interval [seconds] for fetching new events can be changed:<br>
       The default is 2s, allowed minimum is 2s.<br>
-      <code>attr tahoma1 intervalEvents 300</code><br>
+      <code>attr tahoma1 intervalEvents 10</code><br><br>
+    </ul>
+    <ul>
+      The minimal interval [seconds] for first retry of login can be changed:<br>
+      The default is 5s, allowed minimum is 5s.<br>
+      <code>attr tahoma1 intervalLoginMin 30</code><br><br>
+    </ul>
+    <ul>
+      The maximal interval [seconds] for cyclic retry of login can be changed:<br>
+      The default is 160s, allowed minimum is 160s.<br>
+      <code>attr tahoma1 intervalLoginMax 300</code><br><br>
     </ul>
     <br>
     <b>local Attributes for DEVICE:</b>

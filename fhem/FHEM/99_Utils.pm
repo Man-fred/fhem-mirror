@@ -22,9 +22,10 @@ time_str2num($)
 }
 
 sub
-min($@)
+min(@)
 {
   my ($min, @vars) = @_; 
+  return $min if(!defined($min));
   for (@vars) {
     $min = $_ if $_ lt $min;
   }           
@@ -32,9 +33,10 @@ min($@)
 }
 
 sub
-max($@)
+max(@)
 {
   my ($max, @vars) = @_; 
+  return $max if(!defined($max));
   for (@vars) {
     $max = $_ if $_ gt $max;
   }           
@@ -282,8 +284,10 @@ Svn_GetFile($$;$)
       print FH $_[2];
       close(FH);
       Log 1, "SVN download of $from to $to finished";
-      &$finishFn if($finishFn);
-      Log 1, $@ if($@);
+      if($finishFn) {
+        eval { &$finishFn; };
+        Log 1, $@ if($@);
+      }
     }});
   return "Download started, check the FHEM-log";
 }

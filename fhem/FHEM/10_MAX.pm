@@ -1132,9 +1132,10 @@ sub MAX_FileList
     <br><br>
 
     Define an MAX device of type &lt;type&gt; and rf address &lt;addr&gt.
-    The &lt;type&gt; is one of HeatingThermostat, HeatingThermostatPlus, WallMountedThermostat, ShutterContact, PushButton.
+    The &lt;type&gt; is one of HeatingThermostat, HeatingThermostatPlus, WallMountedThermostat, ShutterContact, PushButton, virtualShutterContact.
     The &lt;addr&gt; is a 6 digit hex number.
     You should never need to specify this by yourself, the <a href="#autocreate">autocreate</a> module will do it for you.<br>
+    Exception : virtualShutterContact<br>
     It's advisable to set event-on-change-reading, like
     <code>attr MAX_123456 event-on-change-reading .*</code>
     because the polling mechanism will otherwise create events every 10 seconds.<br>
@@ -1149,7 +1150,10 @@ sub MAX_FileList
   <a name="MAXset"></a>
   <b>Set</b>
   <ul>
-    <li>desiredTemperature auto [&lt;temperature&gt;]<br>
+  <a name=""></a><li>deviceRename &lt;value&gt; <br>
+   rename of the device and its logfile
+  </li>
+    <a name=""></a><li>desiredTemperature auto [&lt;temperature&gt;]<br>
         For devices of type HeatingThermostat only. If &lt;temperature&gt; is omitted,
         the current temperature according to the week profile is used. If &lt;temperature&gt; is provided,
         it is used until the next switch point of the week porfile. It maybe one of
@@ -1158,7 +1162,7 @@ sub MAX_FileList
           <li>"on" or "off" set the thermostat to full or no heating, respectively</li>
           <li>"eco" or "comfort" using the eco/comfort temperature set on the device (just as the right-most physical button on the device itself does)</li>
         </ul></li>
-    <li>desiredTemperature [manual] &lt;value&gt; [until &lt;date&gt;]<br>
+    <a name=""></a><li>desiredTemperature [manual] &lt;value&gt; [until &lt;date&gt;]<br>
         For devices of type HeatingThermostat only. &lt;value&gt; maybe one of
         <ul>
           <li>degree celcius between 4.5 and 30.5 in 0.5 degree steps</li>
@@ -1170,49 +1174,49 @@ sub MAX_FileList
         If the keepAuto attribute is 1 and the device is currently in auto mode, 'desiredTemperature &lt;value&gt;'
         behaves as 'desiredTemperature auto &lt;value&gt;'. If the 'manual' keyword is used, the keepAuto attribute is ignored
         and the device goes into manual mode.</li>
-    <li>desiredTemperature boost<br>
+    <a name=""></a><li>desiredTemperature boost<br>
       For devices of type HeatingThermostat only.
       Activates the boost mode, where for boostDuration minutes the valve is opened up boostValveposition percent.</li>
-    <li>groupid &lt;id&gt;<br>
+    <a name=""></a><li>groupid &lt;id&gt;<br>
       For devices of type HeatingThermostat only.
       Writes the given group id the device's memory. To sync all devices in one room, set them to the same groupid greater than zero.</li>
-    <li>ecoTemperature &lt;value&gt;<br>
+    <a name=""></a><li>ecoTemperature &lt;value&gt;<br>
       For devices of type HeatingThermostat only. Writes the given eco temperature to the device's memory. It can be activated by pressing the rightmost physical button on the device.</li>
-    <li>comfortTemperature &lt;value&gt;<br>
+    <a name=""></a><li>comfortTemperature &lt;value&gt;<br>
       For devices of type HeatingThermostat only. Writes the given comfort temperature to the device's memory. It can be activated by pressing the rightmost physical button on the device.</li>
-    <li>measurementOffset &lt;value&gt;<br>
+    <a name=""></a><li>measurementOffset &lt;value&gt;<br>
       For devices of type HeatingThermostat only. Writes the given temperature offset to the device's memory. If the internal temperature sensor is not well calibrated, it may produce a systematic error. Using measurementOffset, this error can be compensated. The reading temperature is equal to the measured temperature at sensor + measurementOffset. Usually, the internally measured temperature is a bit higher than the overall room temperature (due to closeness to the heater), so one uses a small negative offset. Must be between -3.5 and 3.5 degree celsius.</li>
-    <li>minimumTemperature &lt;value&gt;<br>
+    <a name=""></a><li>minimumTemperature &lt;value&gt;<br>
       For devices of type HeatingThermostat only. Writes the given minimum temperature to the device's memory. It confines the temperature that can be manually set on the device.</li>
-    <li>maximumTemperature &lt;value&gt;<br>
+    <a name=""></a><li>maximumTemperature &lt;value&gt;<br>
             For devices of type HeatingThermostat only. Writes the given maximum temperature to the device's memory. It confines the temperature that can be manually set on the device.</li>
-    <li>windowOpenTemperature &lt;value&gt;<br>
+    <a name=""></a><li>windowOpenTemperature &lt;value&gt;<br>
             For devices of type HeatingThermostat only. Writes the given window open temperature to the device's memory. That is the temperature the heater will temporarily set if an open window is detected. Setting it to 4.5 degree or "off" will turn off reacting on open windows.</li>
-    <li>windowOpenDuration &lt;value&gt;<br>
+    <a name=""></a><li>windowOpenDuration &lt;value&gt;<br>
             For devices of type HeatingThermostat only. Writes the given window open duration to the device's memory. That is the duration the heater will temporarily set the window open temperature if an open window is detected by a rapid temperature decrease. (Not used if open window is detected by ShutterControl. Must be between 0 and 60 minutes in multiples of 5.</li>
-    <li>decalcification &lt;value&gt;<br>
+    <a name=""></a><li>decalcification &lt;value&gt;<br>
         For devices of type HeatingThermostat only. Writes the given decalcification time to the device's memory. Value must be of format "Sat 12:00" with minutes being "00". Once per week during that time, the HeatingThermostat will open the valves shortly for decalcification.</li>
-    <li>boostDuration &lt;value&gt;<br>
+    <a name=""></a><li>boostDuration &lt;value&gt;<br>
         For devices of type HeatingThermostat only. Writes the given boost duration to the device's memory. Value must be one of 5, 10, 15, 20, 25, 30, 60. It is the duration of the boost function in minutes.</li>
-    <li>boostValveposition &lt;value&gt;<br>
+    <a name=""></a><li>boostValveposition &lt;value&gt;<br>
         For devices of type HeatingThermostat only. Writes the given boost valveposition to the device's memory. It is the valve position in percent during the boost function.</li>
-    <li>maxValveSetting &lt;value&gt;<br>
+    <a name=""></a><li>maxValveSetting &lt;value&gt;<br>
         For devices of type HeatingThermostat only. Writes the given maximum valveposition to the device's memory. The heating thermostat will not open the valve more than this value (in percent).</li>
-    <li>valveOffset &lt;value&gt;<br>
+    <a name=""></a><li>valveOffset &lt;value&gt;<br>
         For devices of type HeatingThermostat only. Writes the given valve offset to the device's memory. The heating thermostat will add this to all computed valvepositions during control.</li>
-    <li>factoryReset<br>
+    <a name=""></a><li>factoryReset<br>
         Resets the device to factory values. It has to be paired again afterwards.<br>
         ATTENTION: When using this on a ShutterContact using the MAXLAN backend, the ShutterContact has to be triggered once manually to complete
         the factoryReset.</li>
-    <li>associate &lt;value&gt;<br>
+    <a name=""></a><li>associate &lt;value&gt;<br>
         Associated one device to another. &lt;value&gt; can be the name of MAX device or its 6-digit hex address.<br>
         Associating a ShutterContact to a {Heating,WallMounted}Thermostat makes it send message to that device to automatically lower temperature to windowOpenTemperature while the shutter is opened. The thermostat must be associated to the ShutterContact, too, to accept those messages.
         <b>!Attention: After sending this associate command to the ShutterContact, you have to press the button on the ShutterContact to wake it up and accept the command. See the log for a message regarding this!</b>
         Associating HeatingThermostat and WallMountedThermostat makes them sync their desiredTemperature and uses the measured temperature of the
  WallMountedThermostat for control.</li>
-    <li>deassociate &lt;value&gt;<br>
+    <a name=""></a><li>deassociate &lt;value&gt;<br>
         Removes the association set by associate.</li>
-    <li>weekProfile [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;] [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;] ...<br>
+    <a name=""></a><li>weekProfile [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;] [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;] ...<br>
       Allows setting the week profile. For devices of type HeatingThermostat or WallMountedThermostat only. Example:<br>
       <code>set MAX_12345 weekProfile Fri 24.5,6:00,12,15:00,5 Sat 7,4:30,19,12:55,6</code><br>
       sets the profile <br>
@@ -1220,6 +1224,22 @@ sub MAX_FileList
       Saturday: 7 &deg;C for 0:00 - 4:30, 19 &deg;C for 4:30 - 12:55, 6 &deg;C for 12:55 - 0:00</code><br>
       while keeping the old profile for all other days.
     </li>
+    <a name=""></a><li>saveConfig &lt;name&gt;<br>
+
+    </li>
+
+    <a name=""></a><li>restoreReadings &lt;name of saved config&gt;<br>
+
+    </li>
+
+    <a name=""></a><li>restoreDevice &lt;name of saved config&gt;<br>
+
+    </li>
+
+    <a name=""></a><li>exportWeekprofile &lt;name od weekprofile device&gt;<br>
+
+    </li>
+
   </ul>
   <br>
 
@@ -1229,13 +1249,27 @@ sub MAX_FileList
   <a name="MAXattr"></a>
   <b>Attributes</b>
   <ul>
-    <li><a href="#eventMap">eventMap</a></li>
-    <li><a href="#IODev">IODev</a></li>
-    <li><a href="#loglevel">loglevel</a></li>
-    <li><a href="#do_not_notify">do_not_notify</a></li>
-    <li><a href="#ignore">ignore</a></li>
-    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
-    <li>keepAuto<br>Default: 0. If set to 1, it will stay in the auto mode when you set a desiredTemperature while the auto (=weekly program) mode is active.</li>
+    <a name="actCycle"></a><li>actCycle &lt;hh:mm&gt; default none (only with CUL_MAX)<br>
+    Provides life detection for the device. [hhh: mm] sets the maximum time without a message from this device.<br>
+    If no messages are received within this time, the reading activity is set to dead.<br>
+    If the device sends again, the reading is reset to alive.<br>
+    <b>Important</b> : does not make sense with the ECO Pushbutton,<br>
+    as it is the only member of the MAX! family that does not send cyclical status messages !</li><br>
+    <a name="CULdev"></a><li>CULdev &lt;name&gt; default none (only with CUL_MAX)<br>
+    send device when the CUL_MAX device is using a IOgrp (Multi IO)</li><br>
+    <a name="DbLog_log_onoff"></a><li>DbLog_log_onoff (0|1) log on  and off or the real values 30.5 and 4.5</li><br>
+    <a name="dummy"></a><li>dummy (0|1) default 0<br>sets device to a read-only device</li><br>
+    <a name="debug"></a><li>debug (0|1) default 0<br>creates extra readings (only with CUL_MAX)</li><br>
+    <a name="dTempCheck"></a><li>dTempCheck (0|1) default 0<br>
+    monitors every 5 minutes whether the Reading desiredTemperature corresponds to the target temperature in the current weekprofile.<br>
+    The result is a deviation in Reading dTempCheck, i.e. 0 = no deviation</li><br>
+    <a name="externalSensor"></a><li>externalSensor &lt;device:reading&gt; default none<br>
+    If there is no wall thermostat in a room but the room temperature is also recorded with an external sensor in FHEM (e.g. LaCrosse)<br>
+    the current temperature value can be used to calculate the reading deviation instead of the own reading temperature</li><br>
+    <a name="IODev"></a><li>IODev &lt;name&gt;<br>MAXLAN or CUL_MAX device name</li><br>
+    <a name="keepAuto"></a><li>keepAuto (0|1) default 0<br>If set to 1, it will stay in the auto mode when you set a desiredTemperature while the auto (=weekly program) mode is active.</li><br>
+    <a name="scanTemp"></a><li>scanTemp (0|1) default 0<br>used by MaxScanner</li><br>
+    <a name="skipDouble"></a><li>skipDouble (0|1) default 0 (only with CUL_MAX)<br></li>
   </ul>
   <br>
 
@@ -1272,12 +1306,12 @@ sub MAX_FileList
     Erstellt ein MAX Ger&auml;t des Typs &lt;type&gt; und der RF Adresse &lt;addr&gt;.
     Als &lt;type&gt; kann entweder <code>HeatingThermostat</code> (Heizk&ouml;rperthermostat),
     <code>HeatingThermostatPlus</code> (Heizk&ouml;rperthermostat Plus),
-    <code>WallMountedThermostat</code> (Wandthermostat), <code>ShutterContact</code> (Fensterkontakt)
-    oder <code>PushButton</code> (Eco-Taster) gew&auml;hlt werden.
+    <code>WallMountedThermostat</code> (Wandthermostat), <code>ShutterContact</code> (Fensterkontakt),
+    <code>PushButton</code> (Eco-Taster) oder <code>virtualShutterContact</code> (virtueller Fensterkontakt) gew&auml;hlt werden.
     Die Adresse &lt;addr&gt; ist eine 6-stellige hexadezimale Zahl.
-    Da <a href="#autocreate">autocreate</a> diese vergibt, sollte diese nie h&auml;ndisch gew&auml;hlt
-    werden m&uuml;ssen.<br>
-    Es ist empfehlenswert, das Atribut <code>event-on-change-reading</code> zu setzen, z.B.
+    Da <a href="#autocreate">autocreate</a> diese vergibt, sollte diese eigentlich nie h&auml;ndisch gew&auml;hlt
+    werden m&uuml;ssen. Ausnahme : virtueller Fensterkontakt<br>
+    Es wird dringend  empfohlen das Atribut event-on-change-reading zu setzen, z.B.
     <code>attr MAX_123456 event-on-change-reading .*</code> da ansonsten der "Polling" Mechanismus
     alle 10 s ein Ereignis erzeugt.<br>
 
@@ -1291,36 +1325,65 @@ sub MAX_FileList
   <a name="MAXset"></a>
   <b>Set</b>
   <ul>
-    <li>desiredTemperature &lt;value&gt; [until &lt;date&gt;]<br>
-        Nur f&uuml;r Heizk&ouml;rperthermostate. &lt;value&gt; kann einer aus folgenden Werten sein
+    <a name="associate"></a><li>associate &lt;value&gt;<br>
+      Verbindet ein Ger&auml;t mit einem anderen. &lt;value&gt; kann entweder der Name eines MAX Ger&auml;tes oder
+      seine 6-stellige hexadezimale Adresse sein.<br>
+      Wenn ein Fensterkontakt mit einem HT/WT verbunden wird, sendet der Fensterkontakt automatisch die <code>windowOpen</code> Information wenn der Kontakt
+      ge&ouml;ffnet ist. Das Thermostat muss ebenfalls mit dem Fensterkontakt verbunden werden, um diese Nachricht zu verarbeiten.
+      <b>Achtung: Nach dem Senden der Botschaft zum Verbinden an den Fensterkontakt muss der Knopf am Fensterkontakt gedr&uuml;ckt werden um den Fensterkonakt aufzuwecken
+      und den Befehl zu verarbeiten. Details &uuml;ber das erfolgreiche Verbinden finden sich in der Logdatei!</b>
+      Das Verbinden eines Heizk&ouml;rperthermostates und eines Wandthermostates synchronisiert deren
+      <code>desiredTemperature</code> und verwendet die am Wandthermostat gemessene Temperatur f&uuml;r die Regelung.</li>
+
+    <a name="comfortTemperature"></a><li>comfortTemperature &lt;value&gt;<br>
+      Nur f&uuml;r HT/WT. Schreibt die angegebene <code>comfort</code> Temperatur in den Speicher des Ger&auml;tes.<br>
+      Diese kann durch dr&uuml;cken der Taste Halbmond/Stern am Ger&auml;t aktiviert werden.</li>
+
+    <a name="deassociate"></a><li>deassociate &lt;value&gt;<br>
+      L&ouml;st die Verbindung, die mit <code>associate</code> gemacht wurde, wieder auf.</li>
+
+    <a name="desiredTemperature"></a><li>desiredTemperature &lt;value&gt; [until &lt;date&gt;]<br>
+        Nur f&uuml;r HT/WT &lt;value&gt; kann einer aus folgenden Werten sein
         <ul>
-          <li>Grad Celsius zwischen 3,5 und 30,5 Grad in 0,5 Kelvin Schritten</li>
-          <li>"on" oder "off" versetzt den Thermostat in volle bzw. keine Heizleistung</li>
+          <li>Grad Celsius zwischen 4,5 und 30,5 Grad Celisus in 0,5 Grad Schritten</li>
+          <li>"on" (30.5) oder "off" (4.5) versetzt den Thermostat in volle Heizleistung bzw. schaltet ihn ab</li>
           <li>"eco" oder "comfort" mit der eco/comfort Temperatur, die direkt am Ger&auml;t
-              eingestellt wurde (&auml;nhlich wie die rechte Taste am Ger&auml;t selbst)</li>
+              eingestellt wurde (&auml;nhlich wie die Halbmond/Stern Taste am Ger&auml;t selbst)</li>
           <li>"auto &lt;temperature&gt;". Damit wird das am Thermostat eingestellte Wochenprogramm
               abgearbeitet. Wenn optional die Temperatur &lt;temperature&gt; angegeben wird, wird diese
-              bis zum n&auml;sten Schaltzeitpunkt des Wochenprogramms als
-              <code>desiredTemperature</code> gesetzt.</li>
+              bis zum n&auml;sten Schaltzeitpunkt des Wochenprogramms als <code>desiredTemperature</code> gesetzt.</li>
           <li>"boost" aktiviert den Boost Modus, wobei f&uuml;r <code>boostDuration</code> Minuten
               das Ventil <code>boostValveposition</code> Prozent ge&ouml;ffnet wird.</li>
         </ul>
         Alle Werte au&szlig;er "auto" k&ouml;nnen zus&auml;zlich den Wert "until" erhalten,
-        wobei &lt;date&gt; in folgendem Format sein mu&szlig;: "dd.mm.yyyy HH:MM"
-        (Minuten nur "30" bzw. "00"!), um kurzzeitige eine andere Temperatur bis zu diesem Datum/dieser
-        Zeit einzustellen. Bitte sicherstellen, dass der Cube bzw. das Ger&auml;t die korrekte Systemzeit hat.</li>
-    <li>groupid &lt;id&gt;<br>
+        wobei &lt;date&gt; in folgendem Format sein mu&szlig;: "TT.MM.JJJJ SS:MM"
+        (Minuten nur 30 bzw. 00 !), um kurzzeitige eine andere Temperatur bis zu diesem Datum und dieser
+        Zeit einzustellen. Wichtig : der Zeitpunkt muß in der Zukunft liegen !<br>
+	Wenn dd.mm.yyyy dem heutigen Tag entspricht kann statdessen auch das Schl&uml;sselwort today verwendet werden.
+	Bitte sicherstellen, dass der Cube bzw. das Ger&auml;t die korrekte Systemzeit hat</li>
+
+      <a name="deviceRename"></a><li>deviceRename &lt;value&gt; <br>
+	Benennt das Device um, inklusive dem durch autocreate erzeugtem Logfile</li>
+
+     <a name="ecoTemperature"></a><li>ecoTemperature &lt;value&gt;<br>
+      Nur f&uuml;r HT/WT. Schreibt die angegebene <code>eco</code> Temperatur in den Speicher
+      des Ger&auml;tes. Diese kann durch Dr&uuml;cken der Halbmond/Stern Taste am Ger&auml;t aktiviert werden.</li>
+
+    <a name="export_Weekprofile"></a><li>export_Weekprofile [device weekprofile name]</li>
+
+    <a name="factoryReset"></a><li>factoryReset<br>
+      Setzt das Ger&auml;t auf die Werkseinstellungen zur&uuml;ck. Das Ger&auml;t muss anschlie&szlig;end neu angelernt werden.<br>
+      ACHTUNG: Wenn dies in Kombination mit einem Fensterkontakt und dem MAXLAN Modul
+      verwendet wird, muss der Fensterkontakt einmal manuell ausgel&ouml;st werden, damit das Zur&uuml;cksetzen auf Werkseinstellungen beendet werden kann.</li>
+
+
+    <a name="groupid"></a><li>groupid &lt;id&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate.
       Schreibt die angegebene Gruppen ID in den Speicher des Ger&auml;tes.
       Um alle Ger&auml;te in einem Raum zu synchronisieren, k&ouml;nnen diese derselben Gruppen ID
       zugeordnet werden, diese mu&szlig; gr&ouml;&szlig;er Null sein.</li>
-    <li>ecoTemperature &lt;value&gt;<br>
-      Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene <code>eco</code> Temperatur in den Speicher
-      des Ger&auml;tes. Diese kann durch Dr&uuml;cken der rechten Taste am Ger&auml;t aktiviert werden.</li>
-    <li>comfortTemperature &lt;value&gt;<br>
-      Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene <code>comfort</code> Temperatur in den Speicher
-      des Ger&auml;tes. Diese kann durch Dr&uuml;cken der rechten Taste am Ger&auml;t aktiviert werden.</li>
-    <li>measurementOffset &lt;value&gt;<br>
+
+    <a name="measurementOffset"></a><li>measurementOffset &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene <code>offset</code> Temperatur in den Speicher
       des Ger&auml;tes. Wenn der interne Temperatursensor nicht korrekt kalibriert ist, kann dieses einen
       systematischen Fehler erzeugen. Mit dem Wert <code>measurementOffset</code>, kann dieser Fehler
@@ -1328,67 +1391,48 @@ sub MAX_FileList
       Temperatur + <code>measurementOffset</code>. Normalerweise ist die intern gemessene Temperatur h&ouml;her
       als die Raumtemperatur, da der Sensor n&auml;her am Heizk&ouml;rper ist und man verwendet einen
       kleinen negativen Offset, der zwischen -3,5 und 3,5 Kelvin sein mu&szlig;.</li>
-    <li>minimumTemperature &lt;value&gt;<br>
+    <a name="minimumTemperature"></a><li>minimumTemperature &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegemene <code>minimum</code> Temperatur in der Speicher
       des Ger&auml;tes. Diese begrenzt die Temperatur, die am Ger&auml;t manuell eingestellt werden kann.</li>
-    <li>maximumTemperature &lt;value&gt;<br>
+    <a name="maximumTemperature"></a><li>maximumTemperature &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegemene <code>maximum</code> Temperatur in der Speicher
       des Ger&auml;tes. Diese begrenzt die Temperatur, die am Ger&auml;t manuell eingestellt werden kann.</li>
-    <li>windowOpenTemperature &lt;value&gt;<br>
+    <a name="windowOpenTemperature"></a><li>windowOpenTemperature &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegemene <code>window open</code> Temperatur in den Speicher
       des Ger&auml;tes. Das ist die Tempereratur, die an der Heizung kurzfristig eingestellt wird, wenn ein
       ge&ouml;ffnetes Fenster erkannt wird. Der Wert 4,5 Grad bzw. "off" schaltet die Reaktion auf
       ein offenes Fenster aus.</li>
-    <li>windowOpenDuration &lt;value&gt;<br>
+    <a name="windowOpenDuration"></a><li>windowOpenDuration &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene <code>window</code> open Dauer in den Speicher
       des Ger&auml;tes. Dies ist die Dauer, w&auml;hrend der die Heizung kurzfristig die window open Temperatur
       einstellt, wenn ein offenes Fenster durch einen schnellen Temperatursturz erkannt wird.
       (Wird nicht verwendet, wenn das offene Fenster von <code>ShutterControl</code> erkannt wird.)
       Parameter muss zwischen Null und 60 Minuten sein als Vielfaches von 5.</li>
-    <li>decalcification &lt;value&gt;<br>
+    <a name="decalcification"></a><li>decalcification &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene Zeit f&uuml;r <code>decalcification</code>
       in den Speicher des Ger&auml;tes. Parameter muss im Format "Sat 12:00" sein, wobei die Minuten
       "00" sein m&uuml;ssen. Zu dieser angegebenen Zeit wird das Heizk&ouml;rperthermostat das Ventil
       kurz ganz &ouml;ffnen, um vor Schwerg&auml;ngigkeit durch Kalk zu sch&uuml;tzen.</li>
-    <li>boostDuration &lt;value&gt;<br>
+    <a name="boostDuration"></a><li>boostDuration &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene Boost Dauer in den Speicher
       des Ger&auml;tes. Der gew&auml;hlte Parameter muss einer aus 5, 10, 15, 20, 25, 30 oder 60 sein
       und gibt die Dauer der Boost-Funktion in Minuten an.</li>
-    <li>boostValveposition &lt;value&gt;<br>
+    <a name="boostValveposition"></a><li>boostValveposition &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene Boost Ventilstellung in den Speicher
       des Ger&auml;tes. Dies ist die Ventilstellung (in Prozent) die bei der Boost-Fumktion eingestellt wird.</li>
-    <li>maxValveSetting &lt;value&gt;<br>
+    <a name="maxValveSetting"></a><li>maxValveSetting &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt die angegebene maximale Ventilposition in den Speicher
       des Ger&auml;tes. Der Heizk&ouml;rperthermostat wird das Ventil nicht weiter &ouml;ffnen als diesen Wert
       (Angabe in Prozent).</li>
-    <li>valveOffset &lt;value&gt;<br>
+    <a name="valveOffset"></a><li>valveOffset &lt;value&gt;<br>
       Nur f&uuml;r Heizk&ouml;rperthermostate. Schreibt den angegebenen <code>offset</code> Wert der Ventilstellung
       in den Speicher des Ger&auml;tes Der Heizk&ouml;rperthermostat wird diesen Wert w&auml;hrend der Regelung
       zu den berechneten Ventilstellungen hinzuaddieren.</li>
-    <li>factoryReset<br>
-      Setzt das Ger&auml;t auf die Werkseinstellungen zur&uuml;ck. Das Ger&auml;t muss anschlie&szlig;end neu
-      angelernt werden.<br>
-      ACHTUNG: Wenn dies in Kombination mit einem Fensterkontakt und dem MAXLAN Modul
-      verwendet wird, muss der Fensterkontakt einmal manuell ausgel&ouml;st werden, damit das
-      Zur&uuml;cksetzen auf Werkseinstellungen beendet werden kann.</li>
-    <li>associate &lt;value&gt;<br>
-      Verbindet ein Ger&auml;t mit einem anderen. &lt;value&gt; kann entweder der Name eines MAX Ger&auml;tes oder
-      seine 6-stellige hexadezimale Adresse sein.<br>
-      Wenn ein Fensterkontakt mit einem {Heizk&ouml;rper-/Wand-}Thermostat verbunden wird, sendet der
-      Fensterkontakt automatisch die <code>windowOpenTemperature</code> Temperatur wenn der Kontakt
-      ge&ouml;ffnet ist. Das Thermostat muss ebenfalls mit dem Fensterkontakt verbunden werden, um diese
-      Botschaften zu verarbeiten.
-      <b>Achtung: Nach dem Senden der Botschaft zum Verbinden an den Fensterkontakt muss der Knopf am
-      Fensterkontakt gedr&uuml;ckt werden um den Fensterkonakt einzuschalten und den Befehl zu verarbeiten.
-      Details &uuml;ber das erfolgreiche Verbinden finden sich in der fhem Logdatei!</b>
-      Das Verbinden eines Heizk&ouml;rperthermostates und eines Wandthermostates synchronisiert deren
-      <code>desiredTemperature</code> und verwendet die am Wandthermostat gemessene Temperatur f&uuml;r
-      die Regelung.</li>
-    <li>deassociate &lt;value&gt;<br>
-      L&ouml;st die Verbindung, die mit <code>associate</code> gemacht wurde, wieder auf.</li>
-    <li>weekProfile [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;]
+
+
+    <a name="weekProfile"></a><li>weekProfile [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;]
       [&lt;day&gt; &lt;temp1&gt;,&lt;until1&gt;,&lt;temp2&gt;,&lt;until2&gt;] ...<br>
-      Erlaubt das Setzen eines Wochenprofils. Nur f&uuml;r Heizk&oum;rperthermostate bzw. Wandthermostate.<br>
+      Erlaubt das Setzen eines Wochenprofils. Nur f&uuml;r Heizk&ouml;rperthermostate bzw. Wandthermostate.<br>
       Beispiel:<br>
       <code>set MAX_12345 weekProfile Fri 24.5,6:00,12,15:00,5 Sat 7,4:30,19,12:55,6</code><br>
       stellt das folgende Profil ein<br>
@@ -1396,23 +1440,61 @@ sub MAX_FileList
       Samstag: 7 &deg;C von 0:00 - 4:30, 19 &deg;C von 4:30 - 12:55, 6 &deg;C von 12:55 - 0:00</code><br>
       und beh&auml;lt die Profile f&uuml;r die anderen Wochentage bei.
     </li>
+    <a name="saveConfig">saveConfig</a><li>saveConfig [name]</li>
+    <a name="restoreRedings"></a><li>restoreRedings [name]</li>
+    <a name="restoreDevice"></a><li>restoreDevice [name]</li>
   </ul>
   <br>
 
   <a name="MAXget"></a>
-  <b>Get</b> <ul>N/A</ul><br>
+  <b>Get</b>
+   <ul>
+   <a name=""></a><li>show_savedConfig <device><br>
+   zeigt gespeicherte Konfigurationen an die mittels set restoreReadings / restoreDevice verwendet werden k&ouml;nnen<br>
+   steht erst zur Verf&uuml;gung wenn für dieses Ger&auml;t eine gespeichrte Konfiguration gefunden wurde.
+   </li>
+  </ul><br>
 
   <a name="MAXattr"></a>
   <b>Attributes</b>
   <ul>
-    <li><a href="#eventMap">eventMap</a></li>
-    <li><a href="#IODev">IODev</a></li>
-    <li><a href="#loglevel">loglevel</a></li>
-    <li><a href="#do_not_notify">do_not_notify</a></li>
-    <li><a href="#ignore">ignore</a></li>
-    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
-    <li>keepAuto<br>Standardwert: 0. Wenn der Wert auf 1 gesetzt wird, bleibt das Ger&auml;t im
-       Wochenprogramm auch wenn eine <code>desiredTemperature</code> gesendet wird.</li>
+    <a name="actCycle"></a> <li>actCycle &lt;hh:mm&gt; default leer (nur mit CUL_MAX)<br>
+    Stellt eine Lebenserkennung für das Ger&auml;t zur Verf&uuml;gung. [hhh:mm] legt die maximale Zeit ohne eine Nachricht dieses Ger&auml;ts fest.<br>
+    Wenn innerhalb dieser Zeit keine Nachrichten empfangen werden wird das Reading Actifity auf dead gesetzt.<br>
+    Sendet das Ger&auml;t wieder wird das Reading auf alive zur&uuml;ck gesetzt.<br>
+    <b>Wichtig</b> : Der Einsatz ist Nicht sinnvoll beim ECO Taster, da dieser als einziges Mitglied der MAX! Familie keine zyklischen Statusnachrichten verschickt !</li><br>
+    <a name="CULdev"></a><li>CULdev &lt;name&gt; default leer (nur mit CUL_MAX)<br>
+    CUL der zum senden benutzt wird wenn CUL_MAX eine IO Gruppe verwendet (Multi IO )</li><br>
+
+    <a name="DbLog_log_onoff"></a><li>DbLog_log_onoff (0|1) schreibe die Werte on und off als Text in die DB oder ersetzt sie direkt durch
+    ihre numerischen Werte 30.5 and 4.5<br>Hilfreich bei Plots da auf eine extra Plotfunktion verzichtet werden kann.</li><br>
+
+    <a name="debug"></a><li>debug (0|1) default 0<br>erzeugt zus&auml;tzliche Readings (nur mit CUL_MAX)</li><br>
+
+    <a name="dTempCheck"></a><li>dTempCheck (0|1) default 0<br>&uuml;berwacht im Abstand von 5 Minuten ob das Reading desiredTemperatur
+     der Soll Temperatur im aktuellen Wochenprofil entspricht. (nur f&uuml; Ger&aumk;te vom Typ HT oder WT)<br>
+     Das Ergebniss steht als Abweichung im Reading dTempCheck, d.h. 0 = keine Abweichung<br>
+     Die &Uuml;berwachung is nur aktiv wenn die Soll Temperatur ungleich der Window Open Temperatur ist</li><br>
+
+    <a name="dummy"></a><li>dummy (0|1) default 0<br>macht das Device zum read-only Device</li><br>
+
+    <a name="externalSensor"></a><li>externalSensor &lt;device:reading&gt; default none<br>
+    Wenn in einem Raum kein Wandthermostat vorhanden ist aber die Raumtemperatur zus&auml;tlich mit einem externen Sensor in FHEM erfasst wird (z.B. LaCrosse)<br>
+    kann dessen aktueller Temperatur Wert zur Berechnung des Readings deviation benutzt werden statt des eigenen Readings temperature</li><br>
+
+    <a name="IODev"></a><li>IODev &lt;name&gt;<br> MAXLAN oder CUL_MAX Device Name</li><br>
+
+    <a name="keepAuto"></a><li>keepAuto (0|1) default 0<br>Wenn der Wert auf 1 gesetzt wird, bleibt das Ger&auml;t im Wochenprogramm auch wenn ein desiredTemperature gesendet wird.</li><br>
+
+    <a name="scanTemp"></a><li>scanTemp (0|1) default 0<br>wird vom MaxScanner benutzt</li><br>
+
+    <a name="skipDouble"></a><li>skipDouble (0|1) default 0 (nur mit CUL_MAX)<br>
+    Wenn mehr als ein Thermostat zusammmen mit einem Fensterkontakt und/oder einem Wandthermostst eine Gruppe bildet,<br>
+    versendet jedes Mitglieder der Gruppe seine Statusnachrichten einzeln an jedes andere Mitglied der Gruppe.<br>
+    Das f&uuml;hrt dazu das manche Events doppelt oder sogar dreifach ausgel&ouml;st werden, kann mit diesem Attribut unterdr&uuml;ckt werden.</li><br>
+
+    <a name="windowOpenCheck"></a><li>windowOpenCheck (0|1)<br>&uuml;berwacht im Abstand von 5 Minuten ob bei Geräten vom Typ ShutterContact das Reading onoff den Wert 1 hat (Fenster offen , default 1)<br>
+     oder bei Geräten vom Typ HT/WT ob die Soll Temperatur gleich der Window Open Temperatur ist (default 0). Das Ergebniss steht im Reading windowOpen, Format hh:mm</li><br>
   </ul>
   <br>
 
@@ -1430,3 +1512,4 @@ sub MAX_FileList
 
 =end html_DE
 =cut
+

@@ -1741,6 +1741,8 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
 
 1;
 
+__END__
+
 =pod
 =item device
 =item summary       Controls LG SmartTVs run with WebOS Operating System
@@ -1832,6 +1834,12 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
     </ul>
     <ul>
         <ul>
+            <li>keepAliveCheckTime</li>
+            value in seconds - keepAliveCheck is check read data input from tcp socket and prevented FHEM freeze.
+        </ul>
+    </ul>
+    <ul>
+        <ul>
             <li>wakeOnLanMAC</li>
             Network MAC Address of the LG TV Networkdevice.
         </ul>
@@ -1842,7 +1850,7 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
             Broadcast Address of the Network - wakeOnLanBroadcast &lt;network&gt;.255
         </ul>
     </ul>
-	<ul>
+    <ul>
         <ul>
             <li>wakeupCmd</li>
             Set a command to be executed when turning on an absent device. Can be an FHEM command or Perl command in {}.
@@ -1955,14 +1963,31 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
             </ul>
         </ul>
     </ul>
-	<ul>
+    <ul>
+        <ul>
+            <ul>
+                <li>pingPresence</li>
+                M&ouml;gliche Werte: 0 =&gt; presence via ping deaktivert, 1 =&gt; presence via ping aktiviert
+            </ul>
+        </ul>
+    </ul>
+    <ul>
+        <ul>
+            <ul>
+                <li>keepAliveCheckTime</li>
+                Wert in Sekunden - keepAliveCheckTime
+ kontrolliert in einer bestimmten Zeit ob noch Daten über die TCP Schnittstelle kommen und verhindert somit FHEM Freezes
+            </ul>
+        </ul>
+    </ul>
+    <ul>
         <ul>
             <ul>
                 <li>wakeupCmd</li>
                 Befehl zum Einschalten des LG TV. M&ouml;glich ist ein FHEM Befehl oder Perl in {}.
             </ul>
         </ul>        
-    </ul>																				   
+    </ul>
     <p><br /><br /><strong>Generierte Readings/Events:</strong></p>
     <ul>
         <ul>
@@ -1990,6 +2015,7 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
         </ul>
     </ul>
 </ul>
+
 =end html_DE
 
 =for :application/json;q=META.json 82_LGTV_WebOS.pm
@@ -2009,9 +2035,9 @@ sub LGTV_WebOS_WakeUp_Udp($@) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v3.2.4",
+  "version": "v3.6.9",
   "author": [
-    "Marko Oldenburg <leongaultier@gmail.com>"
+    "Marko Oldenburg <fhemdevelopment@cooltux.net>"
   ],
   "x_fhem_maintainer": [
     "CoolTux"

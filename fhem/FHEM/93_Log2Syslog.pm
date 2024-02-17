@@ -3,7 +3,7 @@
 ##########################################################################################################################
 #       93_Log2Syslog.pm
 #
-#       (c) 2017-2020 by Heiko Maaz
+#       (c) 2017-2023 by Heiko Maaz
 #       e-mail: Heiko dot Maaz at t-online dot de
 #
 #       This script is part of fhem.
@@ -106,6 +106,9 @@ BEGIN {
 
 # Versions History intern:
 my %vNotesIntern = (
+  "5.12.5" => "23.01.2023  Adaptation to change \%logInform in fhem.pl, Forum:#131790 ",
+  "5.12.4" => "27.02.2021  don't split data by CRLF if EOF is used (in getIfData) ",
+  "5.12.3" => "02.11.2020  avoid do Logfile archiving which was executed in seldom (unknown) cases ",
   "5.12.2" => "15.05.2020  permit content of 'exclErrCond' to fhemLog strings ",
   "5.12.1" => "12.05.2020  add dev to check regex of 'exclErrCond' ",
   "5.12.0" => "16.04.2020  improve IETF octet count again, internal code changes for PBP ",
@@ -236,18 +239,18 @@ my %vNotesExtern = (
 
 # Mappinghash BSD-Formatierung Monat
 my %Log2Syslog_BSDMonth = (
-  "01" => "Jan",
-  "02" => "Feb",
-  "03" => "Mar",
-  "04" => "Apr",
-  "05" => "May",
-  "06" => "Jun",
-  "07" => "Jul",
-  "08" => "Aug",
-  "09" => "Sep",
-  "10" => "Oct",
-  "11" => "Nov",
-  "12" => "Dec",
+  "01"  => "Jan",
+  "02"  => "Feb",
+  "03"  => "Mar",
+  "04"  => "Apr",
+  "05"  => "May",
+  "06"  => "Jun",
+  "07"  => "Jul",
+  "08"  => "Aug",
+  "09"  => "Sep",
+  "10"  => "Oct",
+  "11"  => "Nov",
+  "12"  => "Dec",
   "Jan" => "01",
   "Feb" => "02",
   "Mar" => "03",
@@ -384,7 +387,7 @@ return;
 ###############################################################################
 sub Define {
   my ($hash, $def) = @_;
-  my @a            = split("[ \t][ \t]*", $def);
+  my @a            = split m{\s+}x, $def;
   my $name         = $hash->{NAME};
   
   return "Error: Perl module ".$MissModulSocket." is missing. Install it on Debian with: sudo apt-get install libio-socket-multicast-perl" if($MissModulSocket);
@@ -397,20 +400,20 @@ sub Define {
   delete($hash->{HELPER}{FHEMLOG});
   delete($hash->{HELPER}{IDENT});
   
-  $hash->{MYHOST} = hostname();                            # eigener Host (lt. RFC nur Hostname f. BSD)
-  my $myfqdn      = hostfqdn();                            # MYFQDN eigener Host (f. IETF)
+  $hash->{MYHOST} = hostname();                                        # eigener Host (lt. RFC nur Hostname f. BSD)
+  my $myfqdn      = hostfqdn();                                        # MYFQDN eigener Host (f. IETF)
   $myfqdn         =~ s/\.$//x if($myfqdn);
   $hash->{MYFQDN} = $myfqdn // $hash->{MYHOST};       
   
-  if(int(@a)-3 < 0){                                       # Einrichtung Servermode (Collector)
+  if(int(@a)-3 < 0){                                                   # Einrichtung Servermode (Collector)
       $hash->{MODEL}   = "Collector";
       $hash->{PROFILE} = "Automatic";                          
-      readingsSingleUpdate ($hash, 'Parse_Err_No', 0, 1);  # Fehlerzähler für Parse-Errors auf 0
+      readingsSingleUpdate ($hash, 'Parse_Err_No', 0, 1);              # Fehlerzähler für Parse-Errors auf 0
       readingsSingleUpdate ($hash, 'Parse_Err_LastData', 'n.a.', 0);
       Log3slog             ($hash, 3, "Log2Syslog $name - entering Syslog servermode ..."); 
       initServer           ("$name,global");
-  
-  } else {                                                 # Sendermode
+  } 
+  else {                                                               # Sendermode
       $hash->{MODEL} = "Sender";
       setidrex($hash,$a[3]) if($a[3]);
       setidrex($hash,$a[4]) if($a[4]);
@@ -424,20 +427,19 @@ sub Define {
       return "Bad regexp: starting with *" 
          if((defined($hash->{HELPER}{EVNTLOG}) && $hash->{HELPER}{EVNTLOG} =~ m/^\*/x) || (defined($hash->{HELPER}{FHEMLOG}) && $hash->{HELPER}{FHEMLOG} =~ m/^\*/x));
   
-      # nur Events dieser Devices an NotifyFn weiterleiten, NOTIFYDEV wird gesetzt wenn möglich
-      notifyRegexpChanged($hash, $hash->{HELPER}{EVNTLOG}) if($hash->{HELPER}{EVNTLOG});
+      notifyRegexpChanged($hash, $hash->{HELPER}{EVNTLOG}) if($hash->{HELPER}{EVNTLOG});    # nur Events dieser Devices an NotifyFn weiterleiten, NOTIFYDEV wird gesetzt wenn möglich
         
-      $hash->{PEERHOST} = $a[2];                              # Destination Host (Syslog Server)
+      $hash->{PEERHOST} = $a[2];                                       # Destination Host (Syslog Server)
   }
 
-  $hash->{SEQNO}                 = 1;                         # PROCID in IETF, wird kontinuierlich hochgezählt
-  $logInform{$hash->{NAME}}      = \&fhemLog;                 # Funktion die in hash %loginform für $name eingetragen wird
-  $hash->{HELPER}{SSLVER}        = "n.a.";                    # Initialisierung
-  $hash->{HELPER}{SSLALGO}       = "n.a.";                    # Initialisierung
-  $hash->{HELPER}{LTIME}         = time();                    # Init Timestmp f. Ratenbestimmung
-  $hash->{HELPER}{OLDSEQNO}      = $hash->{SEQNO};            # Init Sequenznummer f. Ratenbestimmung
+  $hash->{SEQNO}                 = 1;                                  # PROCID in IETF, wird kontinuierlich hochgezählt
+  $logInform{$hash->{NAME}}      = \&FHEM::Log2Syslog::fhemLog;        # Funktion die in hash %loginform für $name eingetragen wird
+  $hash->{HELPER}{SSLVER}        = "n.a.";                             # Initialisierung
+  $hash->{HELPER}{SSLALGO}       = "n.a.";                             # Initialisierung
+  $hash->{HELPER}{LTIME}         = time();                             # Init Timestmp f. Ratenbestimmung
+  $hash->{HELPER}{OLDSEQNO}      = $hash->{SEQNO};                     # Init Sequenznummer f. Ratenbestimmung
   $hash->{HELPER}{OLDSTATE}      = "initialized";
-  $hash->{HELPER}{MODMETAABSENT} = 1 if($modMetaAbsent);      # Modul Meta.pm nicht vorhanden
+  $hash->{HELPER}{MODMETAABSENT} = 1 if($modMetaAbsent);               # Modul Meta.pm nicht vorhanden
   
   # Versionsinformationen setzen
   setVersionInfo($hash);
@@ -449,7 +451,7 @@ sub Define {
   readingsBulkUpdate ($hash, "state", "initialized") if($hash->{MODEL}=~/Sender/);
   readingsEndUpdate  ($hash,1);
   
-  calcTrate($hash);                                           # regelm. Berechnung Transfer Rate starten 
+  calcTrate($hash);                                                    # regelm. Berechnung Transfer Rate starten 
       
 return;
 }
@@ -544,14 +546,16 @@ sub Read {                                                  ## no critic 'comple
   if($hash->{TEMPORARY}) {
       my $sname = $hash->{SNAME};
       $rhash    = $defs{$sname};
-  } else {
+  } 
+  else {
       $rhash = $hash;
   }
           
   my $pp = $rhash->{PROFILE};
   if($pp =~ /BSD/) {                                                    # Framelänge BSD-Format
       $len = $RFC3164len{DL};
-  } elsif ($pp =~ /IETF/) {                                             # Framelänge IETF-Format   
+  } 
+  elsif ($pp =~ /IETF/) {                                               # Framelänge IETF-Format   
       $len = $RFC5425len{DL};     
   } 
 
@@ -561,9 +565,11 @@ sub Read {                                                  ## no critic 'comple
   
   my $name   = $hash->{NAME};
   return if(IsDisabled($name) || isMemLock($hash));
-  my $mevt   = AttrVal($name, "makeEvent", "intern");                   # wie soll Reading/Event erstellt werden
-  my $sevevt = AttrVal($name, "respectSeverity", "");                   # welcher Schweregrad soll berücksichtigt werden (default: alle)
-      
+  
+  my $mevt   = AttrVal($name, "makeEvent",       "intern");             # wie soll Reading/Event erstellt werden
+  my $sevevt = AttrVal($name, "respectSeverity", ""      );             # welcher Schweregrad soll berücksichtigt werden (default: alle)
+  my $uef    = AttrVal($name, "useEOF",          0       );             # verwende EOF
+  
   if($socket) {
       ($st,$data,$hash) = getIfData($hash,$len,$mlen,$reread);
   }
@@ -578,9 +584,11 @@ sub Read {                                                  ## no critic 'comple
           $tail   = $+{tail}; 
           $msg    = substr($tail,0,$ocount);
           push @load, $msg;
+          
           if(length($tail) >= $ocount) {
               $tail = substr($tail,$ocount);
-          } else {
+          } 
+          else {
               $tail = substr($tail,length($msg));
           }
           
@@ -596,9 +604,11 @@ sub Read {                                                  ## no critic 'comple
               next if(!$tail); 
               $msg    = substr($tail,0,$ocount);
               push @load, $msg;
+              
               if(length($tail) >= $ocount) {
                   $tail = substr($tail,$ocount);
-              } else {
+              } 
+              else {
                   $tail = substr($tail,length($msg));
               }   
               
@@ -606,10 +616,15 @@ sub Read {                                                  ## no critic 'comple
               Log3slog ($hash, 5, "Log2Syslog $name -> MSG$i       : $msg");
               Log3slog ($hash, 5, "Log2Syslog $name -> LENGTH_MSG$i: ".length($msg)); 
               Log3slog ($hash, 5, "Log2Syslog $name -> TAIL$i      : $tail");  
-          }   
-      
-      } else {
-          @load = split("[\r\n]",$data);
+          }
+      } 
+      else {
+          if($uef) {
+              push @load, $data;
+          }
+          else {
+              @load = split("[\r\n]",$data);
+          }
       }
 
       for my $line (@load) {
@@ -621,17 +636,21 @@ sub Read {                                                  ## no critic 'comple
               $pen++;
               readingsSingleUpdate($hash, 'Parse_Err_No', $pen, 1);
               $st = "parse error - see logfile";
-          } elsif ($ignore) {
+          } 
+          elsif ($ignore) {
               Log3slog ($hash, 5, "Log2Syslog $name -> dataset was ignored by parseFn");
-          } else {
+          } 
+          else {
               return if($sevevt && $sevevt !~ m/$sev/x);                                # Message nicht berücksichtigen
               $st = "active";
               if($mevt =~ /intern/) {                                                   # kein Reading, nur Event
                   $pl = "$phost: $pl";
                   Trigger($hash,$ts,$pl);
-              } elsif ($mevt =~ /reading/x) {                                           # Reading, Event abhängig von event-on-.*
+              } 
+              elsif ($mevt =~ /reading/x) {                                           # Reading, Event abhängig von event-on-.*
                   readingsSingleUpdate($hash, "MSG_$phost", $pl, 1);
-              } else {                                                                  # Reading ohne Event
+              } 
+              else {                                                                  # Reading ohne Event
                   readingsSingleUpdate($hash, "MSG_$phost", $pl, 0);
               }
           }
@@ -663,12 +682,15 @@ return;
 #   (sSiehe auch "list TYPE=FHEMWEB", bzw. "man -s2 accept")
 # 
 ###############################################################################
-sub getIfData {                                                     ## no critic 'complexity'
-  my ($hash,$len,$mlen,$reread) = @_;
-  my $name                      = $hash->{NAME};
-  my $socket                    = $hash->{SERVERSOCKET};
-  my $protocol                  = lc(AttrVal($name, "protocol", "udp"));
-  my ($eof,$buforun)            = (0,0);
+sub getIfData {                                       ## no critic 'complexity'
+  my $hash           = shift;
+  my $len            = shift;
+  my $mlen           = shift;
+  my $reread         = shift;
+  my $name           = $hash->{NAME};
+  my $socket         = $hash->{SERVERSOCKET};
+  my $protocol       = lc(AttrVal($name, "protocol", "udp"));
+  my ($eof,$buforun) = (0,0);
   
   if($hash->{TEMPORARY}) {
       # temporäre Instanz abgelegt durch TcpServer_Accept
@@ -688,7 +710,8 @@ sub getIfData {                                                     ## no critic
               Log3slog ($hash, 3, "Log2Syslog $name - Seq \"$hash->{SEQNO}\" invalid data: $data"); 
               $data = '' if(length($data) == 0);
               $st   = "receive error - see logfile";
-          } else {
+          } 
+          else {
               my $dl = length($data);
               Log3slog ($hash, 5, "Log2Syslog $name - Buffer ".$dl." chars ready to parse:\n$data");
           } 
@@ -727,21 +750,22 @@ sub getIfData {                                                     ## no critic
               $shash->{HELPER}{TCPPADDR} = $hash->{PEER};             
               my $buf;
               my $off = 0;
-              $ret = sysread($c, $buf, $len);                       # returns undef on error, 0 at end of file and Integer, number of bytes read on success.                
+              $ret    = sysread($c, $buf, $len);                    # returns undef on error, 0 at end of file and Integer, number of bytes read on success.                
               
               if(!defined($ret) && $! == EWOULDBLOCK()){            # error
                   $hash->{wantWrite} = 1 if(TcpServer_WantWrite($hash));
                   $hash = $shash;
                   Log3slog ($hash, 2, "Log2Syslog $sname - ERROR - TCP stack error:  $!");   
-                  return ($st,undef,$hash); 
-
-              } elsif (!$ret) {                                     # EOF or error
+                  return ($st,undef,$hash);
+              } 
+              elsif (!$ret) {                                       # EOF or error
                   Log3slog ($shash, 4, "Log2Syslog $sname - Connection closed for $cname: ".(defined($ret) ? 'EOF' : $!));
                   if(!defined($ret)) {                              # error
                       CommandDelete(undef, $cname);
                       $hash = $shash;
                       return ($st,undef,$hash);
-                  } else {                                          # EOF
+                  } 
+                  else {                                            # EOF
                       $eof  = 1;
                       $data = $hash->{BUF};
                       CommandDelete(undef, $cname);     
@@ -1558,6 +1582,7 @@ sub Attr {                                            ## no critic 'complexity'
             return qq{Mode "$aVal" is only valid for model "Sender"} if($aVal eq "maintenance" && $hash->{MODEL} !~ /Sender/);
             $do = $aVal?1:0;
         }
+        
         $do = 0 if($cmd eq "del");
         $st = ($do&&$aVal=~/maintenance/)?"maintenance":($do&&$aVal==1)?"disabled":"initialized";
         
@@ -1569,7 +1594,8 @@ sub Attr {                                            ## no critic 'complexity'
                 downServer($hash,1);                                                 # Serversocket schließen und wieder öffnen
                 InternalTimer(gettimeofday()+0.5, "FHEM::Log2Syslog::initServer", "$name,global", 0);                 
             } 
-        } else {
+        } 
+        else {
             closeSocket($hash,1);                                                    # Clientsocket schließen 
             downServer ($hash);                                                      # Serversocket schließen
         }
@@ -1581,9 +1607,11 @@ sub Attr {                                            ## no critic 'complexity'
             $do = ($aVal) ? 1 : 0;
         }
         $do = 0 if($cmd eq "del");
+        
         if ($do == 0) {
             delete $hash->{SSL};
-        } else {
+        } 
+        else {
             if($hash->{MODEL} =~ /Collector/) {
                 $attr{$name}{protocol} = "TCP" if(AttrVal($name, "protocol", "UDP") ne "TCP");
                 TcpServer_SetSSL($hash);
@@ -1594,6 +1622,7 @@ sub Attr {                                            ## no critic 'complexity'
         
         closeSocket($hash,1);                                                        # Clientsocket schließen
         downServer ($hash,1);                                                        # Serversocket schließen     
+        
         if($hash->{MODEL} =~ /Collector/) {
             InternalTimer(gettimeofday()+0.5, "FHEM::Log2Syslog::initServer", "$name,global", 0);  # Serversocket öffnen
             readingsSingleUpdate ($hash, 'Parse_Err_No', 0, 1);                                    # Fehlerzähler für Parse-Errors auf 0
@@ -1780,46 +1809,52 @@ return "";
 
 #################################################################################
 #                               FHEM system logging
+# Übergabe aus fhem.pl:  ($li, "$tim $loglevel: $text")
+#                         $li -> Schlüssel aus %logInform
 #################################################################################
 sub fhemLog {
-  my ($name,$raw) = @_;                              
+  my $name    = shift;
+  my $raw     = shift;        
+  
   my $hash    = $defs{$name};
   my $rex     = $hash->{HELPER}{FHEMLOG};
-  my $st      = ReadingsVal($name,"state","active");
-  my $sendsev = AttrVal($name, "respectSeverity", "");              # Nachrichten welcher Schweregrade sollen gesendet werden
-  my $uef     = AttrVal($name, "useEOF", 0);
+  my $st      = ReadingsVal ($name, 'state',     'active');
+  my $sendsev = AttrVal     ($name, 'respectSeverity', '');                # Nachrichten welcher Schweregrade sollen gesendet werden
+  my $uef     = AttrVal     ($name, 'useEOF',           0);
+  
   my ($prival,$sock,$err,$ret,$data,$pid,$sevAstxt);
   
   if(IsDisabled($name)) {
-      my $evt = ($st eq $hash->{HELPER}{OLDSTATE})?0:1;
-      readingsSingleUpdate($hash, "state", $st, $evt);
+      my $evt = $st eq $hash->{HELPER}{OLDSTATE} ? 0 : 1;
+      readingsSingleUpdate ($hash, "state", $st, $evt);
       $hash->{HELPER}{OLDSTATE} = $st;
       return;
   }
   
-  if($init_done != 1 || !$rex || $hash->{MODEL} !~ /Sender/ || isMemLock($hash)) {
+  if($init_done != 1 || !$rex || $hash->{MODEL} !~ /Sender/ || isMemLock ($hash)) {
       return;
   }
-    
-  my ($date,$time,$vbose,undef,$txt) = split(" ",$raw,5);
-  $txt    = charFilter($hash,$txt);
-  $date   =~ s/\./-/gx;
-  my $tim = $date." ".$time;
+  
+  my ($date,$time,$vbose,$txt) = split " ", $raw, 4;
+  $txt                         = charFilter ($hash, $txt);
+  $date                        =~ s/\./-/gx;
+  $vbose                       =~ s/://x;
+  my $tim                      = $date.' '.$time;
   
   if($txt =~ m/^$rex$/x || "$vbose: $txt" =~ m/^$rex$/x) {
-      my $otp             = "$vbose: $txt";
-      $otp                = "$tim $otp" if AttrVal($name,'addTimestamp',0);
-      ($prival,$sevAstxt) = setPrival($hash,$txt,$vbose);
-      if($sendsev && $sendsev !~ m/$sevAstxt/x) {
-          # nicht senden wenn Severity nicht in "respectSeverity" enthalten
+      my $otp              = "$vbose: $txt";
+      $otp                 = "$tim $otp" if(AttrVal ($name, 'addTimestamp', 0));
+      ($prival, $sevAstxt) = setPrival ($hash, $txt, $vbose);
+      
+      if($sendsev && $sendsev !~ m/$sevAstxt/x) {                     # nicht senden wenn Severity nicht in "respectSeverity" enthalten
           Log3slog ($name, 5, "Log2Syslog $name - Warning - Payload NOT sent due to Message Severity not in attribute \"respectSeverity\"\n");
           return;        
       }
       
-      ($data,$pid) = setPayload($hash,$prival,$date,$time,$otp,"fhem");
+      ($data, $pid) = setPayload($hash,$prival,$date,$time,$otp,"fhem");
       return if(!$data);
       
-      ($sock,$st) = openSocket($hash,0);
+      ($sock, $st) = openSocket($hash,0);
       
       if ($sock) {
           $err = writeToSocket ($name,$sock,$data,$pid);
@@ -1829,8 +1864,8 @@ sub fhemLog {
       }
   }
   
-  my $evt = ($st eq $hash->{HELPER}{OLDSTATE})?0:1;
-  readingsSingleUpdate($hash, "state", $st, $evt);
+  my $evt = ($st eq $hash->{HELPER}{OLDSTATE}) ? 0 : 1;
+  readingsSingleUpdate ($hash, "state", $st, $evt);
   $hash->{HELPER}{OLDSTATE} = $st; 
 
 return;
@@ -1842,20 +1877,21 @@ return;
 sub sendTestMsg {
   my ($hash,$own) = @_;                              
   my $name        = $hash->{NAME};
-  my $st          = ReadingsVal($name,"state","active");
+  
+  my $st          = ReadingsVal ($name, "state", "active");
+  
   my ($prival,$ts,$sock,$tim,$date,$time,$err,$ret,$data,$pid,$otp);
   
-  if($own) {
-      # eigene Testmessage ohne Formatanpassung raw senden
+  if($own) {                                                  # eigene Testmessage ohne Formatanpassung raw senden
       $data = $own;
-      $pid = $hash->{SEQNO};                                 # PayloadID zur Nachverfolgung der Eventabfolge 
+      $pid  = $hash->{SEQNO};                                 # PayloadID zur Nachverfolgung der Eventabfolge 
       $hash->{SEQNO}++;
-  
-  } else {   
-      $ts = TimeNow();
+  } 
+  else {   
+      $ts           = TimeNow();
       ($date,$time) = split q{ }, $ts;
-      $date =~ s/\./-/gx;
-      $tim = $date." ".$time;
+      $date         =~ s/\./-/gx;
+      $tim          = $date." ".$time;
     
       $otp    = "Test message from FHEM Syslog Client from ($hash->{MYHOST})";
       $otp    = "$tim $otp" if AttrVal($name,'addTimestamp',0);
@@ -1869,10 +1905,12 @@ sub sendTestMsg {
       
   if ($sock) {
       $ret = syswrite $sock, $data."\n" if($data);
+      
       if($ret && $ret > 0) {  
           Log3slog ($name, 4, "$name - Payload sequence $pid sent\n");
           $st = "maintenance";          
-      } else {
+      } 
+      else {
           $err = $!;
           $st  = "write error: $err"; 
           Log3slog ($name, 3, "$name - Warning - Payload sequence $pid NOT sent: $err\n");           
@@ -1882,7 +1920,7 @@ sub sendTestMsg {
       closeSocket($hash) if($uef);
   }
   
-  my $evt = ($st eq $hash->{HELPER}{OLDSTATE})?0:1;
+  my $evt = ($st eq $hash->{HELPER}{OLDSTATE}) ? 0 : 1;
   readingsSingleUpdate($hash, "state", $st, $evt);
   $hash->{HELPER}{OLDSTATE} = $st; 
 
@@ -2042,9 +2080,11 @@ sub writeToSocket {
   
   if(defined $ret && $ret == $ld) {
       Log3slog($name, 4, "Log2Syslog $name - Payload sequence $pid sent. ($ret of $ld bytes)\n");      
-  } elsif (defined $ret && $ret != $ld) {
+  } 
+  elsif (defined $ret && $ret != $ld) {
       Log3slog($name, 3, "Log2Syslog $name - Warning - Payload sequence $pid NOT completely sent: $ret of $ld bytes \n"); 
-  } else {
+  } 
+  else {
       my $e = $!;
       $err  = "write error: $e";    
       Log3slog($name, 3, "Log2Syslog $name - Warning - Payload sequence $pid NOT sent: $e\n");   
@@ -2290,8 +2330,6 @@ sub Log3slog {
 
   my ($seconds, $microseconds) = gettimeofday();
   my @t = localtime($seconds);
-  my $nfile = ResolveDateWildcards($attr{global}{logfile}, @t);
-  OpenLogfile($nfile) if(!$currlogfile || $currlogfile ne $nfile);
 
   my $tim = sprintf("%04d.%02d.%02d %02d:%02d:%02d",
           $t[5]+1900,$t[4]+1,$t[3], $t[2],$t[1],$t[0]);
@@ -3232,7 +3270,8 @@ $CONT = (split(">",$CONT))[1] if($CONT =~ /^<.*>.*$/);
         After every transmission the TCP-connection will be terminated with signal EOF. <br><br>
         
         <b>Model Collector: </b><br>
-        No parsing until the sender has send an EOF signal. If TLS is used, this attribute has no effect. 
+        No parsing until the sender has send an EOF signal. CRLF is not considered as data separator. 
+        If not set, CRLF will be considered as a record separator.
         <br>
         <br>
         
@@ -4006,8 +4045,8 @@ $CONT = (split(">",$CONT))[1] if($CONT =~ /^<.*>.*$/);
         Nach jedem Sendevorgang wird eine TCP-Verbindung mit EOF beendet. <br><br>
         
         <b>Model Collector: </b><br>      
-        Es wird mit dem Parsing gewartet, bis der Sender ein EOF Signal gesendet hat. Wird TLS verwendet, hat dieses Attribut 
-        keine Auswirkung. 
+        Es wird mit dem Parsing gewartet, bis der Sender ein EOF Signal gesendet hat. CRLF wird nicht als Datentrenner 
+        berücksichtigt. Wenn nicht gesetzt, wird CRLF als Trennung von Datensätzen gewertet.
         <br>
         <br>
         

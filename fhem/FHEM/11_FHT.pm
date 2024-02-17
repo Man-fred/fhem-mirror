@@ -140,6 +140,7 @@ my %warnings = (
 );
 
 my %priority = (
+  "minute"      => 0,
   "desired-temp"=> 1,
   "mode"	=> 2,
   "report1"     => 3,
@@ -209,6 +210,16 @@ FHT_Set($@)
     splice(@a,$i,1,("report1","255","report2","255"))
         if($a[$i] eq "refreshvalues");
 
+    if($a[$i] eq "adjusthour") {
+      my @t = localtime;
+      splice(@a,$i,1,("hour",$t[2]));
+    }
+
+    if($a[$i] eq "adjustminute") {
+      my @t = localtime;
+      splice(@a,$i,1,("minute",$t[1]));
+    }
+
     if($a[$i] eq "time") {
       my @t = localtime;
       splice(@a,$i,1,("hour",$t[2],"minute",$t[1]));
@@ -240,6 +251,7 @@ FHT_Set($@)
       my $tmpList="on,off,".join(",",@list);
       $cmdList =~ s/-temp/-temp:$tmpList/g;     # FHEMWEB sugar
       $cmdList =~ s/(-from.|-to.)/$1:time/g;
+      $cmdList .= " date:noArg time:noArg adjusthour:noArg adjustminute:noArg";
       return "Unknown argument $cmd, choose one of $cmdList";
     }
 
@@ -347,22 +359,28 @@ sub
 FHT_Define($$)
 {
   my ($hash, $def) = @_;
-  my @a = split("[ \t][ \t]*", $def);
+  my @a = split(" ", $def);
 
   return "wrong syntax: define <name> FHT CODE" if(int(@a) != 3);
-  $a[2] = lc($a[2]);
+  my $id = lc($a[2]);
   return "Define $a[0]: wrong CODE format: specify a 4 digit hex value"
-  		if($a[2] !~ m/^[a-f0-9][a-f0-9][a-f0-9][a-f0-9]$/i);
+  		if($id !~ m/^[a-f0-9][a-f0-9][a-f0-9][a-f0-9]$/i);
+  return "FHT id $id is already used by $modules{FHT}{defptr}{$id}{NAME}"
+    if($modules{FHT}{defptr}{$id});
 
+  $modules{FHT}{defptr}{$id} = $hash;
 
-  $hash->{CODE} = $a[2];
+  delete($modules{FHT}{defptr}{lc($hash->{OLDDEF})}) # Modify
+    if($hash->{OLDDEF});
+
+  $hash->{CODE} = $id;
   AssignIoPort($hash);
 
   # Check if the CULs id collides with our id.
   if($hash->{IODev} && $hash->{IODev}{TYPE} eq "CUL") {
      $hash->{IODev}{FHTID} =~ m/^(..)(..)$/;
      my ($i1, $i2) = (hex($1), hex($2));
-     $a[2] =~ m/^(..)(..)$/;
+     $id =~ m/^(..)(..)$/;
      my ($l1, $l2) = (hex($1), hex($2));
 
      if($l2 == $i2 && $l1 >= $i1 && $l1 <= $i1+7) {
@@ -372,10 +390,8 @@ FHT_Define($$)
      }
   }
 
-  $modules{FHT}{defptr}{$a[2]} = $hash;
-
-  #Log3 $a[0], 2, "Asking the FHT device $a[0]/$a[2] to send its data";
-  #FHT_Set($hash, ($a[0], "report1", "255", "report2", "255"));
+  $hash->{webCmd} = "desired-temp"; # Hint for FHEMWEB
+  $modules{FHT}{defptr}{$id} = $hash;
 
   return undef;
 }
@@ -572,7 +588,7 @@ FHT_Parse($$)
 
   readingsBulkUpdate($def, $cmd, $val);
   if($cmd eq "measured-temp") {
-    readingsBulkUpdate($def, "state", "measured-temp: $val", 0);
+    readingsBulkUpdate($def, "state", "$val C", 0);
     readingsBulkUpdate($def, "temperature", $val); # For dewpoint
   }    
 
@@ -591,8 +607,11 @@ FHT_Parse($$)
       my $h = $io->{SOFTBUFFER}{$key};
       my $hcmd = $h->{CMD};
       my $hname = $h->{HASH}->{NAME};
-      Log3 $name, 4, "FHT softbuffer check: $hname / $hcmd";
-      if($hname eq $name && $hcmd =~ m/^$cmd $val/) {
+      my $val2 = ($val eq "30.5" ? "on" :
+                  $val eq  "5.5" ? "off" : "");
+      Log3 $name, 4, "FHT softbuffer check: $hname / $hcmd / $val / $val2";
+      if($hname eq $name && ($hcmd =~ m/^$cmd $val/ ||
+                             $hcmd =~ m/^$cmd $val2/)) {
         $found = $key;
         Log3 $name, 4, "FHT softbuffer found";
         last;
@@ -700,7 +719,7 @@ getFhtBuffer($)
   for(;;) {
     return 0 if(!defined($io->{FD}));    # Avoid crash if the CUL/FHZ is absent
     my $msg = CallFn($io->{NAME}, "GetFn", $io, (" ", "fhtbuf"));
-    Log3 $io, 5, "getFhtBuffer: $count $msg";
+    Log3 $io, 5, "getFhtBuffer: $count ".($msg ? $msg : "<empty>");
     return hex($1) if($msg && $msg =~ m/=> ([0-9A-F]+)$/i);
     return 0 if($count++ >= 5);
   }
@@ -769,7 +788,7 @@ FHT_State($$$$)
       holiday1 holiday2      # see mode holiday_short or holiday<br>
       manu-temp              # No clue what it does.<br>
       year month day hour minute<br>
-      time date<br>
+      time date adjusthour adjustminute<br>
       lowtemp-offset         # Alarm-Temp.-Differenz<br>
       windowopen-temp<br>
       mon-from1 mon-to1 mon-from2 mon-to2<br>
@@ -842,6 +861,8 @@ FHT_State($$$$)
       <li>time sets hour and minute to local time</li><br>
 
       <li>date sets year, month and date to local time</li><br>
+
+      <li>adjusthour and adjustminute set hour or minute to local time, respectively</li><br>
 
       <li>refreshvalues is an alias for report1 255 report2 255</li><br>
 
@@ -1117,7 +1138,7 @@ FHT_State($$$$)
       holiday1 holiday2      # siehe mode holiday_short oder holiday<br>
       manu-temp              # Keine Ahnung was das bewirkt<br>
       year month day hour minute<br>
-      time date<br>
+      time date adjusthour adjustminute<br>
       lowtemp-offset         # Alarm-Temp.-Differenz<br>
       windowopen-temp<br>
       mon-from1 mon-to1 mon-from2 mon-to2<br>
@@ -1193,6 +1214,8 @@ FHT_State($$$$)
       <li>time setzt Stunde und Minute auf lokale Zeit</li><br>
 
       <li>date setzt Jahr, Monat und Tag auf lokale Zeit</li><br>
+
+      <li>adjusthour und adjustminute setzen Stunde bzw. Minute auf lokale Zeit</li><br>
 
       <li>refreshvalues ist ein Alias f&uuml;r report1 255 report2 255</li><br>
 

@@ -13,6 +13,7 @@ sub FW_pO(@);
 use vars qw($FW_ME);      # webname (default is fhem), needed by 97_GROUP
 use vars qw($FW_RET);     # Returned data (html)
 use vars qw($FW_RETTYPE); # image/png or the like
+use vars qw($FW_chash);   # client fhem hash
 use vars qw($FW_cssdir);  # css directory
 use vars qw($FW_detail);  # currently selected device for detail view
 use vars qw($FW_dir);     # base directory for web server
@@ -70,8 +71,9 @@ SVG_Initialize($)
   my @attrList = qw(
     captionLeft:1,0"
     captionPos:right,left,auto
-    endPlotNow
-    endPlotToday
+    endPlotNow:1,0
+    endPlotNowByHour:1,0
+    endPlotToday:1,0
     fixedoffset
     fixedrange
     label
@@ -81,6 +83,8 @@ SVG_Initialize($)
     plotmode:gnuplot-scroll,gnuplot-scroll-svg,SVG
     plotsize
     plotReplace:textField-long
+    plotAsPngFix:1,0
+    plotAsPngPort
     startDate
     title
   );
@@ -114,7 +118,7 @@ SVG_Define($$)
   $hash->{LOGFILE}   = ($3 ? $3 : "CURRENT");
   $hash->{STATE} = "initialized";
   $hash->{LOGDEVICE} =~ s/^fileplot //; # Autocreate bug.
-  notifyRegexpChanged($hash, "global");
+  # notifyRegexpChanged($hash, "global"); # ??
 
   return undef;
 }
@@ -142,6 +146,7 @@ SVG_Set($@)
 
   my ($err,@rows) = FileRead($srcName);
   return $err if($err);
+  @rows = grep { $_ !~ m/^set readonly/ } @rows;
   $err = FileWrite($dstName, @rows);
 
   if($err) {
@@ -169,7 +174,8 @@ sub
 SVG_Attr($$$$)
 {
   my ($parent, $dev, $attr, $default) = @_;
-  my $val = AttrVal($dev, $attr, undef);
+  my $val;
+  $val = AttrVal($dev, $attr, undef) if($dev);
   return $val if(defined($val));
   return AttrVal($parent, $attr, $default);
 }
@@ -195,7 +201,7 @@ SVG_getplotsize($)
 sub
 SVG_embed()
 {
-  return AttrVal($FW_wname, "plotEmbed", 0);
+  return AttrVal($FW_wname, "plotEmbed", ($numCPUs>1 ? 2:0));
 }
 
 sub
@@ -203,11 +209,25 @@ SVG_log10($)
 {
   my ($n) = @_;
 
-  return 0.0000000001 if( $n <= 0 );
-
-  return log(1+$n)/log(10);
+  $n = 0.0000000001 if($n <= 0);
+  return log($n)/log(10);
 }
 
+sub
+SVG_exp10($)
+{
+  my ($n) = @_;
+  return 10**$n;
+}
+
+sub
+SVG_stylesheetPrefix()
+{
+  my $sp = AttrVal($FW_wname,"stylesheetPrefix","");
+  $sp =~ s/^f11//;
+  $sp = "" if($sp eq "default");
+  return $sp;
+}
 
 ##################
 sub
@@ -378,7 +398,7 @@ SVG_PEdit($$$$)
   $ret .= "</tr>";
   $ret .= "<tr class=\"even\">";
   $ret .= "<td>Grid aligned</td>";
-  $ret .= "<td>".SVG_cb("gridy", "left", $conf{hasygrid})."</td>";
+  $ret .= "<td>".SVG_cb("gridy1","left", $conf{hasy1grid})."</td>";
   $ret .= "<td>".SVG_cb("gridy2","right",$conf{hasy2grid})."</td>";
   $ret .= "</tr>";
   $ret .= "<tr class=\"odd\">";
@@ -443,8 +463,7 @@ SVG_PEdit($$$$)
                      "get example data and correct parameter choice";
 
   my @lineStyles;
-  if(SVG_openFile($FW_cssdir,
-                  AttrVal($FW_wname,"stylesheetPrefix",""), "svg_style.css")) {
+  if(SVG_openFile($FW_cssdir, SVG_stylesheetPrefix(), "svg_style.css")) {
     map { push(@lineStyles,$1) if($_ =~ m/^\.SVGplot.(l[^{ ]*)/) } <FH>; # }
     close(FH);
   }
@@ -488,7 +507,8 @@ SVG_PEdit($$$$)
       $lw =~ s/.*stroke-width://g;
       $lw =~ s/"//g; 
     }
-    $o .= SVG_sel("width_$idx", "0.2,0.5,1,1.5,2,3,4,8,12,16,24",($lw ? $lw:1));
+    $o .= SVG_sel("width_$idx", "0.2,0.5,1,1.5,2,2.5,3,4,8,12,16,24",
+                        ($lw ? $lw:1));
     $o .= "</td></tr>";
     $output[$idx] = $o;
   }
@@ -512,7 +532,9 @@ SVG_PEdit($$$$)
   }
 
   $ret .= "<tr class=\"".(($r++&1)?"odd":"even")."\"><td colspan=\"3\">";
-  $ret .= FW_submit("submit", "Write .gplot file")."&nbsp;".
+  $ret .= (exists($conf{readonly}) ?
+              FW_submit("readonly",'The .gplot file is set readonly') :
+              FW_submit("submit", "Write .gplot file"))."&nbsp;".
           FW_submit("showFileLogData", "Show preprocessed input").
           "</td></tr>";
 
@@ -520,7 +542,13 @@ SVG_PEdit($$$$)
 
   my $sl = "$FW_ME/SVG_WriteGplot?detail=$d&showFileLogData=1";
   if(defined($FW_pos{zoom}) && defined($FW_pos{off})) {
-    $sl .= "&pos=zoom=$FW_pos{zoom};off=$FW_pos{off}";
+    $sl .= "&pos=zoom%3D$FW_pos{zoom}%3Boff%3D$FW_pos{off}";
+  }
+  my $ro="";
+  if(exists($conf{readonly})) {
+    $ro = '$("table.plotEditor input").prop("readonly", true);
+           $("table.plotEditor input[type=checkbox]").prop("disabled", true);
+           $("table.plotEditor select").prop("disabled", true);';
   }
 
   $ret .= <<'EOF';
@@ -538,12 +566,13 @@ EOF
     $ret .= 
     "FW_cmd('$sl', function(arg){" .<<"EOF";
       FW_okDialog(arg);
-    });
+    }); // {
   });
   setTimeout(function(){
     \$("table.internals div[informid=$gpfEsc-GPLOTFILE]")
       .html("<a href='$link'>$gpf</a>");
     }, 10);
+  $ro
 </script>
 EOF
   return $ret;
@@ -594,13 +623,14 @@ SVG_zoomLink($$$)
     } elsif($val eq "month") {
       $w_off = ($off < 0) ? $w_off*12: int($w_off/4);
     } elsif($val eq "year") {
-      $w_off =                         int($w_off/12);
+      my @t = localtime();
+      $w_off =                         int(($w_off+$t[4]-11)/12); # 118880
     } elsif($val eq "10years") {
       $w_off =                         int($w_off/120);
     } elsif($val eq "20years") {
       $w_off =                         int($w_off/240);
     }
-    $cmd .= "zoom=$val;off=$w_off";
+    $cmd .= "zoom%3D$val%3Boff%3D$w_off";
 
   } else {
 
@@ -608,7 +638,7 @@ SVG_zoomLink($$$)
     $off=($val ? $val+$off : $off);
     my $zoom=$FW_pos{zoom};
     $zoom = 0 if(!$zoom);
-    $cmd .= "zoom=$zoom;off=$off";
+    $cmd .= "zoom%3D$zoom%3Boff%3D$off";
 
   }
 
@@ -644,6 +674,13 @@ SVG_WriteGplot($)
 
   return if($FW_hiddenroom{detail});
   return SVG_showData() if($FW_webArgs{showFileLogData});
+  if($FW_webArgs{readonly}) {
+    $FW_RET .=
+      '<div id="errmsg">'.
+        "gplot file marked as readonly: won't write!".
+      '</div>';
+    return 0;
+  }
 
   if(!defined($FW_webArgs{par_0_0})) {
     $FW_RET .=
@@ -670,7 +707,7 @@ SVG_WriteGplot($)
   push @rows, "set xtics ".$FW_webArgs{xtics} if($FW_webArgs{xtics});
   push @rows, "set ytics ".$FW_webArgs{ytics};
   push @rows, "set y2tics ".$FW_webArgs{y2tics};
-  push @rows, "set grid".($FW_webArgs{gridy}  ? " ytics" :"").
+  push @rows, "set grid".($FW_webArgs{gridy1} ? " ytics" :"").
                       ($FW_webArgs{gridy2} ? " y2tics":"")."";
   push @rows, "set ylabel \"$FW_webArgs{ylabel}\"";
   push @rows, "set y2label \"$FW_webArgs{y2label}\"";
@@ -687,12 +724,15 @@ SVG_WriteGplot($)
     my $prf = "par_${i}_";
     my @v = map {$FW_webArgs{"$prf$_"}}
             grep {defined($FW_webArgs{"$prf$_"})} (0..9);
-    my $r = @v > 1 ?
-            join(":", map { $v[$_] =~ s/:/\\x3a/g if($_<$#v); $v[$_] } 0..$#v) :
-            $v[0];
 
     my $src = $FW_webArgs{"src_$i"};
+    my $typ = $defs{$src}{TYPE};
+    my $r = @v > 1 ? 
+            join(":", map { $v[$_] =~ s/:/\\x3a/g if($_<$#v && $typ ne "DbLog");
+                            $v[$_] } 0..$#v) :
+            $v[0];
     push @rows, "#$src $r";
+
     push @plot, "\"<IN>\" using 1:2 axes ".
                 ($FW_webArgs{"axes_$i"} eq "right" ? "x1y2" : "x1y1").
                 ($FW_webArgs{"title_$i"} eq "notitle" ? " notitle" :
@@ -750,7 +790,11 @@ SVG_readgplotfile($$$)
   }
 
   ($err1, @svgplotfile) = FileRead($gplot_pgm);
-  ($err2, @svgplotfile) = FileRead("$FW_gplotdir/template.gplot") if($err1);
+  if($err1) {
+    ($err2, @svgplotfile) = FileRead("$FW_gplotdir/template.gplot");
+    @svgplotfile = grep { $_ !~ m/set readonly/ } @svgplotfile;
+    
+  }
   return ($err1, undef) if($err2);
   my ($plotfnCnt, $srcNum) = (0,0);
   my @empty;
@@ -766,7 +810,7 @@ SVG_readgplotfile($$$)
   {
     return "%$_[0]%" if(!$pr);
     my $v = $pr->{$_[0]};
-    return "%$_[0]%" if(!$v);
+    return "%$_[0]%" if(!defined($v));
     if($v =~ m/^{.*}$/) {
       $cmdFromAnalyze = $v;
       return eval $v;
@@ -861,6 +905,7 @@ SVG_substcfg($$$$$$)
         $pr->{$k} = eval $cmdFromAnalyze;
       }
       $gplot_script =~ s/<$k>/$pr->{$k}/g;
+      $plot =~ s/<$k>/$pr->{$k}/g if($splitret);
     }
   }
 
@@ -926,7 +971,7 @@ SVG_calcOffsets($$)
         my @range = split(" ", $fr);
         my @t = localtime;
         $SVG_devs{$d}{from} = ResolveDateWildcards($range[0], @t);
-        $SVG_devs{$d}{to} = ResolveDateWildcards($range[1], @t); 
+        $SVG_devs{$d}{to} = $range[1] ? ResolveDateWildcards($range[1], @t):"9";
         return;
 
       }
@@ -1092,7 +1137,7 @@ SVG_doShowLog($$$$;$)
 
   my ($err, $cfg, $plot, $srcDesc) = SVG_readgplotfile($wl, $gplot_pgm, $pm);
   if($err || !$defs{$d}) {
-    my $msg = ($err ? $err : "No Logdevice >$d<");
+    my $msg = ($err ? $err : "No Logdevice /$d/");
     Log3 $FW_wname, 1, $msg;
 
     if($pm && $pm =~ m/SVG/) { # FW_fatal for SVG:
@@ -1202,6 +1247,7 @@ SVG_doShowLog($$$$;$)
     }
 
   }
+  $FW_RET = Encode::encode('UTF-8', $FW_RET) if($unicodeEncoding);
   return ($FW_RETTYPE, $FW_RET);
 
 }
@@ -1281,8 +1327,8 @@ SVG_digestConf($$)
   # Digest grid
   my $t = ($conf{grid} ? $conf{grid} : "");
   #$conf{hasxgrid} = ( $t =~ /.*xtics.*/ ? 1 : 0); # Unused
-  $conf{hasygrid} = ( $t =~ /.*ytics.*/ ? 1 : 0);
-  $conf{hasy2grid}= ( $t =~ /.*y2tics.*/ ? 1 : 0);
+  $conf{hasy1grid} = ( $t =~ /.*ytics.*/ ? 1 : 0);
+  map { $conf{"hasy${_}grid"} = ($t =~ /.*y${_}tics.*/ ? 1 : 0) } (2..8);
 
   # Digest axes/title/etc from $plot (gnuplot) and draw the line-titles
   my (@lAxis,@lTitle,@lType,@lStyle,@lWidth);
@@ -1356,6 +1402,18 @@ SVG_getSteps($$$)
 }
 
 sub
+SVG_escape($)
+{
+  my ($txt) = @_;
+  return $1 if($txt =~ m,^<html>(.*)</html>$,);
+  $txt =~ s/&/&amp;/g;
+  $txt =~ s/</&lt;/g;
+  $txt =~ s/>/&gt;/g;
+  $txt =~ s/'/&apos;/g;
+  return $txt;
+}
+
+sub
 SVG_render($$$$$$$$$$)
 {
   my $name = shift;  # e.g. wl_8
@@ -1416,7 +1474,7 @@ SVG_render($$$$$$$$$$)
     SVG_pO "<svg $svghdr $style>";
   }
 
-  my $prf = AttrVal($parent_name, "stylesheetPrefix", "");
+  my $prf = SVG_stylesheetPrefix();
   SVG_pO "<style type=\"text/css\"><![CDATA[";
   if(SVG_openFile($parent_dir, $prf, "svg_style.css")) {
     SVG_pO join("", <FH>);
@@ -1452,9 +1510,7 @@ SVG_render($$$$$$$$$$)
         "fill='none' class='border'/>";
 
   my ($off1,$off2) = ($x+$w/2, 3*$y/4);
-  my $title = ($conf{title} ? $conf{title} : " ");
-  $title =~ s/</&lt;/g;
-  $title =~ s/>/&gt;/g;
+  my $title = SVG_escape($conf{title} ? $conf{title} : " ");
   SVG_pO "<text id='svg_title' x='$off1' y='$off2' " .
         "class='title' text-anchor='middle'>$title</text>";
 
@@ -1494,13 +1550,13 @@ SVG_render($$$$$$$$$$)
       $xmax= $data{"xmax$idx"} if($data{"xmax$idx"}> $xmax);
       $idx++;
     }
-    #main::Debug "xmin= $xmin   xmax=$xmax";
     $conf{xrange} = AnalyzeCommand(undef, $1) if($conf{xrange} =~ /^(\{.*\})$/);
     if($conf{xrange} =~ /\[(.*):(.*)\]/) {
       $xmin = $1 if($1 ne "");
       $xmax = $2 if($2 ne "");
     }
   }
+  my $xmul = ($xmax > $xmin) ? $w/($xmax-$xmin) : 0;
   $xtics = defined($conf{xtics}) ? $conf{xtics} : "";
 
   ######################
@@ -1508,10 +1564,10 @@ SVG_render($$$$$$$$$$)
   my ($fromsec, $tosec);
   $fromsec = SVG_time_to_sec($from) if($from ne "0"); # 0 is special
   $tosec   = SVG_time_to_sec($to)   if($to ne "9");   # 9 is special
-  my $tmul; 
+  my $tmul=0; 
   $tmul = $w/($tosec-$fromsec) if($tosec && $fromsec && $tosec != $fromsec);
 
-  my ($min, $max, $idx) = (99999999, -99999999, 0);
+  my ($min, $max, $idx) = (9e+30, -9e+30, 0);
   my (%hmin, %hmax, @hdx, @hdy);
   my ($dxp, $dyp) = (\(), \());
 
@@ -1536,7 +1592,7 @@ SVG_render($$$$$$$$$$)
           $hmin{$a} = $min if(!defined($hmin{$a}) || $hmin{$a} > $min);
           $hmax{$a} = $max if(!defined($hmax{$a}) || $hmax{$a} < $max);
         }
-        ($min, $max) = (99999999, -99999999);
+        ($min, $max) = (9e+30, -9e+30);
         $hdx[$idx] = $dxp; $hdy[$idx] = $dyp;
         ($dxp, $dyp) = (\(), \());
         $lIdx++;
@@ -1545,7 +1601,6 @@ SVG_render($$$$$$$$$$)
 
       } elsif( $l =~ /^;/ ) { #allow ;special lines
         if( $l =~ m/^;p (\S+)\s(\S+)/ ) {# point
-          my $xmul = $w/($xmax-$xmin) if($xmax-$xmin > 0 );
           my $x1;
           if( $conf{xrange} ) {
             $x1 = int(($1-$xmin)*$xmul);
@@ -1605,6 +1660,7 @@ SVG_render($$$$$$$$$$)
   # Compute & draw vertical tics, grid and labels
   my $ddur = ($tosec-$fromsec)/86400;
   my ($first_tag, $tag, $step, $tstep, $aligntext,  $aligntics);
+  $aligntext = $aligntics = "none";
 
   if($ddur <= 0.05) {
     $first_tag=". 2 1"; $tag=": 3 4"; $step = 300; $tstep = 60;
@@ -1617,17 +1673,19 @@ SVG_render($$$$$$$$$$)
 
   } elsif($ddur <= 1.1) {       # +0.1 -> DST
     $first_tag=". 2 1"; $tag=": 3 4"; $step = 4*3600; $tstep = 3600;
+    $aligntext = $aligntics = "hour"
+        if(SVG_Attr($parent_name, $name, "endPlotNowByHour", undef));
 
   } elsif ($ddur <= 7.1) {
     $first_tag=". 6";   $tag=". 2 1"; $step = 24*3600; $tstep = 6*3600;
 
   } elsif ($ddur <= 31.1) {
     $first_tag=". 6";   $tag=". 2 1"; $step = 7*24*3600; $tstep = 24*3600;
-    $aligntext = 1;
+    $aligntext = "week";
 
   } elsif ($ddur <= 732.1) {
     $first_tag=". 6";   $tag=". 1";   $step = 28*24*3600; $tstep = 28*24*3600;
-    $aligntext = 2; $aligntics = 2;
+    $aligntext = $aligntics = "month";
 
   } else {
     $step = (($ddur / 365.2425) / 20) * 365 * 86400;
@@ -1636,7 +1694,7 @@ SVG_render($$$$$$$$$$)
     }
     $tstep = $step;
     $first_tag="";   $tag=". 6";
-    $aligntext = 2; $aligntics = 2;
+    $aligntext = $aligntics = "year";
   }
 
   my $barwidth = $tstep;
@@ -1648,7 +1706,6 @@ SVG_render($$$$$$$$$$)
   my $initoffset = $tstep;
   if( $conf{xrange} ) { # user defined range
     if( !$xtics || $xtics ne "()" ) { # auto tics
-      my $xmul = $w/($xmax-$xmin);
       my ($step,$mi,$ma) = SVG_getSteps( $conf{xrange}, $xmin, $xmax );
       $step /= 5 if( $step > 50 );
       $step /= 2 if( $step > 10 );
@@ -1660,12 +1717,13 @@ SVG_render($$$$$$$$$$)
     }
 
   } else { # times
-    $initoffset = int(($tstep/2)/86400)*86400 if($aligntics);
-    for(my $i = $fromsec+$initoffset; $i < $tosec; $i += $tstep) {
+    for(my $i = $fromsec; $i < $tosec; $i += $tstep) {
       $i = SVG_time_align($i,$aligntics);
       $off1 = int($x+($i-$fromsec)*$tmul);
-      SVG_pO "<polyline class='SVGplot' points='$off1,$y $off1,$off2'/>";
-      SVG_pO "<polyline class='SVGplot' points='$off1,$off3 $off1,$off4'/>";
+      if($off1 > $x+8 && $off1 < $x+$w-8) {
+        SVG_pO "<polyline class='SVGplot' points='$off1,$y $off1,$off2'/>";
+        SVG_pO "<polyline class='SVGplot' points='$off1,$off3 $off1,$off4'/>";
+      }
     }
 
   }
@@ -1686,7 +1744,6 @@ SVG_render($$$$$$$$$$)
   }
 
   if( $conf{xrange} ) { # user defined range
-    my $xmul = $w/($xmax-$xmin);
     if( $xtics ) { #user tics and grid
       my $tic = $xtics;
       $tic =~ s/^\((.*)\)$/$1/;   # Strip ()
@@ -1718,14 +1775,25 @@ SVG_render($$$$$$$$$$)
     }
 
   } else { # times
-    $initoffset = int(($step/2)/86400)*86400 if($aligntext);
-    for(my $i = $fromsec+$initoffset; $i < $tosec; $i += $step) {
+    for(my $i = $fromsec; $i < $tosec; $i += $step) {
       $i = SVG_time_align($i,$aligntext);
-      $off1 = int($x+($i-$fromsec)*$tmul);
+      if($aligntext eq "month" || $aligntext eq "year") { # center
+        $off1 = int($x+($i-$fromsec+$step/2)*$tmul);
+      } else {
+        $off1 = int($x+($i-$fromsec)*$tmul);
+      }
       $t = SVG_fmtTime($tag, $i);
-      SVG_pO "<text x=\"$off1\" y=\"$off2\" class=\"ylabel\" " .
-                "text-anchor=\"middle\">$t</text>";
-      SVG_pO "  <polyline points=\"$off1,$y $off1,$off4\" class=\"hgrid\"/>";
+      if($off1 < $x+10) { # first text, too close to the date field
+        SVG_pO "<text x=\"$off1\" y=\"$off2\" class=\"ylabel\" " .
+                  "text-anchor=\"left\">$t</text>";
+      } elsif ($off1 < $x+$w-8) {
+        SVG_pO "<text x=\"$off1\" y=\"$off2\" class=\"ylabel\" " .
+                  "text-anchor=\"middle\">$t</text>";
+      }
+      $off1 = int($x+($i-$fromsec)*$tmul);
+      if($off1 > $x+8 && $off1 < $x+$w-8) {     
+        SVG_pO "  <polyline points=\"$off1,$y $off1,$off4\" class=\"hgrid\"/>";
+      }
     }
   }
 
@@ -1760,6 +1828,12 @@ SVG_render($$$$$$$$$$)
     $htics{$a} = defined($conf{$yt}) ? $conf{$yt} : "";
 
     #-- Round values, compute a nice step  
+    my $scale = $conf{"y".($idx ? $idx+1:"")."scale"};
+    $scale = "" if(!defined($scale));
+    if($scale eq "log") {
+      $hmax{$a} = SVG_log10($hmax{$a});
+      $hmin{$a} = SVG_log10($hmin{$a});
+    }
     ($hstep{$a}, $hmin{$a}, $hmax{$a}) =
         SVG_getSteps($conf{$yra},$hmin{$a},$hmax{$a});
 
@@ -1772,24 +1846,14 @@ SVG_render($$$$$$$$$$)
 
     next if(!defined($hmin{$a})); # Bogus case
 
-    #-- safeguarding against pathological data
-    if( !$hstep{$a} ){
-        $hmax{$a} = $hmin{$a}+1;
-        $hstep{$a} = 1;
-    }
+    my $axis = 1;
+    $axis = $1 if( $a =~ m/x\d+y(\d+)/ );
+    my $scale = $conf{"y".($axis==1?"":$axis)."scale"};
+    $scale = "" if(!defined($scale));
 
     #-- Draw the y-axis values and grid
     my $dh = $hmax{$a} - $hmin{$a};
     my $hmul = $dh>0 ? $h/$dh : $h;
-
-    my $axis = 1;
-    $axis = $1 if( $a =~ m/x\d+y(\d+)/ );
-
-    my $scale = "y".($axis)."scale"; $scale = "yscale" if( $axis == 1 );
-    my $log = ""; $log = $conf{$scale} if( $conf{$scale} );
-    my $f_log = (int($hmax{$a}) && $dh > 0) ? 
-                    ((SVG_log10($hmax{$a})-SVG_log10($hmin{$a})) / $dh) :
-                    1;
 
     # offsets
     my ($align,$display,$cll);
@@ -1827,32 +1891,24 @@ SVG_render($$$$$$$$$$)
     #-- tics handling
     my $tic = $htics{$a};
     #-- tics as in the config-file
-    if($tic && $tic !~ m/mirror/) {
+    if($tic) {
       $tic =~ s/^\((.*)\)$/$1/;   # Strip ()
-      for(my $decimal = 0;
-          $decimal <($log eq 'log'?SVG_log10($hmax{$a})-SVG_log10($hmin{$a}):1);
-          $decimal++) {
       foreach my $onetic (split(",", $tic)) {
+        last if($onetic eq "nomirror");
         $onetic =~ s/^ *(.*) *$/$1/;
         my ($tlabel, $tvalue) = split(" ", $onetic);
         $tlabel =~ s/^"(.*)"$/$1/;
         $tvalue = 0 if( !$tvalue );
-        $tvalue /= 10 ** $decimal;
         $tlabel = $tvalue if( !$tlabel );
+        $tvalue = SVG_log10($tvalue) if($scale eq "log");
 
         $off2 = int($y+($hmax{$a}-$tvalue)*$hmul);
-        $off2 = int($y+($hmax{$a}-
-                        (SVG_log10($tvalue)-SVG_log10($hmin{$a}))/$f_log)*$hmul)
-                if( $log eq 'log' );
         #-- tics
         SVG_pO "<polyline points=\"$off3,$off2 $off4,$off2\" $cll/>";
         #--grids
         my $off6 = $x+$w;
-        if( ($a eq "x1y1") && $conf{hasygrid} )  {
+        if($a =~ m/^x1y(.)$/ && $conf{"hasy${1}grid"})  {
           SVG_pO "<polyline points=\"$x,$off2 $off6,$off2\" class=\"vgrid\"/>"
-            if($tvalue > $hmin{$a} && $tvalue < $hmax{$a});
-        }elsif( ($a eq "x1y2") && $conf{hasy2grid} )  {
-          SVG_pO "  <polyline points=\"$x,$off2 $off6,$off2\" class=\"vgrid\"/>"
             if($tvalue > $hmin{$a} && $tvalue < $hmax{$a});
         }
         $off2 += $th/4;
@@ -1860,41 +1916,27 @@ SVG_render($$$$$$$$$$)
         SVG_pO
           "<text x=\"$off1\" y=\"$off2\" class=\"ylabel\"$align>$tlabel</text>";
       }
-      }
+
     #-- tics automatically 
-    } elsif( $hstep{$a}>0 ) {            
-      for(my $decimal = 0;
-          $decimal <($log eq 'log'?SVG_log10($hmax{$a})-SVG_log10($hmin{$a}):1);
-          $decimal++) {
-      for(my $i = ($log eq 'log' ? 0 : $hmin{$a});
-             $i <= $hmax{$a}; $i += $hstep{$a}) {
-        my $i = $i / 10 ** $decimal;
-        if( $log eq 'log' ) {
-          next if( $i < $hmin{$a} );
-          $off2 = int($y + ($hmax{$a} -
-                    (SVG_log10($i) - SVG_log10($hmin{$a})) / $f_log) * $hmul);
-        } else {
-          $off2 = int($y+($hmax{$a}-$i)*$hmul);
-        }
+    } elsif( $hstep{$a}>0 ) {
+      for(my $i = $hmin{$a}; $i <= $hmax{$a}; $i += $hstep{$a}) {
+        $off2 = int($y+($hmax{$a}-$i)*$hmul);
         #-- tics
         SVG_pO "  <polyline points=\"$off3,$off2 $off4,$off2\" $cll/>";
         #--grids
         my $off6 = $x+$w;
-        if( ($a eq "x1y1") && $conf{hasygrid} )  {
-          my $off6 = $x+$w;
-          SVG_pO "  <polyline points=\"$x,$off2 $off6,$off2\" class=\"vgrid\"/>"
-            if($i > $hmin{$a} && $i < $hmax{$a});
-        }elsif(  ($a eq "x1y2") && $conf{hasy2grid} )  {
+        if($a =~ m/^x1y(.)$/ && $conf{"hasy${1}grid"})  {
           SVG_pO "  <polyline points=\"$x,$off2 $off6,$off2\" class=\"vgrid\"/>"
             if($i > $hmin{$a} && $i < $hmax{$a});
         }
         $off2 += $th/4;
         #--  text   
         my $name = ($axis==1 ? "y":"y$axis")."sprintf"; # Forum #88460
-        my $txt = sprintf($conf{$name} ? $conf{$name} : "%g", $i);
+        my $txt = sprintf($conf{$name} ? $conf{$name} : 
+                          ($scale eq "log" ? "%0.0e" : "%g"),
+                          ($scale eq "log" ? SVG_exp10($i) : $i));
         SVG_pO
           "<text x=\"$off1\" y=\"$off2\" class=\"ylabel\"$align>$txt</text>";
-      }
       }
     }
     SVG_pO "</g>";
@@ -1911,13 +1953,11 @@ SVG_render($$$$$$$$$$)
     next if(!defined($a));
 
     my $axis = 1; $axis = $1 if( $a =~ m/x\d+y(\d+)/ );
-    my $scale = "y".($axis)."scale"; $scale = "yscale" if( $axis == 1 );
-    my $log = ""; $log = $conf{$scale} if( $conf{$scale} );
+    my $scale = $conf{"y".($axis==1?"":$axis)."scale"};
+    $scale = "" if(!defined($scale));
 
     $min = $hmin{$a};
     $hmax{$a} += 1 if($min == $hmax{$a});  # Else division by 0 in the next line
-    my $xmul;
-    $xmul = $w/($xmax-$xmin) if( $conf{xrange} );
     my $hmul = $h/($hmax{$a}-$min);
     my $hfill = $hmul*$hmax{$a}; # Fill only to the 0-line, #108858
     my $ret = "";
@@ -1925,11 +1965,9 @@ SVG_render($$$$$$$$$$)
     SVG_pO "<!-- Warning: No data item $idx defined -->" if(!defined($dxp));
     next if(!defined($dxp));
 
-    my $f_log = int($hmax{$a}) ? ((SVG_log10($hmax{$a}) -
-                        SVG_log10($hmin{$a})) / ($hmax{$a}-$hmin{$a})) : 1;
-    if( $log eq 'log' ) {
+    if($scale eq 'log') {
       foreach my $i (0..int(@{$dyp})-1) {
-        $dyp->[$i] = (SVG_log10($dyp->[$i])-SVG_log10($hmin{$a})) / $f_log;
+        $dyp->[$i] = SVG_log10($dyp->[$i]);
       }
     }
 
@@ -1945,7 +1983,7 @@ SVG_render($$$$$$$$$$)
           ($conf{xrange}?"x_off=\"$xmin\" ":"x_off=\"$fromsec\" ").
           ($conf{xrange}?"x_mul=\"$xmul\" ":"t_mul=\"$tmul\" ").
           "y_h=\"$yh\" y_min=\"$min\" y_mul=\"$hmul\" title=\"$tl\" ".
-          ($log eq 'log'?"log_scale=\"$f_log\" ":"").
+          "scale=\"$scale\" ".
           "onclick=\"parent.svg_click(evt)\"";
     my $lStyle = $conf{lStyle}[$idx];
     my $isFill = ($conf{lStyle}[$idx] =~ m/fill/);
@@ -1959,7 +1997,7 @@ SVG_render($$$$$$$$$$)
         my ($x1, $y1) = (int($x+$dxp->[$i]),
                          int($y+$h-($dyp->[$i]-$min)*$hmul));
         next if($x1 == $lx && $y1 == $ly);
-        $ly = $x1; $ly = $y1;
+        $lx = $x1; $ly = $y1;
         $ret =  sprintf(" %d,%d %d,%d %d,%d %d,%d %d,%d",
               $x1-3,$y1, $x1,$y1-3, $x1+3,$y1, $x1,$y1+3, $x1-3,$y1);
         SVG_pO "<polyline $attributes $lStyle points=\"$ret\"/>";
@@ -2230,6 +2268,7 @@ SVG_render($$$$$$$$$$)
     }
     my $style = $conf{lStyle}[$i];
     $style =~ s/class="/class="legend /;
+    $desc = SVG_escape($desc);
     SVG_pO "<text line_id=\"line_$i\" x=\"$txtoff1\" y=\"$txtoff2\" ".
         "text-anchor=\"$caption_anchor\" $style>$t<title>$desc</title></text>";
 
@@ -2384,21 +2423,36 @@ sub
 SVG_time_align($$)
 {
   my ($v,$align) = @_;
-  return $v if(!$align);
-  if($align == 1) {             # Look for the beginning of the week
+  return $v if($align eq "none");
+
+  # Look for the beginning of the next ...
+  if($align eq "hour") {
+    return int(($v+(3600-60))/3600)*3600;
+
+  } elsif($align eq "week") {
+    my $wl = $FW_webArgs{detail};
     for(;;) {
       my @a = localtime($v);
-      return $v if($a[6] == 0);
+      return $v if($a[6] == SVG_Attr($FW_wname, $wl, "plotWeekStartDay", 0));
       $v += 86400;
     }
-  }
-  if($align == 2) {             # Look for the beginning of the month
+
+  } elsif($align eq "month") {
     for(;;) {
       my @a = localtime($v);
       return $v if($a[3] == 1);
       $v += 86400;
     }
+
+  } elsif($align eq "year") {
+    for(;;) {
+      my @a = localtime($v);
+      return $v if($a[7] == 0);
+      $v += 86400;
+    }
   }
+
+  return $v;
 }
 
 sub
@@ -2436,33 +2490,47 @@ sub
 plotAsPng(@)
 {
   my (@plotName) = @_;
-  my (@webs, $mimetype, $svgdata, $rsvg, $pngImg);
+  my ($mimetype, $svgdata, $rsvg, $pngImg);
 
-  @webs=devspec2array("TYPE=FHEMWEB");
+  my $svgName = $plotName[0];
+  if(!defined($defs{$svgName})) {
+    Log 1, "$svgName not found for plotAsPng()";
+    return;
+  }
+
+  my $devspec = "TYPE=FHEMWEB";
+  my $port    = AttrVal($svgName,'plotAsPngPort',undef);
+  $devspec   .= ":FILTER=i:PORT=$port" if(defined($port));
+
+  my @webs=devspec2array($devspec);
+  if(defined($port) and @webs == 0) {
+    Log 1, "No FHEMWEB device using port $port found for plotAsPng($svgName)";
+    return;
+  }
   foreach(@webs) {
     if(!InternalVal($_,'TEMPORARY',undef)) {
-      $FW_wname=InternalVal($_,'NAME','');
+      $FW_wname = InternalVal($_,'NAME','');
+      $FW_chash = $defs{$FW_wname};
       last;
     }
   }
-  #Debug "FW_wname= $FW_wname, plotName= $plotName[0]";
 
   $FW_RET                 = undef;
-  $FW_webArgs{dev}        = $plotName[0];
-  $FW_webArgs{logdev}     = InternalVal($plotName[0], "LOGDEVICE", "");
-  $FW_webArgs{gplotfile}  = InternalVal($plotName[0], "GPLOTFILE", "");
-  $FW_webArgs{logfile}    = InternalVal($plotName[0], "LOGFILE", "CURRENT"); 
+  $FW_webArgs{dev}        = $svgName;
+  $FW_webArgs{logdev}     = InternalVal($svgName, "LOGDEVICE", "");
+  $FW_webArgs{gplotfile}  = InternalVal($svgName, "GPLOTFILE", "");
+  $FW_webArgs{logfile}    = InternalVal($svgName, "LOGFILE", "CURRENT"); 
   $FW_pos{zoom}           = $plotName[1] if $plotName[1];
   $FW_pos{off}            = $plotName[2] if $plotName[2];
 
   ($mimetype, $svgdata)   = SVG_showLog("unused");
 
-  #Debug "MIME type= $mimetype";
-  #Debug "SVG= $svgdata";
-
-  my ($w, $h) = split(",", AttrVal($plotName[0],"plotsize","800,160"));
+  my ($w, $h) = split(",", AttrVal($svgName,"plotsize","800,160"));
   $svgdata =~ s/<\/svg>/<polyline opacity="0" points="0,0 $w,$h"\/><\/svg>/;
-  $svgdata =~ s/\.SVGplot\./\./g;
+
+  # Forum #32791,#116138: some lib versions cannot parse complex CSS selectors
+  $svgdata =~ s/\.SVGplot\./\./g if(AttrVal($svgName, "plotAsPngFix", 0));
+  $svgdata = Encode::decode("UTF-8", $svgdata) if(!$unicodeEncoding); #129693
 
   eval {
     require Image::LibRSVG;
@@ -2491,10 +2559,10 @@ plotAsPng(@)
 =item summary_DE malt ein SVG-Plot aus FileLog oder DbLog Daten
 =begin html
 
-<a name="SVG"></a>
+<a id="SVG"></a>
 <h3>SVG</h3>
 <ul>
-  <a name="SVGlinkdefine"></a>
+  <a id="SVG-define"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; SVG
@@ -2521,7 +2589,7 @@ plotAsPng(@)
     </ul>
   </ul>
 
-  <a name="SVGset"></a>
+  <a id="SVG-set"></a>
   <b>Set</b>
   <ul>
     <li>copyGplotFile<br>
@@ -2534,22 +2602,40 @@ plotAsPng(@)
     </li>
   </ul><br>
 
-  <a name="SVGget"></a>
+  <a id="SVG-get"></a>
   <b>Get</b> <ul>N/A</ul><br>
 
-  <a name="SVGattr"></a>
+  <a id="SVG-attr"></a>
   <b>Attributes</b>
   <ul>
-    <li><a href="#endPlotNow">endPlotNow</a></li><br>
-    <li><a href="#endPlotToday">endPlotToday</a></li><br>
+    <a id="SVG-attr-endPlotNow"></a>
+    <li>endPlotNow<br>
+        If this attribute is set to 1, then day and hour plots will
+        end at current time. Else the whole day, the 6 hour period starting at
+        0, 6, 12 or 18 hour or the whole hour will be shown. This attribute
+        is not used if the SVG has the attribute startDate defined.
+        </li><br>
 
-    <a name="captionLeft"></a>
+    <a id="SVG-attr-endPlotNowByHour"></a>
+    <li>endPlotNowByHour<br>
+        If endPlotNow and this attribute are set to 1 and the zoom-level is
+        "day", then the displayed hour ticks will be rounded to the complete
+        hour.
+        </li><br>
+
+    <a id="SVG-attr-endPlotToday"></a>
+    <li>endPlotToday<br>
+        If this attribute is set to 1, then week and month plots will
+        end today. Else the current week or the current month will be shown.
+        </li><br>
+
+    <a id="SVG-attr-captionLeft"></a>
     <li>captionLeft<br>
       Show the legend on the left side (deprecated, will be autoconverted to
       captionPos)
       </li><br>
 
-    <a name="captionPos"></a>
+    <a id="SVG-attr-captionPos"></a>
     <li>captionPos<br>
       right - Show the legend on the right side (default)<br>
       left - Show the legend on the left side<br>
@@ -2557,7 +2643,7 @@ plotAsPng(@)
       on the axis it belongs to<br>
       </li><br>
 
-    <a name="fixedrange"></a>
+    <a id="SVG-attr-fixedrange"></a>
     <li>fixedrange [offset]<br>
         Contains two time specs in the form YYYY-MM-DD separated by a space.
         In plotmode gnuplot-scroll(-svg) or SVG the given time-range will be
@@ -2576,12 +2662,13 @@ plotAsPng(@)
 
         </li><br>
 
-    <a name="fixedoffset"></a>
-    <li>fixedoffset &lt;nDays&gt;<br>
-        Set an fixed offset (in days) for the plot.
+    <a id="SVG-attr-fixedoffset"></a>
+    <li>fixedoffset &lt;offset&gt;<br>
+        Set a fixed offset for the plot. The resolution is the currently
+        chosen zoom-level.
         </li><br>
 
-    <a name="label"></a>
+    <a id="SVG-attr-label"></a>
     <li>label<br>
       Double-Colon separated list of values. The values will be used to replace
       &lt;L#&gt; type of strings in the .gplot file, with # beginning at 1
@@ -2615,9 +2702,29 @@ plotAsPng(@)
       <br>Deprecated, see plotReplace.
       </li><br>
 
-    <li><a href="#nrAxis">nrAxis</a></li><br>
+    <a id="SVG-attr-nrAxis"></a>
+    <li>nrAxis<br>
+        the number of axis for which space should be reserved  on the left and
+        right sides of a plot and optionaly how many axes should realy be used
+        on each side, separated by comma: left,right[,useLeft,useRight].  You
+        can set individual numbers by setting the nrAxis of the SVG. Default is
+        1,1.
+        </li><br>
 
-    <a name="plotfunction"></a>
+    <a id="SVG-attr-plotAsPngFix"></a>
+    <li>plotAsPngFix [0|1]<br>
+        Affects only the plotAsPng function: Some LibRSVG versions cannot cope
+        with complex CSS selectors, so the resulting PNG is black and white
+        only. If this attribute is set to 1, the CSS selector complexity will
+        be reduced.
+        </li><br>
+
+    <a id="SVG-attr-plotAsPngPort"></a>
+    <li>plotAsPngPort &lt;portNum&gt;<br>
+        Affects only the plotAsPng function: Use a specific FHEMWEB instance.
+        </li><br>
+
+    <a id="SVG-attr-plotfunction"></a>
     <li>plotfunction<br>
       Space value separated list of values. The value will be used to replace
       &lt;SPEC#&gt; type of strings in the .gplot file, with # beginning at 1
@@ -2639,9 +2746,23 @@ plotAsPng(@)
       Deprecated, see plotReplace.
       </li><br>
 
-    <li><a href="#plotmode">plotmode</a></li><br>
+    <a id="SVG-attr-plotmode"></a>
+    <li>plotmode<br>
+        Specifies how to generate the plots:
+        <ul>
+          <li>SVG<br>
+              The plots are created with the <a href="#SVG">SVG</a> module.
+              This is the default.</li>
+          <li>gnuplot-scroll<br>
+              The plots are created with the gnuplot program. The gnuplot
+              output terminal PNG is assumed. Scrolling to historical values
+              is also possible, just like with SVG.</li>
+          <li>gnuplot-scroll-svg<br>
+              Like gnuplot-scroll, but the output terminal SVG is assumed.</li>
+        </ul>
+        </li><br>
 
-    <a name="plotReplace"></a>
+    <a id="SVG-attr-plotReplace"></a>
     <li>plotReplace<br>
       space separated list of key=value pairs. value may contain spaces if
       enclosed in "" or {}. value will be evaluated as a perl expression, if it
@@ -2653,15 +2774,27 @@ plotAsPng(@)
       %key% will be repaced before the input file is processed, this expression
       can be used to replace parameters for the input processing.  </li><br>
 
-    <li><a href="#plotsize">plotsize</a></li><br>
-    <li><a href="#plotWeekStartDay">plotWeekStartDay</a></li><br>
+    <a id="SVG-attr-plotsize"></a>
+    <li>plotsize<br>
+        the default size of the plot, in pixels, separated by comma:
+        width,height. You can set individual sizes by setting the plotsize of
+        the SVG. Default is 800,160 for desktop, and 480,160 for
+        smallscreen.
+        </li><br>
 
-    <a name="startDate"></a>
+    <a id="SVG-attr-plotWeekStartDay"></a>
+    <li>plotWeekStartDay<br>
+        Start the week-zoom of the SVG plots with this day.
+        0 is Sunday, 1 is Monday, etc.<br>
+    </li><br>
+
+
+    <a id="SVG-attr-startDate"></a>
     <li>startDate<br>
         Set the start date for the plot. Used for demo installations.
         </li><br>
 
-    <a name="title"></a>
+    <a id="SVG-attr-title"></a>
     <li>title<br>
       A special form of label (see above), which replaces the string &lt;TL&gt;
       in the .gplot file. It defaults to the filename of the logfile.
@@ -2671,7 +2804,7 @@ plotAsPng(@)
   </ul>
   <br>
 
-  <a name="plotEditor"></a>
+  <a id="SVG-plotEditor"></a>
   <b>Plot-Editor</b>
   <br>
     This editor is visible on the detail screen of the SVG instance.
@@ -2696,7 +2829,7 @@ plotAsPng(@)
       </li>
   </ul>
   The visibility of the ploteditor can be configured with the FHEMWEB attribute
-  <a href="#ploteditor">ploteditor</a>.
+  ploteditor.
   <br>
 </ul>
 
@@ -2704,10 +2837,10 @@ plotAsPng(@)
 
 =begin html_DE
 
-<a name="SVG"></a>
+<a id="SVG"></a>
 <h3>SVG</h3>
 <ul>
-  <a name="SVGlinkdefine"></a>
+  <a id="SVG-define"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; SVG &lt;logDevice&gt;:&lt;gplotfile&gt;:&lt;logfile&gt;</code>
@@ -2742,7 +2875,7 @@ plotAsPng(@)
   </ul>
   <br>
 
-  <a name="SVGset"></a>
+  <a id="SVG-set"></a>
   <b>Set</b>
   <ul>
     <li>copyGplotFile<br>
@@ -2756,19 +2889,19 @@ plotAsPng(@)
 
   </ul><br>
 
-  <a name="SVGget"></a>
+  <a id="SVG-get"></a>
   <b>Get</b> <ul>N/A</ul><br>
 
-  <a name="SVGattr"></a>
+  <a id="SVG-attr"></a>
   <b>Attribute</b>
   <ul>
-    <a name="captionLeft"></a>
+    <a id="SVG-attr-captionLeft"></a>
     <li>captionLeft<br>
       Anzeigen der Legende auf der linken Seite. &Uuml;berholt, wird
       automatisch nach captionPos konvertiert.
       </li><br>
 
-    <a name="captionPos"></a>
+    <a id="SVG-attr-captionPos"></a>
     <li>captionPos<br>
       right - Anzeigen der Legende auf der rechten Seite (default)<br>
       left - Anzeigen der Legende auf der linken Seite<br>
@@ -2776,15 +2909,37 @@ plotAsPng(@)
       je nach Achsenzugeh&ouml;rigkeit<br>
       </li><br>
 
-    <li><a href="#endPlotNow">endPlotNow</a></li><br>
-    <li><a href="#endPlotToday">endPlotToday</a></li><br>
+    <a id="SVG-attr-endPlotNow"></a>
+    <li>endPlotNow<br>
+        Wenn Sie dieses Attribut auf 1 setzen, werden Tages und
+        Stunden-Plots zur aktuellen Zeit beendet. (&Auml;hnlich wie
+        endPlotToday, nur eben min&uuml;tlich).
+        Ansonsten wird der gesamte Tag oder eine 6 Stunden Periode (0, 6, 12,
+        18 Stunde) gezeigt. Dieses Attribut wird nicht verwendet, wenn das SVG
+        Attribut startDate benutzt wird.<br>
+        </li><br>
 
-    <a name="fixedoffset"></a>
-    <li>fixedoffset &lt;nTage&gt;<br>
-      Verschiebt den Plot-Offset um einen festen Wert (in Tagen). 
+    <a id="SVG-attr-endPlotNowByHour"></a>
+    <li>endPlotNowByHour<br>
+        Falls endPlotNow und dieses Attribut auf 1 gesetzt sind, und Zoom-Level
+        ein Tag ist, dann werden die angezeigten Zeitmarker auf die volle
+        Stunde gerundet.
+        </li><br>
+
+    <a id="SVG-id-endPlotToday"></a>
+    <li>endPlotToday<br>
+        Wird dieses Attribut gesetzt, so enden Wochen- bzw. Monatsplots
+        am aktuellen Tag, sonst wird die aktuelle Woche/Monat angezeigt.
+        </li><br>
+
+
+    <a id="SVG-attr-fixedoffset"></a>
+    <li>fixedoffset &lt;offset&gt;<br>
+      Verschiebt den Plot-Offset um einen festen Wert, die Einheit h&auml;ngt
+      vom aktuellen Zoom-Level ab.
       </li><br>
 
-    <a name="fixedrange"></a>
+    <a id="SVG-attr-fixedrange"></a>
     <li>fixedrange [offset]<br>
       Erste Alternative:<br>
       Enth&auml;lt zwei Zeit-Spezifikationen in der Schreibweise YYYY-MM-DD,
@@ -2805,7 +2960,7 @@ plotAsPng(@)
 
       </li><br>
 
-    <a name="label"></a>
+    <a id="SVG-attr-label"></a>
     <li>label<br>
       Eine Liste, bei der die einzelnen Werte mit einem zweifachen Doppelpunkt
       voneinander getrennt werden. Diese Liste wird verwendet um die &lt;L#&gt;
@@ -2846,9 +3001,28 @@ plotAsPng(@)
       <br>&Uuml;berholt, wird durch das plotReplace Attribut abgel&ouml;st.
       </li><br>
 
-    <li><a href="#nrAxis">nrAxis</a></li><br>
+    <a id="SVG-attr-nrAxis"></a>
+    <li>nrAxis<br>
+        (bei mehrfach-Y-Achsen im SVG-Plot) Die Darstellung der Y Achsen
+        ben&ouml;tigt Platz. Hierdurch geben Sie an wie viele Achsen Sie
+        links,rechts [useLeft,useRight] ben&ouml;tigen. Default ist 1,1 (also 1
+        Achse links, 1 Achse rechts).
+        </li><br>
 
-    <a name="plotfunction"></a>
+    <a id="SVG-attr-plotAsPngFix"></a>
+    <li>plotAsPngFix [0|1]<br>
+        Betrifft nur die plotAsPng Funktion: Bestimmte LibRSVG Versionen
+        k&ouml;nnen nicht mit komplexen CSS Selektoren umgehen, und das
+        Ergebnis ist ein schwarz/wei&szlig; Bild. Falls dieses Attribut auf 1
+        gesetzt wird, werden die CSS Anweisungen vereinfacht.
+        </li><br>
+
+    <a id="SVG-attr-plotAsPngPort"></a>
+    <li>plotAsPngPort &lt;portNum&gt;<br>
+        Betrifft nur die plotAsPng Funktion: Verwendet eine bestimmte FHEMWEB Instanz.
+        </li><br>
+
+    <a id="SVG-attr-plotfunction"></a>
     <li>plotfunction<br>
       Eine Liste, deren Werte durch Leerzeichen voneinander getrennt sind.
       Diese Liste wird verwendet um die &lt;SPEC#&gt; Zeichenfolgen in der
@@ -2876,9 +3050,28 @@ plotAsPng(@)
       &Uuml;berholt, wird durch das plotReplace Attribut abgel&ouml;st.
     </li><br>
 
-    <li><a href="#plotmode">plotmode</a></li><br>
+    <a id="SVG-attr-plotmode"></a>
+    <li>plotmode<br>
+        Spezifiziert, wie Plots erzeugt werden sollen:
+        <ul>
+          <li>SVG<br>
+          Die Plots werden mit Hilfe des <a href="#SVG">SVG</a> Moduls als SVG
+          Grafik gerendert. Das ist die Standardeinstellung.</li>
 
-    <a name="plotReplace"></a>
+          <li>gnuplot-scroll<br>
+          Die plots werden mit dem Programm gnuplot erstellt. Das output
+          terminal ist PNG. Der einfache Zugriff auf historische Daten
+          ist m&ouml;glich (analog SVG).
+          </li>
+
+          <li>gnuplot-scroll-svg<br>
+          Wie gnuplot-scroll, aber als output terminal wird SVG angenommen.
+          </li>
+        </ul>
+        </li><br>
+
+
+    <a id="SVG-attr-plotReplace"></a>
     <li>plotReplace<br>
       Leerzeichen getrennte Liste von Name=Wert Paaren. Wert kann Leerzeichen
       enthalten, falls es in "" oder {} eingeschlossen ist. Wert wird als
@@ -2890,16 +3083,28 @@ plotAsPng(@)
       kann, und %Name% davor, damit man die Regeln in der .gplot Datei f&uuml;r
       die Extraktion anpassen kann.</li><br>
 
-    <li><a href="#plotsize">plotsize</a></li><br>
-    <li><a href="#plotWeekStartDay">plotWeekStartDay</a></li><br>
+    <a id="SVG-attr-plotsize"></a>
+    <li>plotsize<br>
+        gibt die Standardbildgr&ouml;&szlig;e aller erzeugten Plots an als
+        Breite,H&ouml;he an. Um einem individuellen Plot die Gr&ouml;&szlig;e
+        zu &auml;ndern muss dieses Attribut bei der entsprechenden SVG Instanz
+        gesetzt werden.  Default sind 800,160 f&uuml;r Desktop und 480,160
+        f&uuml;r Smallscreen
+        </li><br>
 
-    <a name="startDate"></a>
+    <a id="SVG-attr-plotWeekStartDay"></a>
+    <li>plotWeekStartDay<br>
+        Starte das Plot in der Wochen-Ansicht mit diesem Tag.
+        0 ist Sonntag, 1 ist Montag, usw.
+    </li><br>
+
+    <a id="SVG-attr-startDate"></a>
     <li>startDate<br>
       Setzt das Startdatum f&uuml;r den Plot. Wird f&uuml;r Demo-Installationen
       verwendet.
       </li><br>
 
-    <a name="title"></a>
+    <a id="SVG-attr-title"></a>
     <li>title<br>
       Eine besondere Form der &Uuml;berschrift (siehe oben), bei der die
       Zeichenfolge &lt;TL&gt; in der .gplot-Datei ersetzt wird.
@@ -2911,7 +3116,7 @@ plotAsPng(@)
   </ul> 
   <br>
 
-  <a name="plotEditor"></a>
+  <a id="SVG-plotEditor"></a>
   <b>Plot-Editor</b>
    <br>
     Dieser Editor ist in der Detailansicht der SVG-Instanz zu sehen. Die
@@ -2941,8 +3146,8 @@ plotAsPng(@)
       Expression ausgewertet. Das Ergebnis muss in der Form [min:max] sein.
       </li>
   </ul>
-  Die Sichtbarkeit des  Plot-Editors kann mit dem FHEMWEB Attribut <a
-  href="#ploteditor">ploteditor</a> konfiguriert werden.
+  Die Sichtbarkeit des  Plot-Editors kann mit dem FHEMWEB Attribut
+  ploteditor konfiguriert werden.
   <br>
 </ul>
 

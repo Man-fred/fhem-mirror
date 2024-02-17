@@ -246,6 +246,7 @@ holiday_refresh($;$$)
 
     readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, 'state', $found);
+    readingsBulkUpdate($hash, 'today', $found);
     readingsBulkUpdate($hash, 'yesterday', CommandGet(undef,"$name yesterday"));
     readingsBulkUpdate($hash, 'tomorrow',  CommandGet(undef,"$name tomorrow"));
     readingsEndUpdate($hash,1);
@@ -307,15 +308,24 @@ holiday_Get($@)
 
   } elsif($a[1] =~ m/^(yesterday|today|tomorrow)$/) {
     my $t = time();
-    $t += 86400 if($a[1] eq "tomorrow");
-    $t -= 86400 if($a[1] eq "yesterday");
+
+    if($a[1] =~ m/^(yesterday|tomorrow)$/) { # clock change issues, #123808
+      my $inc = ($a[1] eq "tomorrow" ? 3600 : -3600);
+      my @now = localtime($t);
+      for(;;) {
+        $t += $inc;
+        my @then = localtime($t);
+        last if($then[3] != $now[3]);
+      }
+    }
+
     my @a = localtime($t);
-    $arg = sprintf("%02d-%02d", $a[4]+1, $a[3]);
+    $arg = sprintf("%04d-%02d-%02d", $a[5]+1900, $a[4]+1, $a[3]);
 
   } elsif($a[1] eq "days") {
     my $t = time() + ($a[2] ? int($a[2]) : 0)*86400;
     my @a = localtime($t);
-    $arg = sprintf("%02d-%02d", $a[4]+1, $a[3]);
+    $arg = sprintf("%04d-%02d-%02d", $a[5]+1900, $a[4]+1, $a[3]);
 
   } else {
     return "unknown argument $a[1], choose one of ".

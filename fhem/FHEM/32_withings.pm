@@ -10,7 +10,7 @@
 #
 #
 ##############################################################################
-# Release 13 / 2020-04-25
+# Release 18 / 2023-07-23
 
 
 package main;
@@ -25,7 +25,7 @@ use JSON;
 
 use POSIX qw( strftime );
 use Time::Local qw(timelocal);
-use Digest::SHA qw(hmac_sha1_base64);
+use Digest::SHA qw(hmac_sha1_base64 hmac_sha256_hex);
 
 #use Encode qw(encode);
 #use LWP::Simple;
@@ -50,11 +50,11 @@ my %device_types = (  0 => "User related",
                      32 => "Sleep Monitor",
                      64 => "Thermometer", );
 
-my %device_models = (  1 => { 1 => "Smart Scale", 2 => "Wireless Scale", 3 => "Smart Kid Scale", 4 => "Smart Body Analyzer", 5 => "WiFi Body Scale", 6 => "Cardio Scale", 7 => "Body Scale", },
-                       2 => { 21 => "Smart Baby Monitor", 22 => "Home", 23 => "Home v2", },
-                       4 => { 41 => "iOS Blood Pressure Monitor", 42 => "Wireless Blood Pressure Monitor", 43 => "BPM", 44 => "BPM Core", },
-                      16 => { 51 => "Pulse Ox", 52 => "Activite", 53 => "Activite v2", 54 => "Go", 55 => "Steel HR", },
-                      32 => { 60 => "Aura", 61 => "Sleep Sensor", 62 => "Aura v2", 63 => "Sleep", },
+my %device_models = (  1 => { 1 => "Withings WBS01", 2 => "WS30", 3 => "Kid Scale", 4 => "Smart Body Analyzer", 5 => "Body+", 6 => "Body Cardio", 7 => "Body", 9 => "Body Pro", 10 => "WBS08", 11 => "WBS10", 12 => "WBS11", },
+                       2 => { 21 => "Smart Baby Monitor", 22 => "Withings Home", 23 => "Home v2", },
+                       4 => { 41 => "iOS Blood Pressure Monitor", 42 => "Wireless Blood Pressure Monitor", 43 => "BPM", 44 => "BPM Core", 45 => "BPM Connect", 46 => "BPM Connect Pro"},
+                      16 => { 51 => "Pulse Ox", 52 => "Activite", 53 => "Activite (Pop, Steel)", 54 => "Withings Go", 55 => "Steel HR", 58 => "Pulse HR", 59 => "Steel HR Sport", 90 => "Move", 91 => "Move ECG", 92 => "Move ECG", 93 => "ScanWatch", },
+                      32 => { 60 => "Aura Dock", 61 => "Aura Sensor", 62 => "Aura Sensor V2", 63 => "Sleep", },
                       64 => { 70 => "Thermo", }, );
 
                       #Firmware files: cdnfw_withings_net
@@ -95,7 +95,7 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
                       39 => { name => "Intensity", reading => "intensity", }, #intraday only #vasistas
                       40 => { name => "Distance (m)", reading => "distance", dailyreading => "dailyDistance", },  #aggregate #measure #vasistas
                       41 => { name => "Descent (m)", reading => "descent", dailyreading => "dailyDescent", }, #descent #aggregate #measure ??sleepreading! #vasistas
-                      42 => { name => "Activity Type", reading => "activityType", }, #intraday only 1:walk 2:run #vasistas
+                      42 => { name => "Activity Type", reading => "activityType", }, #intraday only 1:walk 2:run #vasistas scanwatch activity
                       43 => { name => "Duration (s)", reading => "duration", }, #intraday only #vasistas
                       44 => { name => "Sleep State", reading => "sleepstate", }, #intraday #aura mat #vasistas
                       45 => { name => "unknown 45", reading => "unknown45", },#vasistas
@@ -112,10 +112,10 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
                       56 => { name => "Ambient light (lux)", reading => "light", },  # aura device #getmeashf
                       57 => { name => "Respiratory rate", reading => "breathing", }, # aura mat #measure #vasistas
                       58 => { name => "Air Quality (ppm)", reading => "voc", }, # Home Air Quality #getmeashf
-                      59 => { name => "unknown 59", reading => "unknown59", }, # activity #vasistas
+                      59 => { name => "unknown 59", reading => "unknown59", }, # activity #vasistas activity scanwatch
                       60 => { name => "PIM movement", reading => "movementPIM", }, # aura mat #measure vasistas 20-200 peak 800 #vasistas
                       61 => { name => "Maximum movement", reading => "movementMaximum", }, # aura mat #measure vasistas 10-60 peak 600 #vasistas
-                      62 => { name => "unknown 62", reading => "unknown62", }, # aura mat #measure vasistas 20-100 #vasistas
+                      62 => { name => "pNN50", reading => "pNN50", }, # aura mat #measure vasistas 20-100 #vasistas, watch ecg
                       63 => { name => "unknown 63", reading => "unknown63", }, # aura mat #measure vasistas 0-90 #vasistas
                       64 => { name => "unknown 64", reading => "unknown64", }, # aura mat #measure vasistas 30-150 #vasistas
                       65 => { name => "unknown 65", reading => "unknown65", }, # aura mat #measure vasistas 500-4000 peak 5000 #vasistas
@@ -123,10 +123,10 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
                       67 => { name => "unknown 67", reading => "unknown67", }, # aura mat #measure vasistas 0-100 peak 500 #vasistas
                       68 => { name => "unknown 68", reading => "unknown68", }, # aura mat #measure vasistas 0-800 peak 2000 #vasistas
                       69 => { name => "unknown 69", reading => "unknown69", }, # aura mat #measure vasistas 0-5000 peak 10000 #vasistas
-                      70 => { name => "unknown 70", reading => "unknown70", }, #? #vasistas
+                      70 => { name => "unknown 70", reading => "unknown70", }, #? #vasistas activity scanwatch
                       71 => { name => "Body Temperature (&deg;C)", reading => "bodyTemperature", }, #thermo
                       72 => { name => "GPS Speed", reading => "speedGPS", }, #vasistas
-                      73 => { name => "Skin Temperature (&deg;C)", reading => "skinTemperature", }, #thermo #vasistas
+                      73 => { name => "Skin Temperature (&deg;C)", reading => "skinTemperature", }, #thermo #vasistas scanwatch meas
                       76 => { name => "Muscle Mass (kg)", reading => "muscleMass", }, # cardio scale
                       77 => { name => "Water Mass (kg)", reading => "waterMass", }, # cardio scale
                       78 => { name => "unknown 78", reading => "unknown78", }, # cardio scale
@@ -135,8 +135,8 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
                       86 => { name => "unknown 86", reading => "unknown86", }, # body scale
                       87 => { name => "Active Calories (kcal)", reading => "caloriesActive", dailyreading => "dailyCaloriesActive", }, # measures list sleepreading! #vasistas
                       88 => { name => "Bone Mass (kg)", reading => "boneMassWeight", },
-                      89 => { name => "unknown 89", reading => "unknown89", }, #vasistas
-                      90 => { name => "unknown 90", reading => "unknown90", }, #pulse #vasistas
+                      89 => { name => "SpO2 Quality", reading => "spo2Quality", }, #vasistas scanwatch meas w/ spo2 quality! static
+                      90 => { name => "unknown 90", reading => "unknown90", }, #pulse #vasistas activity scanwatch device
                       91 => { name => "Pulse Wave Velocity (m/s)", reading => "pulseWave", },
                       93 => { name => "Muscle Mass (%)", reading => "muscleRatio", }, # cardio scale
                       94 => { name => "Bone Mass (%)", reading => "boneRatio", }, # cardio scale
@@ -165,32 +165,55 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
                      117 => { name => "unknown 117", reading => "unknown117", }, #?
                      118 => { name => "unknown 118", reading => "unknown118", }, #?
                      119 => { name => "unknown 119", reading => "unknown119", }, #?
-                     120 => { name => "unknown 120", reading => "unknown120", }, #pulse, vasistas
+                     120 => { name => "unknown 120", reading => "unknown120", }, #pulse, vasistas, scanwatch activity device
                      121 => { name => "Snoring", reading => "snoring", }, # sleep #vasistas
                      122 => { name => "Lean Mass (%)", reading => "fatFreeRatio", },
-                     123 => { name => "unknown 123", reading => "unknown123", },#
-                     124 => { name => "unknown 124", reading => "unknown124", },#
-                     125 => { name => "unknown 125", reading => "unknown125", },#
+                     123 => { name => "VO2max (ml/min/kg)", reading => "VO2max", },#
+                     124 => { name => "Training Duration", reading => "trainingDuration", },#workout
+                     125 => { name => "Training Load", reading => "trainingLoad", },#workout vo2max time?
                      126 => { name => "unknown 126", reading => "unknown126", },#
-                     127 => { name => "unknown 127", reading => "unknown127", },#
-                     128 => { name => "unknown 128", reading => "unknown128", },#vasistas
-                     129 => { name => "unknown 129", reading => "unknown129", },#vasistas sleep
+                     127 => { name => "Activity Class", reading => "activityClass", },#scanwatch initial reading fitnesslevel
+                     128 => { name => "unknown 128", reading => "unknown128", },#vasistas invalid for trackers from 2020/09
+                     129 => { name => "unknown 129", reading => "unknown129", },#vasistas sleep, scanwatch *
                      130 => { name => "ECG", reading => "heartECG", },#bpm core
                      131 => { name => "Heart Sounds", reading => "heartSounds", },#bpm core
-                     132 => { name => "unknown 132", reading => "unknown132", },#vasistas
-                     133 => { name => "unknown 133", reading => "unknown133", },#
+                     132 => { name => "unknown 132", reading => "unknown132", },#vasistas, scanwatch spo2/hr
+                     133 => { name => "unknown 133", reading => "unknown133", },# scanwatch
                      134 => { name => "unknown 134", reading => "unknown134", },#
-                     135 => { name => "unknown 135", reading => "unknown135", },#
-                     136 => { name => "unknown 136", reading => "unknown136", },#
-                     137 => { name => "unknown 137", reading => "unknown137", },#
-                     138 => { name => "unknown 138", reading => "unknown138", },#
-                     139 => { name => "unknown 139", reading => "unknown139", },#
+                     135 => { name => "ecgQRS", reading => "ecgQRS", },# scanwatch ecg
+                     136 => { name => "ecgPR", reading => "ecgPR", },# scanwatch ecg
+                     137 => { name => "ecgQT", reading => "ecgQT", },# scanwatch ecg
+                     138 => { name => "ecgQTc", reading => "ecgQTc", },# scanwatch ecg
+                     139 => { name => "afibPPG", reading => "afibPPG", },# scanwatch
                      140 => { name => "unknown 140", reading => "unknown140", },#
-                     141 => { name => "unknown 141", reading => "unknown141", },#
-                     142 => { name => "unknown 142", reading => "unknown142", },#
-                     143 => { name => "unknown 143", reading => "unknown143", },#
-                     144 => { name => "unknown 144", reading => "unknown144", },#
-                     145 => { name => "unknown 145", reading => "unknown145", },#
+                     141 => { name => "unknown 141", reading => "unknown141", },# scanwatch meas hrstate
+                     142 => { name => "unknown 142", reading => "unknown142", },# scanwatch meas hrlevel
+                     143 => { name => "unknown 143", reading => "unknown143", },#hr level min
+                     144 => { name => "unknown 144", reading => "unknown144", },#hr level max
+                     145 => { name => "afibECG", reading => "afibECG", },#
+                     146 => { name => "unknown 146", reading => "unknown146", },#
+                     147 => { name => "unknown 147", reading => "unknown147", },#
+                     148 => { name => "unknown 148", reading => "unknown148", },#
+                     149 => { name => "unknown 149", reading => "unknown149", },#
+                     150 => { name => "unknown 150", reading => "unknown150", },#
+                     151 => { name => "unknown 151", reading => "unknown151", },#
+                     152 => { name => "unknown 152", reading => "unknown152", },#
+                     153 => { name => "SDNN", reading => "sdnn", },#watch ecg
+                     154 => { name => "RMSSD", reading => "rmssd", },#watch ecg
+                     155 => { name => "Vascular Age", reading => "vascularAge", },#scale
+                     156 => { name => "unknown 156", reading => "unknown156", },#
+                     157 => { name => "unknown 157", reading => "unknown157", },#vascularage!
+                     158 => { name => "Nerve Health Score Conductance Left", reading => "nerveHealthScoreLeft", },#
+                     159 => { name => "Nerve Health Score Conductance Right", reading => "nerveHealthScoreRight", },#
+                     167 => { name => "Nerve Health Score Conductance Feet", reading => "nerveHealthScoreFeet", },#
+                     168 => { name => "Extracellular Water (kg)", reading => "waterExtracellular", },#
+                     169 => { name => "Intracellular Water (kg)", reading => "waterIntracellular", },#
+                     170 => { name => "Visceral Fat", reading => "fatVisceral", },#
+                     174 => { name => "Fat Mass Segments", reading => "fatMassSegments", },#
+                     175 => { name => "Muscle Mass Segments", reading => "muscleMassSegments", },#
+                     196 => { name => "Electrodermal Activity Feet", reading => "electrodermalActivityFeet", },#
+                     197 => { name => "Electrodermal Activity Left", reading => "electrodermalActivityLeft", },#
+                     198 => { name => "Electrodermal Activity Right", reading => "electrodermalActivityRight", },#
                       #-10 => { name => "Speed", reading => "speed", },
                       #-11 => { name => "Pace", reading => "pace", },
                       #-12 => { name => "Altitude", reading => "altitude", },
@@ -199,7 +222,8 @@ my %measure_types = (  1 => { name => "Weight (kg)", reading => "weight", },
 
 my %ecg_types = ( 0 => "normal",
                   1 => "signs of atrial fibrillation",
-                  2 => "inconclusive", );
+                  2 => "inconclusive",
+                  6 => "heart rate too low", );
 
 my %heart_types = ( -5 => "4 measurements to go",
                     -4 => "3 measurements to go",
@@ -207,7 +231,8 @@ my %heart_types = ( -5 => "4 measurements to go",
                     -2 => "1 measurement to go",
                      0 => "normal",
                      2 => "unclassified",
-                     4 => "inconclusive", );
+                     4 => "inconclusive",
+                     6 => "heart rate too low", );
 
 my %activity_types =   (  0 => "None",
                           1 => "Walking",
@@ -287,6 +312,18 @@ my %aggregate_range = (  1 => "day",
                          4 => "year",
                          5 => "alltime", );
 
+my %appli_types = (  1 => "user.metrics,      Weight",
+                     2 => "user.metrics, Temperature",
+                     4 => "user.metrics,    Pressure",
+                    16 => "users.activity,  Activity",
+                    44 => "users.activity,     Sleep",
+                    46 => "user.info,        Account",
+                    50 => "user.sleepevents,  Bed In",
+                    51 => "user.sleepevents, Bed Out",
+                    52 => "user.sleepevents, Inflate",
+                    54 => "user.metrics,     ECG New",
+                    55 => "user.metrics,    ECG Fail", );
+
 my %event_types = (  10 => { name => "Noise", reading => "alertNoise", threshold => "levelNoise", duration => "durationNoise", unit => 0, },
                      11 => { name => "Motion", reading => "alertMotion", threshold => "levelMotion", duration => "durationMotion", unit => -2, },
                      12 => { name => "Low Temperature", reading => "alertTemperatureLow", threshold => "levelTemperatureLow", duration => "dummy", unit => -2, },
@@ -310,11 +347,13 @@ my %timeline_classes = (  'noise_detected' => { name => "Noise", reading => "ale
                           'snapshot' => { name => "Snapshot", reading => "alertSnapshot", unit => 0, },
                           );
 
-my %sleep_readings = (  'lightsleepduration' => { name => "Light Sleep", reading => "sleepDurationLight", unit => "s", },
+my %sleep_readings = (  'asleepduration' => { name => "Manual Sleep", reading => "sleepDurationExternal", unit => "s", },
+                        'lightsleepduration' => { name => "Light Sleep", reading => "sleepDurationLight", unit => "s", },
                         'deepsleepduration' => { name => "Deep Sleep", reading => "sleepDurationDeep", unit => "s", },
                         'remsleepduration' => { name => "REM Sleep", reading => "sleepDurationREM", unit => "s", },
                         'wakeupduration' => { name => "Awake In Bed", reading => "sleepDurationAwake", unit => "s", },
                         'wakeupcount' => { name => "Wakeup Count", reading => "wakeupCount", unit => 0, },
+                        'out_of_bed_count' => { name => "OOB Count", reading => "outOfBedCount", unit => 0, },
                         'durationtosleep' => { name => "Duration To Sleep", reading => "durationToSleep", unit => "s", },
                         'durationtowakeup' => { name => "Duration To Wake Up", reading => "durationToWakeUp", unit => "s", },
                         'manual_sleep_duration' => { name => "Manual Sleep", reading => "sleepDurationManual", unit => "s", },
@@ -330,20 +369,29 @@ my %sleep_readings = (  'lightsleepduration' => { name => "Light Sleep", reading
                         'snoring' => { name => "Snoring", reading => "snoringDuration", unit => "s", },
                         'snoringepisodecount' => { name => "Snoring Episode Count", reading => "snoringEpisodeCount", unit => 0, },
                         'breathing_event_probability' => { name => "Breathing Event Probability", reading => "breathingEventProbability", unit => 0, },
+                        'night_events' => { name => "Night Events", reading => "nightEvents", unit => 0, },
                         'apnea_activated' => { name => "Apnea Activated", reading => "apneaActivated", unit => 0, },
                         'apnea_algo_version' => { name => "Apnea Algo Version", reading => "apneaAlgoVersion", unit => 0, },
+                        'apnea_hypopnea_index' => { name => "Apnea/Hypopnea Index", reading => "apneaIndex", unit => 0, },
+                        'breathing_disturbances_intensity' => { name => "Breathing Disturbances Intensity", reading => "breathingDisturbancesIntensity", unit => 0, },
                         'pause_duration' => { name => "Pause Duration", reading => "pauseDuration", unit => "s", },
-
-                        # 'manual_distance' => { name => "Manual Distance", reading => "manual_distance", unit => 0, },
-                        # 'steps' => { name => "Steps", reading => "steps", unit => 0, },
-                        # 'calories' => { name => "Calories", reading => "calories", unit => 0, },
-                        # 'metcumul' => { name => "metcumul", reading => "metcumul", unit => 0, },
-                        # 'manual_calories' => { name => "Manual Calories", reading => "manual_calories", unit => 0, },
-                        # 'intensity' => { name => "Intensity", reading => "intensity", unit => 0, },
-                        # 'effduration' => { name => "Effective Duration", reading => "effduration", unit => 0, },
-                        # 'distance' => { name => "Distance", reading => "distance", unit => 0, },
-                        # 'steps' => { name => "Steps", reading => "steps", unit => 0, },
-                        );
+                        'manual_distance' => { name => "Manual Distance", reading => "manual_distance", unit => "m", },
+                        'steps' => { name => "Steps", reading => "steps", unit => 0, },
+                        'calories' => { name => "Calories", reading => "calories", unit => 0, },
+                        'metcumul' => { name => "metcumul", reading => "metcumul", unit => 0, },
+                        'manual_calories' => { name => "Manual Calories", reading => "manual_calories", unit => 0, },
+                        'effduration' => { name => "Effective Duration", reading => "effduration", unit => "s", },
+                        'spo2_average' => { name => "SpO2 Average", reading => "spo2_average", unit => "%", },
+                        'intensity' => { name => "Intensity", reading => "intensity", unit => 0, },
+                        'distance' => { name => "Distance", reading => "workoutDistance", unit => "m", },
+                        'elevation' => { name => "Elevation", reading => "workoutElevation", unit => "m", },
+                        'hr_zone_0' => { name => "HR Zone 0", reading => "heartrateZoneLight", unit => "s", },
+                        'hr_zone_1' => { name => "HR Zone 1", reading => "heartrateZoneModerate", unit => "s", },
+                        'hr_zone_2' => { name => "HR Zone 2", reading => "heartrateZoneIntense", unit => "s", },
+                        'hr_zone_3' => { name => "HR Zone 3", reading => "heartrateZonePeak", unit => "s", },
+                        'device_startdate' => { name => "Start", reading => "deviceStartDate", unit => 0, },
+                        'device_enddate' => { name => "End", reading => "deviceEndDate", unit => 0, },
+                         );
 
 my %alarm_sound = (  0 => "Unknown",
                       1 => "Cloud Flakes",
@@ -361,7 +409,7 @@ my %alarm_song = (  'Unknown' => 0,
                     'Spotify' => 5,
                     'Internet radio' => 6, );
 
-my %nap_sound = (  0 => "Unknown",
+my %nap_sound = (     0 => "Unknown",
                       1 => "Celestial Piano (20 min)",
                       2 => "Cotton Cloud (10 min)",
                       3 => "Deep Smile (10 min)",
@@ -424,7 +472,7 @@ sub withings_Initialize($) {
 
   $hash->{AttrList} .= $readingFnAttributes;
 
-Log3 "withings", 5, "withings: initialize";
+  Log3 "withings", 5, "withings: initialize";
 }
 
 #####################################
@@ -496,7 +544,7 @@ sub withings_Define($$) {
 
     $hash->{helper}{username} = $username;
     $hash->{helper}{password} = $password;
-    $hash->{helper}{appliver} = '4080100';
+    $hash->{helper}{appliver} = '5010005';
     #$hash->{helper}{csrf_token} = 'e0a2595a83b85236709e366a8eed30b568df3dde';
   } else {
     return "Usage: define <name> withings ACCOUNT <login> <password>"  if(@a < 3 || @a > 5);
@@ -525,15 +573,15 @@ sub withings_Define($$) {
     withings_initDevice($hash) if( $hash->{SUBTYPE} eq "DEVICE" );
     InternalTimer(gettimeofday()+60, "withings_poll", $hash, 0) if( $hash->{SUBTYPE} eq "DUMMY" );
 
-  #connect aura
-  my $auraip = $attr{$name}{IP};
-  if($auraip){
-    $hash->{DeviceName} = $auraip.":7685";
+    #connect aura
+    my $auraip = $attr{$name}{IP};
+    if($auraip){
+      $hash->{DeviceName} = $auraip.":7685";
 
       Log3 $hash, 3, "$name: Opening Aura socket";
-    withings_Close($hash) if(DevIo_IsOpen($hash));
-    withings_Open($hash);
-  }
+      withings_Close($hash) if(DevIo_IsOpen($hash));
+    	withings_Open($hash);
+    }
   }
   else
   {
@@ -752,6 +800,7 @@ sub withings_getSessionKey($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
+  return undef if(IsDisabled($hash));
   return if( $hash->{SUBTYPE} ne "ACCOUNT" );
 
   return if( $hash->{SessionKey} && $hash->{SessionTimestamp} && gettimeofday() - $hash->{SessionTimestamp} < (60*60*24*7-3600) );
@@ -789,13 +838,13 @@ sub withings_getSessionKey($) {
   #   }
   #   Log3 $name, 4, "$name: appliver ".$hash->{helper}{appliver};
   # #}
-  # 
-  # 
+  #
+  #
   # #if( !defined($hash->{helper}{csrf_token}) )
   # #{
   #   $data1 =~ /csrf_token" value="(.*)"/;
   #   $hash->{helper}{csrf_token} = $1;
-  #   
+  #
   #   if(!defined($hash->{helper}{csrf_token})) {
   #     Log3 $name, 1, "$name: CSRF ERROR ";
   #     $hash->{STATE} = "CSRF error" if( $hash->{SUBTYPE} eq "ACCOUNT" );
@@ -818,11 +867,11 @@ sub withings_getSessionKey($) {
     # }
 
   my $datahash = {
-      url => "https://account.withings.com/connectionwou/account_login?r=https://healthmate.withings.com/",
+    url => "https://scalews.withings.net/cgi-bin/auth",
+    method => "POST",
     timeout => 10,
     noshutdown => 1,
-    ignoreredirects => 1,
-      data => { email=> withings_decrypt($hash->{helper}{username}), password => withings_decrypt($hash->{helper}{password}), is_admin => 'f', use_2fa => '' },
+    data => { action => 'login', email => withings_decrypt($hash->{helper}{username}), hash => md5_hex(withings_decrypt($hash->{helper}{password})), duration => '604800', os => 'ios', osversion => '15.4', appname => 'wiscaleNG', apppfm => 'ios', appliver => '5010005' },
   };
 
   my($err,$data) = HttpUtils_BlockingGet($datahash);
@@ -833,12 +882,21 @@ sub withings_getSessionKey($) {
     $hash->{STATE} = "Login error" if( $hash->{SUBTYPE} eq "ACCOUNT" );
     return undef;
   }
+
+  my $json = eval { JSON->new->utf8(0)->decode($data) };
+  if($@)
+  {
+    Log3 $name, 2, "$name: json evaluation error on getSessionKey: ".$@;
+    return undef;
+  }
   else
   {
-    if ($datahash->{httpheader} =~ /session_key=(.*?);/)
+
+    if(defined($json->{body}{sessionid}))
     {
-      $hash->{SessionKey} = $1;
+      $hash->{SessionKey} = $json->{body}{sessionid};
       $hash->{SessionTimestamp} = (gettimeofday())[0] if( $hash->{SessionKey} );
+      $hash->{Token} = $json->{body}{auth_token} if(defined($json->{body}{auth_token}));
       $hash->{STATE} = "Connected" if( $hash->{SessionKey} );
       $hash->{STATE} = "Session error" if( !$hash->{SessionKey} );
       Log3 $name, 4, "$name: sessionkey ".$hash->{SessionKey};
@@ -847,7 +905,7 @@ sub withings_getSessionKey($) {
     {
       $hash->{STATE} = "Cookie error" if( $hash->{SUBTYPE} eq "ACCOUNT" );
       Log3 $name, 1, "$name: COOKIE ERROR ";
-      $hash->{helper}{appliver} = '4080100';
+      $hash->{helper}{appliver} = '5010005';
       #$hash->{helper}{csrf_token} = '9855c478';
       return undef;
     }
@@ -904,6 +962,7 @@ sub withings_connect($) {
 
   $hash->{'.https'} = "https";
   $hash->{'.https'} = "http" if( AttrVal($name, "nossl", 0) );
+  return undef if(IsDisabled($hash));
 
   withings_getSessionKey( $hash );
 
@@ -953,13 +1012,14 @@ sub withings_connect($) {
     if( defined($modules{$hash->{TYPE}}{defptr}{"D$device->{deviceid}"}) ) {
       my $d = $modules{$hash->{TYPE}}{defptr}{"D$device->{deviceid}"};
       $d->{association} = $device->{association} if($device->{association});
+      $d->{devicehash} = $device->{hash_deviceid} if($device->{hash_deviceid});
 
       #get user from association
       if(defined($device->{deviceproperties})){
         $d->{User} = $device->{deviceproperties}{linkuserid} if(defined($device->{deviceproperties}{linkuserid}));
         $d->{color} = $device->{deviceproperties}{product_color} if(defined($device->{deviceproperties}{product_color}));
       }
-      
+
       Log3 $name, 2, "$name: device '$device->{deviceid}' already defined as $d->{NAME}" if( defined($d) && $d->{NAME} ne $name );
       next;
     }
@@ -1039,6 +1099,7 @@ sub withings_autocreate($) {
     if( defined($modules{$hash->{TYPE}}{defptr}{"D$device->{deviceid}"}) ) {
       my $d = $modules{$hash->{TYPE}}{defptr}{"D$device->{deviceid}"};
       $d->{association} = $device->{association} if($device->{association});
+      $d->{devicehash} = $device->{hash_deviceid} if($device->{hash_deviceid});
 
       #get user from association
       if(defined($device->{deviceproperties})){
@@ -1211,6 +1272,7 @@ sub withings_getUsers($) {
   my @users = ();
   foreach my $user (@{$json->{body}{users}}) {
     next if( !defined($user->{id}) );
+    next if( $user->{idparentaccount} ne $hash->{AccountID} );
 
     push( @users, $user );
   }
@@ -1303,6 +1365,16 @@ sub withings_getDeviceDetail($) {
     $hash->{typeID} = $device->{type};
     $hash->{lastsessiondate} = $device->{lastsessiondate} if( defined($device->{lastsessiondate}) );
     $hash->{lastweighindate} = $device->{lastweighindate} if( defined($device->{lastweighindate}) );
+
+    readingsBeginUpdate($hash);
+    if( defined($device->{batterylvl}) and $device->{batterylvl} > 0 and $device->{type} ne '32' and $device->{model} ne '22') {
+      readingsBulkUpdate( $hash, "batteryPercent", $device->{batterylvl}, 1 );
+      readingsBulkUpdate( $hash, "batteryState", ($device->{batterylvl}>20?"ok":"low"), 1 );
+    }
+    readingsBulkUpdate( $hash, "lastWeighinDate", FmtDateTime(int($device->{lastweighindate})), 1 ) if( defined($device->{lastweighindate}) and int($device->{lastweighindate}) > 0  and $device->{model} ne '60' );
+    readingsBulkUpdate( $hash, "lastSessionDate", FmtDateTime(int($device->{lastsessiondate})), 1 ) if( defined($device->{lastsessiondate}) );
+    readingsBulkUpdate( $hash, "firmware", $device->{fw}, 1 ) if( defined($device->{fw}) );
+    readingsEndUpdate($hash,1);
   }
 
   return $json->{body};
@@ -1654,8 +1726,8 @@ sub withings_poll($;$) {
   my $name = $hash->{NAME};
 
   RemoveInternalTimer($hash, "withings_poll");
-
   return undef if(IsDisabled($name));
+  return undef if(IsDisabled($hash->{IODev}));
 
 
   #my $resolve = inet_aton("scalews.withings.com");
@@ -1867,7 +1939,7 @@ sub withings_getUserReadingsSleep($) {
     url => "https://scalews.withings.com/cgi-bin/v2/measure",
     timeout => 60,
     noshutdown => 1,
-    data => {sessionid => $hash->{IODev}->{SessionKey}, userid=> $hash->{User}, meastype => '11,39,41,43,44,57,59,87,121,129', startdate => int($lastupdate), enddate => int($enddate), devicetype => '32', appname => 'hmw', appliver => $hash->{IODev}->{helper}{appliver}, apppfm => 'web', action => 'getvasistas'},
+    data => {sessionid => $hash->{IODev}->{SessionKey}, userid=> $hash->{User}, meastype => '11,39,41,43,44,54,57,59,73,87,89,120,121,129,132,133,141,142', startdate => int($lastupdate), enddate => int($enddate), devicetype => '32', appname => 'hmw', appliver => $hash->{IODev}->{helper}{appliver}, apppfm => 'web', action => 'getvasistas'},
       hash => $hash,
       type => 'userReadingsSleep',
       enddate => int($enddate),
@@ -1941,11 +2013,11 @@ sub withings_getUserReadingsActivity($) {
     url => "https://scalews.withings.com/cgi-bin/v2/measure",
     timeout => 60,
     noshutdown => 1,
-    data => {sessionid => $hash->{IODev}->{SessionKey}, userid=> $hash->{User}, meastype => '36,37,38,39,40,41,42,43,44,59,70,87,90,120,128,132', startdate => int($lastupdate), enddate => int($enddate), devicetype => '16', appname => 'hmw', appliver => $hash->{IODev}->{helper}{appliver}, apppfm => 'web', action => 'getvasistas'},
-      hash => $hash,
-      type => 'userReadingsActivity',
-      enddate => int($enddate),
-      callback => \&withings_Dispatch,
+    data => {sessionid => $hash->{IODev}->{SessionKey}, userid=> $hash->{User}, meastype => '11,36,37,38,39,40,41,42,43,44,54,59,70,73,87,89,90,120,132,133,141,142', startdate => int($lastupdate), enddate => int($enddate), devicetype => '16', appname => 'hmw', appliver => $hash->{IODev}->{helper}{appliver}, apppfm => 'web', action => 'getvasistas'},
+    hash => $hash,
+    type => 'userReadingsActivity',
+    enddate => int($enddate),
+    callback => \&withings_Dispatch,
   });
 
   my ($seconds) = gettimeofday();
@@ -1963,20 +2035,20 @@ sub withings_parseProperties($$) {
   my ($hash,$json) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 5, "$name: parsedevice\n".Dumper($json);
-
   #parse
   my $detail = $json->{body};
+  Log3 $name, 5, "$name: parsedevice\n".Dumper($json->{body});
 
   readingsBeginUpdate($hash);
 
-  if( defined($detail->{batterylvl}) and $detail->{batterylvl} > 0 and $detail->{type} ne '32' and $detail->{model} ne '22') {
-    readingsBulkUpdate( $hash, "batteryPercent", $detail->{batterylvl}, 1 );
-    readingsBulkUpdate( $hash, "batteryState", ($detail->{batterylvl}>20?"ok":"low"), 1 );
+  if( defined($json->{body}{batterylvl}) and $json->{body}{batterylvl} > 0 and $json->{body}{type} ne '32' and $json->{body}{model} ne '22') {
+    readingsBulkUpdate( $hash, "batteryPercent", $json->{body}{batterylvl}, 1 );
+    readingsBulkUpdate( $hash, "batteryState", ($json->{body}{batterylvl}>20?"ok":"low"), 1 );
   }
-  readingsBulkUpdate( $hash, "lastWeighinDate", FmtDateTime($detail->{lastweighindate}), 1 ) if( defined($detail->{lastweighindate}) and $detail->{lastweighindate} > 0  and $detail->{model} ne '60' );
-  readingsBulkUpdate( $hash, "lastSessionDate", FmtDateTime($detail->{lastsessiondate}), 1 ) if( defined($detail->{lastsessiondate}) );
-  $hash->{lastsessiondate} = $detail->{lastsessiondate} if( defined($detail->{lastsessiondate}) );
+  readingsBulkUpdate( $hash, "lastWeighinDate", FmtDateTime(int($json->{body}{lastweighindate})), 1 ) if( defined($json->{body}{lastweighindate}) and int($json->{body}{lastweighindate}) > 0  and $json->{body}{model} ne '60' );
+  readingsBulkUpdate( $hash, "lastSessionDate", FmtDateTime(int($json->{body}{lastsessiondate})), 1 ) if( defined($json->{body}{lastsessiondate}) );
+  readingsBulkUpdate( $hash, "firmware", $json->{body}{fw}, 1 ) if( defined($json->{body}{fw}) );
+  $hash->{lastsessiondate} = $json->{body}{lastsessiondate} if( defined($json->{body}{lastsessiondate}) );
 
   readingsEndUpdate($hash,1);
 
@@ -2399,7 +2471,7 @@ sub withings_parseWorkouts($$) {
   #parse
   Log3 $name, 1, "$name: parseworkouts\n".Dumper($json);
 
-return undef;
+  return undef;
 }
 
 
@@ -2494,7 +2566,7 @@ sub withings_parseVasistas($$;$) {
             $newlastupdate = $readingsdate if($readingsdate > $newlastupdate);
             $i++;
           }
-#start in-bed detection
+          #start in-bed detection
           if($hash->{modelID} eq "61" && $datatype =~ /Sleep/ && $iscurrent == 0){
             if($i>40 && $readingsdate > time()-3600){
               $iscurrent = 1;
@@ -2506,7 +2578,7 @@ sub withings_parseVasistas($$;$) {
               readingsEndUpdate($hash,1);
             }
           }
-#end in-bed detection
+          #end in-bed detection
         }
       }
     }
@@ -2518,7 +2590,7 @@ sub withings_parseVasistas($$;$) {
       $newlastupdate = $device->{lastweighindate} if($device->{lastweighindate} and $device->{lastweighindate} < $newlastupdate);
 
       #start in-bed detection
-      if($hash->{modelID} eq "61" && $datatype =~ /Sleep/ && $iscurrent == 0){
+      if($hash->{modelID} && $hash->{modelID} eq "61" && $datatype =~ /Sleep/ && $iscurrent == 0){
         if($device->{lastweighindate} > (time()-1800)){
           readingsSingleUpdate( $hash, "in_bed", 1, 1 );
         } else {
@@ -3034,18 +3106,18 @@ sub withings_readAuraAlarm($) {
   $data="010100050101250000"; #new alarmdata
   withings_Write($hash, $data);
 
-  #$data="0101000b0109060006090800020000"; #unknown
-  #withings_Write($hash, $data);
+  # $data="0101000b0109060006090800020000"; #unknown
+  # withings_Write($hash, $data);
   # #0101000f010100000a011000060906fffffffe
-  #$data="0101000b0109060006090800020100"; #unknown
-  #withings_Write($hash, $data);
+  # $data="0101000b0109060006090800020100"; #unknown
+  # withings_Write($hash, $data);
   # #0101000d01090600080906000432320101
-  #$data="0101000b0109060006090800020400"; #unknown
-  #withings_Write($hash, $data);
+  # $data="0101000b0109060006090800020400"; #unknown
+  # withings_Write($hash, $data);
   # #0101000f010100000a011000060906fffffffe
 
-  #$data="010100050109010000"; #getstate
-  #withings_Write($hash, $data);
+  # $data="010100050109010000"; #getstate
+  # withings_Write($hash, $data);
 
   return undef;
 }
@@ -3180,77 +3252,77 @@ sub withings_parseAuraData($$) {
   elsif($data =~ /010100..01012500/) {
     Log3 $name, 4, "$name: alarm data ".$data;
     $data = pack('H*', $data);
-  my $datalength = ord(substr($data,2,1))*256 + ord(substr($data,3,1));
-  Log3 $name, 5, "$name: alarmdata ($datalength)".unpack('H*', $data);
+    my $datalength = ord(substr($data,2,1))*256 + ord(substr($data,3,1));
+    Log3 $name, 5, "$name: alarmdata ($datalength)".unpack('H*', $data);
 
-  my $base = 9;
-  readingsBeginUpdate($hash);
-  my $alarmcounter = 1;
+    my $base = 9;
+    readingsBeginUpdate($hash);
+    my $alarmcounter = 1;
 
-  my @dataarray = split("05120007",unpack('H*', $data));
+    my @dataarray = split("05120007",unpack('H*', $data));
 
-  while(defined($dataarray[$alarmcounter]))
-  {
-    my @alarmparts = split("091600",$dataarray[$alarmcounter]);#seriously, withings?
-    my $timedatehex = pack('H*', $alarmparts[0]);
-
-    my $alarmhour = ord(substr($timedatehex,0,1));
-    my $alarmminute = ord(substr($timedatehex,1,1));
-    my $alarmdays = ord(substr($timedatehex,2,1));
-    my $alarmstate = (ord(substr($timedatehex,2,1)) > 128) ? "on" : "off";
-    my $alarmperiod = ord(substr($timedatehex,6,1));
-
-    my $alarmvolume = 0;
-    my $alarmbrightness = 0;
-    my $alarmsong = 0;
-
-    for(my $i=1;$i<=3;$i++) #whoever did this must have been high as fuck!
+    while(defined($dataarray[$alarmcounter]))
     {
-      my $hexdata = pack('H*', $alarmparts[$i]);
-      my $datatype = ord(substr($hexdata,1,1)); #order is not consistent
-      my $datalength = ord(substr($hexdata,2,1));
-      if($datatype == 1)
+      my @alarmparts = split("091600",$dataarray[$alarmcounter]);#seriously, withings?
+      my $timedatehex = pack('H*', $alarmparts[0]);
+
+      my $alarmhour = ord(substr($timedatehex,0,1));
+      my $alarmminute = ord(substr($timedatehex,1,1));
+      my $alarmdays = ord(substr($timedatehex,2,1));
+      my $alarmstate = (ord(substr($timedatehex,2,1)) > 128) ? "on" : "off";
+      my $alarmperiod = ord(substr($timedatehex,6,1));
+
+      my $alarmvolume = 0;
+      my $alarmbrightness = 0;
+      my $alarmsong = 0;
+
+      for(my $i=1;$i<=3;$i++) #whoever did this must have been high as fuck!
       {
-        $alarmvolume = ord(substr($hexdata,3,1))-48; #value as ascii characters
-        $alarmvolume = $alarmvolume*10 + ord(substr($hexdata,4,1))-48 if($datalength>1);
-        $alarmvolume = $alarmvolume*10 + ord(substr($hexdata,5,1))-48 if($datalength>2);
+        my $hexdata = pack('H*', $alarmparts[$i]);
+        my $datatype = ord(substr($hexdata,1,1)); #order is not consistent
+        my $datalength = ord(substr($hexdata,2,1));
+        if($datatype == 1)
+        {
+          $alarmvolume = ord(substr($hexdata,3,1))-48; #value as ascii characters
+          $alarmvolume = $alarmvolume*10 + ord(substr($hexdata,4,1))-48 if($datalength>1);
+          $alarmvolume = $alarmvolume*10 + ord(substr($hexdata,5,1))-48 if($datalength>2);
+        }
+        elsif($datatype == 2)
+        {
+          $alarmbrightness = ord(substr($hexdata,3,1))-48; #same for other values - wtf?
+          $alarmbrightness = $alarmbrightness*10 + ord(substr($hexdata,4,1))-48 if($datalength>1);
+          $alarmbrightness = $alarmbrightness*10 + ord(substr($hexdata,5,1))-48 if($datalength>2);
+        }
+        elsif($datatype == 3)
+        {
+          $alarmsong = ord(substr($hexdata,3,1))-48;
+        }
+        else{
+          Log3 $name, 2, "$name: unknown alarm data type: $datatype";
+        }
+
       }
-      elsif($datatype == 2)
-      {
-        $alarmbrightness = ord(substr($hexdata,3,1))-48; #same for other values - wtf?
-        $alarmbrightness = $alarmbrightness*10 + ord(substr($hexdata,4,1))-48 if($datalength>1);
-        $alarmbrightness = $alarmbrightness*10 + ord(substr($hexdata,5,1))-48 if($datalength>2);
-      }
-      elsif($datatype == 3)
-      {
-        $alarmsong = ord(substr($hexdata,3,1))-48;
-      }
-      else{
-        Log3 $name, 2, "$name: unknown alarm data type: $datatype";
-      }
+
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_time", sprintf( "%02d:%02d:%02d",$alarmhour,$alarmminute,0), 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_wdays", withings_int2Weekdays($alarmdays), 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_volume", $alarmvolume, 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_brightness", $alarmbrightness, 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_smartwake", $alarmperiod, 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_state", $alarmstate, 1 );
+      readingsBulkUpdate( $hash, "alarm".$alarmcounter."_sound", $alarm_sound{$alarmsong}, 1 );
+
+      Log3 $name, 4, "$name: alarm $alarmstate $alarmhour:$alarmminute ($alarmperiod) on ".withings_int2Weekdays($alarmdays)." light:$alarmbrightness vol:$alarmvolume  [$base]";
+
+      $hash->{helper}{ALARMSCOUNT} = $alarmcounter;
+      $alarmcounter++;
 
     }
-
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_time", sprintf( "%02d:%02d:%02d",$alarmhour,$alarmminute,0), 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_wdays", withings_int2Weekdays($alarmdays), 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_volume", $alarmvolume, 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_brightness", $alarmbrightness, 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_smartwake", $alarmperiod, 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_state", $alarmstate, 1 );
-    readingsBulkUpdate( $hash, "alarm".$alarmcounter."_sound", $alarm_sound{$alarmsong}, 1 );
-
-    Log3 $name, 4, "$name: alarm $alarmstate $alarmhour:$alarmminute ($alarmperiod) on ".withings_int2Weekdays($alarmdays)." light:$alarmbrightness vol:$alarmvolume  [$base]";
-
-    $hash->{helper}{ALARMSCOUNT} = $alarmcounter;
-    $alarmcounter++;
-
-  }
     readingsEndUpdate($hash,1);
 
-  for(my $i=$alarmcounter;$i<10;$i++)
-  {
-    fhem( "deletereading $name alarm".$i."_.*" );
-  }
+    for(my $i=$alarmcounter;$i<10;$i++)
+    {
+      fhem( "deletereading $name alarm".$i."_.*" );
+    }
 
   }
   else {
@@ -3567,6 +3639,15 @@ sub withings_Dispatch($$$) {
     }
     Log3 $name, 1, "$name: Dispatch ".$param->{type}." json error ".$json->{error} if(defined($json->{error}));
 
+    if(defined($json->{error}) && $json->{error} =~ /Invalid Session/){
+      if( !defined($hash->{IODev}) ){
+        withings_getSessionKey( $hash );
+      } else {
+        withings_getSessionKey( $hash->{IODev} );
+      }
+      return undef;
+    }
+
     Log3 $name, 5, "$name: json returned: ".Dumper($json);
 
     if(defined($param->{enddate}))
@@ -3621,7 +3702,7 @@ sub withings_decrypt($) {
 
   return $encoded if( $encoded !~ /crypt:/ );
   return "" if($encoded eq "crypt:");
-  
+
   $encoded = $1 if( $encoded =~ /crypt:(.*)/ );
 
   for my $char (map { pack('C', hex($_)) } ($encoded =~ /(..)/g)) {
@@ -3638,6 +3719,8 @@ sub withings_decrypt($) {
 sub withings_addExtension($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
+
+  return undef if($name =~ /test/);
 
   #withings_removeExtension() ;
   my $url = "/withings";
@@ -3661,7 +3744,7 @@ sub withings_removeExtension($) {
   $name = $hash->{NAME} if(!defined($name));
   Log3 $name, 2, "Disabling Withings webcall for $name ";
   delete $data{FWEXT}{$url};
-  delete $modules{"livetracking"}{defptr}{"webcall"};
+  delete $modules{"withings"}{defptr}{"webcall"};
 }
 
 #########################
@@ -3701,6 +3784,47 @@ sub withings_Webcall() {
       return ( "text/plain; charset=utf-8",
           "1" );
     }
+    if($request =~ /appli=/){
+      $request =~ /appli=(.*?)(&|$)/;
+      my $appli = $1 || undef;
+
+      if($appli eq "1"){
+        Log3 "withings", 4, "New user measurement ".$request;
+      }
+      if($appli eq "2"){
+        Log3 "withings", 4, "New temperature measurement ".$request;
+      }
+      if($appli eq "4"){
+        Log3 "withings", 4, "New heart measurement ".$request;
+      }
+      if($appli eq "16"){
+        Log3 "withings", 4, "New activity measurement ".$request;
+      }
+      if($appli eq "44"){
+        Log3 "withings", 4, "New sleep measurement ".$request;
+      }
+      if($appli eq "46"){
+        Log3 "withings", 4, "New user profile measurement ".$request;
+      }
+      if($appli eq "50"){
+        readingsSingleUpdate( $userhash, "in_bed", 1, 1 );
+      }
+      if($appli eq "51"){
+        readingsSingleUpdate( $userhash, "in_bed", 0, 1 );
+      }
+      if($appli eq "52"){
+        Log3 "withings", 4, "Withings sleep mat was inflated ".$request;
+      }
+      if($appli eq "53"){
+        Log3 "withings", 4, "Withings device setup ".$request;
+      }
+      if($appli eq "54"){
+        Log3 "withings", 4, "New ECG data ".$request;
+      }
+      if($appli eq "55"){
+        Log3 "withings", 4, "ECG failed ".$request;
+      }
+    }
     InternalTimer(gettimeofday()+2, "withings_poll", $userhash, 0);
 
     return ( "text/plain; charset=utf-8",
@@ -3725,19 +3849,19 @@ sub withings_AuthApp($;$) {
   my $cid = AttrVal($name,'client_id','');
   my $cb = AttrVal($name,'callback_url','');
 
-  my $url = "https://account.withings.com/oauth2_user/authorize2?response_type=code&client_id=".$cid."&scope=user.info,user.metrics,user.activity&state=connect&redirect_uri=".$cb;
+  my $url = "https://account.withings.com/oauth2_user/authorize2?response_type=code&client_id=".$cid."&scope=user.info,user.metrics,user.activity,user.sleepevents&state=connect&redirect_uri=".$cb;
   return $url if(!defined($code) || $code eq "");
 
   my $cs = AttrVal($name,'client_secret','');
 
-  Log3 "withings", 2, "Withings auth call ".$code;
+  Log3 "withings", 4, "Withings auth call ".$code." ".$cb." ".$name;
 
   my $datahash = {
-    url => "https://account.withings.com/oauth2/token",
+    url => "https://wbsapi.withings.net/v2/oauth2",
     method => "POST",
     timeout => 10,
     noshutdown => 1,
-    data => { grant_type => 'authorization_code', client_id => $cid, client_secret => $cs, code => $code, redirect_uri => $cb },
+    data => { action => 'requesttoken', grant_type => 'authorization_code', client_id => $cid, client_secret => $cs, code => $code, redirect_uri => $cb },
   };
 
   my($err,$data) = HttpUtils_BlockingGet($datahash);
@@ -3755,26 +3879,27 @@ sub withings_AuthApp($;$) {
     Log3 $name, 1, "$name: LOGIN JSON ERROR: $data";
     return undef;
   }
-  if(defined($json->{errors})){
+  if(defined($json->{error})){
     Log3 $name, 2, "$name: LOGIN RETURN ERROR: $data";
     return undef;
   }
 
   Log3 $name, 4, "$name: LOGIN SUCCESS: $data";
 
-  my $user = $json->{userid} || "NOUSER";
+  my $user = $json->{body}{userid} || "NOUSER";
   my $userhash = $modules{$hash->{TYPE}}{defptr}{"U$user"};
   if(!defined($userhash)){
     Log3 $name, 2, "$name: LOGIN USER ERROR: $data";
     return undef;
   }
   #readingsSingleUpdate( $hash, "access_token", $json->{access_token}, 1 ) if(defined($json->{access_token}));
-  $userhash->{helper}{OAuthKey} = $json->{access_token} if(defined($json->{access_token}));
+  $userhash->{helper}{OAuthKey} = $json->{body}{access_token} if(defined($json->{body}{access_token}));
   #readingsSingleUpdate( $hash, "expires_in", $json->{expires_in}, 1 ) if(defined($json->{expires_in}));
-  $userhash->{helper}{OAuthValid} = (int(time)+$json->{expires_in}) if(defined($json->{expires_in}));
-  readingsSingleUpdate( $userhash, ".refresh_token", $json->{refresh_token}, 1 ) if(defined($json->{refresh_token}));
+  $userhash->{helper}{OAuthValid} = (int(time)+$json->{body}{expires_in}) if(defined($json->{body}{expires_in}));
+  readingsSingleUpdate( $userhash, ".refresh_token", $json->{body}{refresh_token}, 1 ) if(defined($json->{body}{refresh_token}));
 
-  InternalTimer(gettimeofday()+$json->{expires_in}-60, "withings_AuthRefresh", $userhash, 0);
+  RemoveInternalTimer($userhash, "withings_AuthRefresh");
+  InternalTimer(gettimeofday()+$json->{body}{expires_in}-60, "withings_AuthRefresh", $userhash, 0);
 
 
   #https://wbsapi.withings.net/notify?action=subscribe&access_token=a639e912dfc31a02cc01ea4f38de7fa4a1464c2e&callbackurl=http://fhem:remote@gu9mohkaxqdgpix5.myfritz.net/fhem/withings&appli=1&comment=fhem
@@ -3787,16 +3912,22 @@ sub withings_AuthRefresh($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
+
+  #my $nonce = withings_GetNonce($hash);
+
   my $cid = AttrVal($hash->{IODev}->{NAME},'client_id','');
   my $cs = AttrVal($hash->{IODev}->{NAME},'client_secret','');
   my $ref = ReadingsVal($name,'.refresh_token','');
 
+  #my $sig = "requesttoken,$cid,".$nonce;
+  #$sig=hmac_sha256_hex($sig, AttrVal($name,'client_secret',''));
+
   my $datahash = {
-    url => "https://account.withings.com/oauth2/token",
+    url => "https://wbsapi.withings.net/v2/oauth2",
     method => "POST",
     timeout => 10,
     noshutdown => 1,
-    data => { grant_type => 'refresh_token', client_id => $cid, client_secret => $cs, refresh_token => $ref },
+    data => { action => 'requesttoken', client_id => $cid, grant_type => 'refresh_token', client_secret => $cs, refresh_token => $ref },
   };
 
 
@@ -3814,24 +3945,68 @@ sub withings_AuthRefresh($) {
     Log3 $name, 1, "$name: REFRESH JSON ERROR: $data";
     return undef;
   }
-  if(defined($json->{errors})){
+  if(defined($json->{error})){
     Log3 $name, 2, "$name: REFRESH RETURN ERROR: $data";
     return undef;
   }
 
   Log3 $name, 4, "$name: REFRESH SUCCESS: $data";
 
-  #readingsSingleUpdate( $hash, "access_token", $json->{access_token}, 1 ) if(defined($json->{access_token}));
-  $hash->{helper}{OAuthKey} = $json->{access_token} if(defined($json->{access_token}));
-  #readingsSingleUpdate( $hash, "expires_in", $json->{expires_in}, 1 ) if(defined($json->{expires_in}));
-  $hash->{helper}{OAuthValid} = (int(time)+$json->{expires_in}) if(defined($json->{expires_in}));
-  readingsSingleUpdate( $hash, ".refresh_token", $json->{refresh_token}, 1 ) if(defined($json->{refresh_token}));
+  #readingsSingleUpdate( $hash, "access_token", $json->{body}{access_token}, 1 ) if(defined($json->{body}{access_token}));
+  $hash->{helper}{OAuthKey} = $json->{body}{access_token} if(defined($json->{body}{access_token}));
+  #readingsSingleUpdate( $hash, "expires_in", $json->{body}{expires_in}, 1 ) if(defined($json->{body}{expires_in}));
+  $hash->{helper}{OAuthValid} = (int(time)+$json->{body}{expires_in}) if(defined($json->{body}{expires_in}));
+  readingsSingleUpdate( $hash, ".refresh_token", $json->{body}{refresh_token}, 1 ) if(defined($json->{body}{refresh_token}));
 
-  InternalTimer(gettimeofday()+$json->{expires_in}-60, "withings_AuthRefresh", $hash, 0);
+  InternalTimer(gettimeofday()+$json->{body}{expires_in}-60, "withings_AuthRefresh", $hash, 0);
 
   #https://wbsapi.withings.net/notify?action=subscribe&access_token=a639e912dfc31a02cc01ea4f38de7fa4a1464c2e&callbackurl=http://fhem:remote@gu9mohkaxqdgpix5.myfritz.net/fhem/withings&appli=1&comment=fhem
 
   return undef;
+}
+
+sub withings_GetNonce($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  my $acc = $hash->{helper}{OAuthKey};
+  my $cid = AttrVal($name,'client_id','');
+  my $ts = int(time());
+
+  my $sig = "getnonce,$cid,".$ts;
+  $sig=hmac_sha256_hex($sig, AttrVal($name,'client_secret',''));
+
+  my $datahash = {
+    url => "https://wbsapi.withings.net/v2/signature",
+    method => "POST",
+    timeout => 10,
+    noshutdown => 1,
+    data => { action => 'getnonce', client_id => $cid, timestamp => $ts, signature => $sig },
+  };
+
+
+  my($err,$data) = HttpUtils_BlockingGet($datahash);
+
+  if ($err || !defined($data) || $data =~ /Authentification failed/ || $data =~ /not a valid/)
+  {
+    Log3 $name, 1, "$name: NONCE ERROR $err";
+    return undef;
+  }
+
+  my $json = eval { JSON::decode_json($data) };
+  if($@)
+  {
+    Log3 $name, 1, "$name: NONCE JSON ERROR: $data";
+    return undef;
+  }
+  if(!defined($json->{body}{nonce})){
+    Log3 $name, 2, "$name: NONCE RETURN ERROR: $data";
+    return undef;
+  }
+
+  Log3 $name, 5, "$name: NONCE SUCCESS: ";
+  return $json->{body}{nonce};
+
 }
 
 sub withings_AuthList($) {
@@ -3863,7 +4038,7 @@ sub withings_AuthList($) {
     Log3 $name, 1, "$name: LIST JSON ERROR: $data";
     return undef;
   }
-  if(defined($json->{errors})){
+  if(defined($json->{error})){
     Log3 $name, 2, "$name: LIST RETURN ERROR: $data";
     return undef;
   }
@@ -3872,6 +4047,8 @@ sub withings_AuthList($) {
   foreach my $profile (@{$json->{body}{profiles}}) {
     next if( !defined($profile->{appli}) );
     $ret .= $profile->{appli};
+    $ret .= "\t";
+    $ret .= $appli_types{$profile->{appli}};
     $ret .= "\t";
     $ret .= $profile->{comment};
     $ret .= "\t";
@@ -3890,7 +4067,7 @@ sub withings_AuthUnsubscribe($) {
   my $acc = $hash->{helper}{OAuthKey};
   my $cb = AttrVal($hash->{IODev}->{NAME},'callback_url','');
 
-  my @applis = ("1", "4", "16", "44", "46");
+  my @applis = ("1", "2", "4", "16", "44", "46", "50", "51", "52", "54", "55");
   foreach my $appli (@applis) {
 
     my $datahash = {
@@ -3936,13 +4113,13 @@ sub withings_AuthSubscribe($) {
 
   my $acc = $hash->{helper}{OAuthKey};
   my $cb = AttrVal($hash->{IODev}->{NAME},'callback_url','');
-  my @applis = ("1", "4", "16", "44", "46");
+  my @applis = ("1", "2", "4", "16", "44", "46", "50", "51", "52", "54", "55");
 
   my $ret = "Please open the following URLs in your browser to subscribe:\n\n";
   foreach my $appli (@applis) {
-
+    $ret.='Appli Type '.$appli." (".$appli_types{$appli}.")\n";
     $ret.='https://wbsapi.withings.net/notify?action=subscribe&access_token='.$acc.'&appli='.$appli.'&comment=FHEM&callbackurl='.$cb;
-    $ret .= "\n";
+    $ret .= "\n\n";
     next;
 
     my $ua = LWP::UserAgent->new;
@@ -4008,6 +4185,36 @@ sub withings_DbLog_splitFn($) {
     $reading = 'heartPulse';
     $unit = 'bpm';
   }
+  elsif($event =~ m/sleepstate/)
+  {
+    $reading = 'sleepstate';
+    $unit = '';
+  }
+  elsif($event =~ m/ecgQT/)
+  {
+    $reading = 'VO2max';
+    $unit = 'ml/kg/min';
+  }
+  elsif($event =~ m/ecgQRS/)
+  {
+    $reading = 'ecgQRS';
+    $unit = 'ms';
+  }
+  elsif($event =~ m/ecgPR/)
+  {
+    $reading = 'ecgPR';
+    $unit = 'ms';
+  }
+  elsif($event =~ m/ecgQTc/)
+  {
+    $reading = 'ecgQTc';
+    $unit = 'ms';
+  }
+  elsif($event =~ m/ecgQT/)
+  {
+    $reading = 'ecgQT';
+    $unit = 'ms';
+  }
   elsif($event =~ m/pulseWaveRaw/)
   {
     $reading = 'pulseWaveRaw';
@@ -4038,7 +4245,7 @@ sub withings_DbLog_splitFn($) {
     $reading = 'dailySteps';
     $unit = 'steps';
   }
-  elsif($event =~ m/steps/)
+  elsif($event =~ m/^steps/)
   {
     $reading = 'steps';
     $unit = 'steps';
@@ -4073,7 +4280,7 @@ sub withings_DbLog_splitFn($) {
     $reading = 'diastolicBloodPressure';
     $unit = 'mmHg';
   }
-  elsif($event =~ m/spo2/)
+  elsif($event =~ m/^spo2/)
   {
     $reading = 'spo2';
     $unit = '%';
@@ -4098,7 +4305,7 @@ sub withings_DbLog_splitFn($) {
     $reading = 'fatMassWeight';
     $unit = 'kg';
   }
-  elsif($event =~ m/weight/)
+  elsif($event =~ m/^weight/)
   {
     $reading = 'weight';
     $unit = 'kg';
@@ -4138,22 +4345,22 @@ sub withings_DbLog_splitFn($) {
     $reading = 'dailyCaloriesActive';
     $unit = 'kcal';
   }
-  elsif($event =~ m/calories/)
+  elsif($event =~ m/^calories/)
   {
     $reading = 'calories';
     $unit = 'kcal';
   }
-  elsif($event =~ m/co2/)
+  elsif($event =~ m/^co2/)
   {
     $reading = 'co2';
     $unit = 'ppm';
   }
-  elsif($event =~ m/voc/)
+  elsif($event =~ m/^voc/)
   {
     $reading = 'voc';
     $unit = 'ppm';
   }
-  elsif($event =~ m/light/)
+  elsif($event =~ m/^light/)
   {
     $reading = 'light';
     $unit = 'lux';
@@ -4163,7 +4370,7 @@ sub withings_DbLog_splitFn($) {
     $reading = 'batteryPercent';
     $unit = '%';
   }
-  elsif($event =~ m/durationTo/)
+  elsif($event =~ m/^durationTo/)
   {
     $value = $parts[1];
     $unit = 's';
@@ -4178,10 +4385,15 @@ sub withings_DbLog_splitFn($) {
     $value = $parts[1];
     $unit = 'bpm';
   }
-  elsif($event =~ m/pressure/)
+  elsif($event =~ m/^pressure/)
   {
     $value = $parts[1];
     $unit = 'mmHg';
+  }
+  elsif($event =~ m/^vascularAge/)
+  {
+    $value = $parts[1];
+    $unit = 'a';
   }
   else
   {
@@ -4372,6 +4584,7 @@ sub withings_weekdays2Int( $ ) {
     <li>heartSounds</li>
     <li>pulseWave</li>
     <li>spo2</li>
+    <li>vascularAge</li>
 
     <li>bodyTemperature</li>
     <li>skinTemperature</li>

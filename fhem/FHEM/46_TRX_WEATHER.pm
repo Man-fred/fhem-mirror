@@ -144,7 +144,7 @@ TRX_WEATHER_Initialize($)
 {
   my ($hash) = @_;
 
-  $hash->{Match}     = "^..(40|4e|50|51|52|54|55|56|57|58|5a|5c|5d|71).*";
+  $hash->{Match}     = "^..(40|4e|50|51|52|54|55|56|57|58|5a|5b|5c|5d|71).*";
   $hash->{DefFn}     = "TRX_WEATHER_Define";
   $hash->{UndefFn}   = "TRX_WEATHER_Undef";
   $hash->{ParseFn}   = "TRX_WEATHER_Parse";
@@ -217,6 +217,7 @@ my %types =
    0x540d => { part => 'TEMPHYDROBARO', method => \&TRX_WEATHER_common_temphydrobaro, },
    # RAIN
    0x550b => { part => 'RAIN', method => \&TRX_WEATHER_common_rain, },
+   0x5509 => { part => 'RAIN', method => \&TRX_WEATHER_common_rain, },   
    # WIND
    0x5610 => { part => 'WIND', method => \&TRX_WEATHER_common_anemometer, },
    # UV
@@ -1015,6 +1016,7 @@ sub TRX_WEATHER_common_rain {
 	0x05 => "WS2300_RAIN", # WS2300
 	0x06 => "TX5_RAIN", # La Crosse TX5
 	0x07 => "WS4500_RAIN", # Alecto WS4500, Auriol H13726, Hama EWS1500, Meteoscan W155/W160,
+  0x09 => "TFA_RAIN",
   );
 
   if (exists $devname{$bytes->[1]}) {

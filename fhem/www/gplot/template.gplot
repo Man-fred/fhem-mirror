@@ -1,6 +1,7 @@
 ############################
 # Template .gplot file for creating a new SVG instance
 
+set readonly
 set terminal png transparent size <SIZE> crop
 set output '<OUT>.png'
 set xdata time
@@ -14,6 +15,6 @@ set grid
 set ytics
 set y2tics
 
-#FileLog 4:RegExp::
+#FileLog 4:.*::
 
 plot "<IN>" using 1:2 title 'Line 1' with lines
