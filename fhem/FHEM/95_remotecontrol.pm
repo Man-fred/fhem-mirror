@@ -1,5 +1,5 @@
 ﻿##############################################
-# $Id$
+# $Id: 95_remotecontrol.pm 10724 2016-02-04 18:17:33Z ulimaass $
 # 95_remotecontrol
 #
 ################################################################
@@ -75,7 +75,11 @@ remotecontrol_Initialize($)
   $hash->{SetFn}                 = "RC_Set";
   $hash->{AttrFn}                = "RC_Attr";
   $hash->{DefFn}                 = "RC_Define";
-  $hash->{AttrList}              = "rc_iconpath rc_iconprefix loglevel:0,1,2,3,4,5,6 rc_devStateIcon:0,1 ".
+  $hash->{AttrList}              = "rc_columns:1,2,3,4,5,6 rc_iconpath rc_iconprefix rc_notable:0,1 loglevel:0,1,2,3,4,5,6 page rc_devStateIcon:0,1 ".
+                                   "row.. row20 row21 row22 row23 row24 row25 row26 row27 row28 row29 ".
+                                   "row30 row31 row32 row33 row34 row35 row36 row37 row38 row39 ".
+                                   "row40 row41 row42 row43 row44 row45 row46 row47 row48 row49 ".
+                                   "row50 row51 row52 row53 row54 row55 row56 row57 row58 row59 ".
                                    "row00 row01 row02 row03 row04 row05 row06 row07 row08 row09 ".
                                    "row10 row11 row12 row13 row14 row15 row16 row17 row18 row19";
   $hash->{FW_detailFn}           = "RC_detailFn";           # displays rc preview in fhemweb detail-screen 
@@ -99,7 +103,6 @@ RC_Define()
   my ($hash, $def) = @_;
   $hash->{STATE}       = "initialized";
   $hash->{".htmlCode"} = "";
-  $hash->{".fw_me"} = "";
   return undef;
 }
 
@@ -150,6 +153,12 @@ RC_Set($@)
              "delete\n".$layoutlist;
       }
     }
+  ## set <device>   $hash->{".htmlCode"} = "";
+ <page>
+  } elsif ($cmd eq "activepage") {
+		readingsSingleUpdate($hash,$cmd,$par,1);
+		$hash->{".htmlCode"} = "";
+    Log 4, "[remotecontrol] activepage: $par";
   ## set makeweblink
   } elsif ($cmd eq "makeweblink") {
     my $wname = $a[2] ? $a[2] : "weblink_".$nam;
@@ -177,7 +186,7 @@ RC_Set($@)
     }
   ## set ?
   } elsif ($cmd eq "?") {
-    my $ret = "Unknown argument $cmd choose one of makeweblink makenotify state .remotecontrol:remotecontrol layout:";
+    my $ret = "Unknown argument $cmd choose one of activepage makeweblink makenotify state .remotecontrol:remotecontrol layout:";
     foreach my $fn (sort keys %{$data{RC_layout}}) {
       $ret .= $fn . ",";
     }
@@ -202,9 +211,7 @@ RC_Get($@)
 
   ## get htmlcode
   if($arg eq "htmlcode") {
-    $hash->{".htmlCode"} = RC_attr2html($name)
-        if(!$hash->{".htmlCode"} || $FW_ME ne $hash->{".fw_me"});
-    $hash->{".fw_me"} = $FW_ME; # Multi FHEMWEB Support / rko
+    $hash->{".htmlCode"} = RC_attr2html($name) if ($hash->{".htmlCode"} eq "");
     return $hash->{".htmlCode"};
   ## get layout
   } elsif ($arg eq "layout") {
@@ -227,47 +234,76 @@ RC_attr2html($@) {
   my ($name,$htmlNoTable) = @_;
   my $iconpath   = AttrVal("$name","rc_iconpath","icons/remotecontrol");
   my $iconprefix = AttrVal("$name","rc_iconprefix","");
+  my $columns = AttrVal("$name","rc_columns",0);
   my $rc_html;
   my $row;
+	my $dev;
+	my $page_title = AttrVal("$name","page","Remotecontrol");
+	my @pages = split (",",$page_title);
+	my $page = ReadingsVal("$name","activepage",$pages[0]);
+	my $noTable = (defined($htmlNoTable) ? $htmlNoTable : AttrVal("$name","rc_notable",0));
+	#my $noTable = (defined($htmlNoTable) ? $htmlNoTable : 0);
   $rc_html = "<div class=\"remotecontrol\">";
 # $rc_html = "<div class=\"remotecontrol\" id=\"$name\">"; # provokes update by longpoll
-  $rc_html.= '<table class="rc_body">' if (!$htmlNoTable);
-  foreach my $rownr (0..19) {
-    $rownr = sprintf("%2.2d",$rownr);
-    $row   = AttrVal("$name","row$rownr",undef);
-    next if (!$row);
-    $rc_html .= "<tr>\n" if (!$htmlNoTable);
-    my @btn = split (",",$row);
-    foreach my $btnnr (0..$#btn) {
-      $rc_html .= '<td class="rc_button">';# if (!$htmlNoTable);
-      if ($btn[$btnnr] ne "") {
-        my $cmd;
-        my $img;
-        if ($btn[$btnnr] =~ /(.*?):(.*)/) {    # button has format <command>:<image>
-          $cmd = $1;
-          $img = $2;
-        } else {                               # button has format <command> or is empty
-          $cmd = $btn[$btnnr];
-          $img = $btn[$btnnr];
-        }
-		if ($img =~ m/\.svg/) {                # convert svg-images
-		   $img = FW_makeImage($img, $cmd, "rc-button");
-		} else {
-          $img      = "<img src=\"$FW_ME/$iconpath/$iconprefix$img\">";
+
+  foreach my $pagenr (0..$#pages) {
+    if ($pages[$pagenr] eq $page) {
+			#$rc_html.= '<div style id="'.@pages[$pagenr].'">';
+			$rc_html.= '<table class="rc_body">' ;#if (!$noTable);
+			$rc_html.= '<tr><td>' if ($noTable);
+			#$rc_html.= '<caption style="font-size: 1em;">'.$page.'</caption>';
+			
+			foreach my $rownr ((0+$pagenr*20)..(19+$pagenr*20)) {
+				$rownr = sprintf("%2.2d",$rownr);
+				$row   = AttrVal("$name","row$rownr",undef);
+				next if (!$row);
+				$rc_html .= "<div class=\"rc_row\">\n" if ($noTable);
+				$rc_html .= "<tr>\n" if (!$noTable);
+				my @btn = split (",",$row);
+				my $btnnr;
+				foreach $btnnr (0..max($#btn, $columns)) {
+					$rc_html .= '<div class="rc_button">' if ($noTable);
+					$rc_html .= '<td class="rc_button">' if (!$noTable);
+					if (defined($btn[$btnnr]) && $btn[$btnnr] ne "") {
+						my $cmd;
+						my $img;
+						if ($btn[$btnnr] =~ /(.*?):(.*):(.*)/) {    # button has format <device>:<command>:<image>
+							$dev = $1;
+							$cmd = $2;
+							$img = $3;
+						} elsif ($btn[$btnnr] =~ /(.*?):(.*)/) {    # button has format <command>:<image>
+							$dev = $name;
+							$cmd = $1;
+							$img = $2;
+						} else {                               # button has format <command> or is empty
+							$dev = $name;
+							$cmd = $btn[$btnnr];
+							$img = $btn[$btnnr];
+						}
+						if ($img =~ m/\.svg/) {                # convert svg-images
+							 $img = FW_makeImage($img, $cmd, "rc-button");
+						} else {
+									$img      = "<img src=\"$FW_ME/$iconpath/$iconprefix$img\">";
+						}
+						if ($cmd || $cmd eq "0") {
+							$cmd      = "cmd.$dev=set $dev $cmd";
+							$rc_html .= "<a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">$img</a>";
+						} else {
+							$rc_html .= $img;
+						}
+					}
+					$rc_html .= "</div>" if ($noTable);
+					$rc_html .= "</td>" if (!$noTable);
+					$rc_html .= "\n";    
+				}
+				$rc_html .= "</div>\n" if ($noTable);
+				$rc_html .= "</tr>\n" if (!$noTable);
+			}
+			$rc_html.= '</td></tr>' if ($noTable);
+			$rc_html .= "</table>" ;#if (!$noTable);
+			last; #page ready 
 		}
-        if ($cmd || $cmd eq "0") {
-          $cmd      = "cmd.$name=set $name $cmd";
-          $rc_html .= "<a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">$img</a>";
-        } else {
-          $rc_html .= $img;
-        }
-      }
-      $rc_html .= "</td>";# if (!$htmlNoTable);
-      $rc_html .= "\n";    
-    }
-    $rc_html .= "</tr>\n" if (!$htmlNoTable);
-  }
-  $rc_html .= "</table>" if (!$htmlNoTable);
+	}
   $rc_html .= "</div>";
   return $rc_html;
 }
@@ -392,8 +428,6 @@ RC_layout_itunes() {
 
 
 =pod
-=item summary    display remotecontrol buttons in FHEMWEB to generate events
-=item summary_DE zeigt eine Fernbedienung in FHEMWEB um Events zu generieren
 =begin html
 
 <a name="remotecontrol"></a>

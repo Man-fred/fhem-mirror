@@ -1,5 +1,5 @@
 #################################################################
-# $Id$
+# $Id: 14_FLAMINGO.pm 27979 2023-09-18 18:00:56Z HomeAuto_User $
 #################################################################
 # The module was taken over by an unknown maintainer!
 # It is part of the SIGNALduinos project.

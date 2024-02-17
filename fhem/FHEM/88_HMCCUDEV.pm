@@ -2,11 +2,11 @@
 #
 #  88_HMCCUDEV.pm
 #
-#  $Id$
+#  $Id: 88_HMCCUDEV.pm 28381 2024-01-14 16:23:51Z zap $
 #
 #  Version 5.0
 #
-#  (c) 2024 zap (zap01 <at> t-online <dot> de)
+#  (c) 2022 zap (zap01 <at> t-online <dot> de)
 #
 ######################################################################
 #  Client device for Homematic devices.
@@ -31,7 +31,7 @@ sub HMCCUDEV_Set ($@);
 sub HMCCUDEV_Get ($@);
 sub HMCCUDEV_Attr ($@);
 
-my $HMCCUDEV_VERSION = '5.0 2024-02';
+my $HMCCUDEV_VERSION = '5.0 240121821';
 
 ######################################################################
 # Initialize module
@@ -52,7 +52,7 @@ sub HMCCUDEV_Initialize ($)
 	$hash->{parseParams} = 1;
 
 	$hash->{AttrList} = 'IODev ccuaggregate:textField-long ccucalculate:textField-long '. 
-		'ccuflags:multiple-strict,ackState,hideStdReadings,replaceStdReadings,noAutoSubstitute,noBoundsChecking,logCommand,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings '.
+		'ccuflags:multiple-strict,ackState,hideStdReadings,replaceStdReadings,noAutoSubstitute,noBoundsChecking,logCommand,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings,showServiceReadings '.
 		'ccureadingfilter:textField-long '.
 		'ccureadingformat:name,namelc,address,addresslc,datapoint,datapointlc '.
 		'ccureadingname:textField-long ccuSetOnChange ccuReadingPrefix devStateFlags '.
@@ -259,7 +259,7 @@ sub HMCCUDEV_InitDevice ($$)
 		}
 
 		# Update readings
-		HMCCU_ExecuteGetExtValuesCommand ($devHash, $da);
+		HMCCU_GetUpdate ($devHash, $da);
 	}
 
 	# Parse group options
@@ -437,6 +437,9 @@ sub HMCCUDEV_Set ($@)
 	elsif ($lcopt eq 'datapoint') {
 		return HMCCU_ExecuteSetDatapointCommand ($hash, $a, $h);
 	}
+#	elsif ($lcopt eq 'toggle') {
+#		return HMCCU_ExecuteToggleCommand ($hash);
+#	}
 	elsif (exists($hash->{hmccu}{roleCmds}{set}{$opt})) {
 		return HMCCU_ExecuteRoleCommand ($ioHash, $hash, 'set', $opt, $a, $h);
 	}
@@ -538,7 +541,7 @@ sub HMCCUDEV_Get ($@)
 	}
 	elsif ($lcopt eq 'extvalues') {
 		my $filter = shift @$a;
-		my $rc = HMCCU_ExecuteGetExtValuesCommand ($hash, $ccuaddr, $filter);
+		my $rc = HMCCU_GetUpdate ($hash, $ccuaddr, $filter);
 		return $rc < 0 ? HMCCU_SetError ($hash, $rc) : 'OK';
 	}
 	elsif ($lcopt eq 'paramsetdesc') {

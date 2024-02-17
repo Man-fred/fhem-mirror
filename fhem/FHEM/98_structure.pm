@@ -1,4 +1,4 @@
-# $Id$
+# $Id: 98_structure.pm 18182 2019-01-08 18:34:06Z rudolfkoenig $
 ##############################################################################
 #
 #     98_structure.pm
@@ -46,12 +46,9 @@ structure_Initialize($)
     async_delay
     clientstate_behavior:relative,relativeKnown,absolute,last 
     clientstate_priority
-    considerDisabledMembers
     disable
     disabledForIntervals
     evaluateSetResult:1,0
-    filterEvents:1,0
-    propagateAttr
     setStateIndirectly:1,0
     setStructType:0,1
   );
@@ -79,7 +76,7 @@ structAdd($$)
       Log 1, "recursive structure definition"
 
     } else {
-      addToDevAttrList($c, $attrList, 'structure');
+      addToDevAttrList($c, $attrList);
       structAdd($c, $attrList) if($defs{$c} && $defs{$c}{TYPE} eq "structure");
     }
   }
@@ -123,7 +120,7 @@ structure_setDevs($;$)
   $def = "$hash->{NAME} structure $hash->{DEF}" if(!$def);
   my $c = $hash->{".memberHash"};
 
-  my @a = split(/\s+/, $def);
+  my @a = split("[ \t][ \t]*", $def);
   my $devname = shift(@a);
   my $modname = shift(@a);
   my $stype   = shift(@a);
@@ -137,14 +134,13 @@ structure_setDevs($;$)
       $list{$d} = 1;
       push(@list, $d);
       next if($c && $c->{$d});
-      addToDevAttrList($d, $aList, 'structure');
+      addToDevAttrList($d, $aList);
       structAdd($d, $aList) if($defs{$d} && $defs{$d}{TYPE} eq "structure");
     }
   }
   $hash->{".memberHash"} = \%list;
   $hash->{".memberList"} = \@list;
   delete $hash->{".cachedHelp"};
-  notifyRegexpChanged($hash, 'global|'.join('|', @list));
 }
 
 #############################
@@ -178,9 +174,8 @@ structure_Notify($$)
   my ($hash, $dev) = @_;
   my $me = $hash->{NAME};
   my $devmap = $hash->{ATTR}."_map";
-  my $devName = $dev->{NAME};
 
-  if($devName eq "global") {
+  if($dev->{NAME} eq "global") {
     my $max = int(@{$dev->{CHANGED}});
     for (my $i = 0; $i < $max; $i++) {
       my $s = $dev->{CHANGED}[$i];
@@ -210,22 +205,7 @@ structure_Notify($$)
 
   return "" if(IsDisabled($me));
 
-  return "" if (! exists $hash->{".memberHash"}->{$devName});
-
-  if(AttrVal($me, "filterEvents", 0) &&
-     AttrVal($devName, $devmap, 0)) { #131841
-    my %re;
-    map { 
-      my @val = split(":",$_);
-      $re{$val[0]} = 1 if(@val==1 || @val==3);
-    } attrSplit($attr{$devName}{$devmap});
-    my @re = keys %re;
-    my $fnd;
-    map {
-      my $e = $_; map { $fnd = 1 if($e =~ m/^$_:/) } @re;
-    } @{deviceEvents($dev, 0)};
-    return "" if(!$fnd);
-  }
+  return "" if (! exists $hash->{".memberHash"}->{$dev->{NAME}});
 
   my $behavior = AttrVal($me, "clientstate_behavior", "absolute");
   my %clientstate;
@@ -254,10 +234,9 @@ structure_Notify($$)
   
   my $minprio = 99999;
   my $devstate;
-  my $stateCause="";
-  my $cdm = AttrVal($me, "considerDisabledMembers", undef);
+
   foreach my $d (sort keys %{ $hash->{".memberHash"} }) {
-    next if(!$defs{$d} || (!$cdm && IsDisabled($d)));
+    next if(!$defs{$d} || IsDisabled($d));
 
     if($attr{$d} && $attr{$d}{$devmap}) {
       my @gruppe = attrSplit($attr{$d}{$devmap});
@@ -291,10 +270,8 @@ structure_Notify($$)
             delete($hash->{INNTFY});
             return "";
           }
-          if($priority{$devstate} && $priority{$devstate} < $minprio) {
-            $minprio = $priority{$devstate};
-            $stateCause = $d;
-          }
+          $minprio = $priority{$devstate}
+                if($priority{$devstate} && $priority{$devstate} < $minprio);
           $clientstate{$devstate} = 1;
         }
       }
@@ -307,10 +284,8 @@ structure_Notify($$)
           delete($hash->{INNTFY});
           return "";
         }
-        if($priority{$devstate} && $priority{$devstate} < $minprio) {
-          $minprio = $priority{$devstate};
-          $stateCause = $d;
-        }
+        $minprio = $priority{$devstate}
+              if($priority{$devstate} && $priority{$devstate} < $minprio);
         $clientstate{$devstate} = 1;
       }
     }
@@ -318,15 +293,10 @@ structure_Notify($$)
     $hash->{".memberHash"}{$d} = $devstate;
   }
 
-  $devstate = ReadingsVal($devName, AttrVal($devName,$devmap,"state"),undef);
-  $devstate = $defs{$devName}{STATE} if(!defined($devstate));
-  $devstate = "undefined" if(!defined($devstate));
-
   my $newState = "undefined";
   if($behavior eq "absolute"){
     my @cKeys = keys %clientstate;
     $newState = (@cKeys == 1 ? $cKeys[0] : "undefined");
-    $stateCause = "different states: ".join(",", @cKeys);
 
   } elsif($behavior =~ "^relative" && $minprio < 99999) {
     $newState = $priority[$minprio];
@@ -338,14 +308,12 @@ structure_Notify($$)
 
   }
 
-  my $dStr = "structure $me: event from $devName: setting state to $newState";
-  $dStr .= ", cause $stateCause" if($newState ne $devstate);
-  Log3 $me, 5, $dStr;
-
+  Log3 $me, 5, "Update structure '$me' to $newState" .
+              " because device $dev->{NAME} has changed";
   readingsBeginUpdate($hash);
-  readingsBulkUpdate($hash, "LastDevice", $devName, 0);
+  readingsBulkUpdate($hash, "LastDevice", $dev->{NAME}, 0);
   readingsBulkUpdate($hash, "LastDevice_Abs",
-                                structure_getChangedDevice($devName), 0);
+                                structure_getChangedDevice($dev->{NAME}), 0);
   readingsBulkUpdate($hash, "state", $newState);
   readingsEndUpdate($hash, 1);
   $hash->{CHANGEDCNT}++;
@@ -372,12 +340,13 @@ CommandAddStruct($)
   }
 
   foreach my $d (devspec2array($a[0])) {
+    $hash->{".memberHash"}{$d} = 1;
     $hash->{DEF} .= " $d";
-    CommandAttr($cl, "$d $hash->{ATTR} $hash->{NAME}");
   }
 
-  addStructChange("addstruct", $name, $param);
-  structure_setDevs($hash);
+  @a = ( "set", $hash->{NAME}, $hash->{ATTR}, $hash->{NAME} );
+  structure_Attr(@a);
+  delete $hash->{".cachedHelp"};
   return undef;
 }
 
@@ -399,13 +368,14 @@ CommandDelStruct($)
   }
 
   foreach my $d (devspec2array($a[0])) {
+    delete($hash->{".memberHash"}{$d});
     $hash->{DEF} =~ s/\b$d\b//g;
-    CommandDeleteAttr($cl, "$d $hash->{ATTR}");
   }
   $hash->{DEF} =~ s/  / /g;
 
-  addStructChange("delstruct", $name, $param);
-  structure_setDevs($hash);
+  @a = ( "del", $hash->{NAME}, $hash->{ATTR} );
+  structure_Attr(@a);
+  delete $hash->{".cachedHelp"};
   return undef;
 }
 
@@ -420,11 +390,7 @@ structure_Set($@)
   my %pars;
 
   # see Forum # 28623 for .cachedHelp
-  if(@list > 1 && $list[1] eq "?") {
-    return $hash->{".cachedHelp"} if($hash->{".cachedHelp"});
-  } elsif(IsDisabled($me) =~ m/1|2/) {
-    return undef;
-  }
+  return $hash->{".cachedHelp"} if($list[1] eq "?" && $hash->{".cachedHelp"});
 
   my @devList = @{$hash->{".memberList"}};
   if(@list > 1 && $list[$#list] eq "reverse") {
@@ -510,12 +476,8 @@ structure_Set($@)
         $ret .= $sret;
       }
       if($list[1] eq "?") {
-        if(!defined($sret)) {
-          Log 1, "$me: 'set $d ?' returned undef";
-        } else {
-          $sret =~ s/.*one of //;
-          map { $pars{$_} = 1 } split(" ", $sret);
-        }
+        $sret =~ s/.*one of //;
+        map { $pars{$_} = 1 } split(" ", $sret);
       }
     }
   }
@@ -563,7 +525,6 @@ structure_Attr($@)
     group=>1,
     icon=>1,
     room=>1,
-    propagateAttr=>1,
     setStateIndirectly=>1,
     stateFormat=>1,
     webCmd=>1,
@@ -571,12 +532,10 @@ structure_Attr($@)
 	A2=>1
   );
 
-  return undef if(($ignore{$list[1]} && $featurelevel <= 5.9) || !$init_done);
+  return undef if($ignore{$list[1]} || !$init_done);
 
   my $me = $list[0];
   my $hash = $defs{$me};
-  my $pa = AttrVal($me, "propagateAttr", $featurelevel <= 5.9 ? '.*' : '^$');
-  return undef if($list[1] !~ m/$pa/);
 
   if($hash->{INATTR}) {
     Log3 $me, 1, "ERROR: endless loop detected in structure_Attr for $me";
@@ -604,6 +563,7 @@ structure_Attr($@)
       $ret .= "\n" if($ret);
       $ret .= $sret;
     }
+	Log3 $me, 1, "Command: $sret";
   }
   delete($hash->{INATTR});
   Log3 $me, 4, "Stucture attr $type: $ret" if($ret);
@@ -618,11 +578,11 @@ structure_Attr($@)
 =item summary_DE mehrere Ger&auml;te zu einem zusammenfassen
 =begin html
 
-<a id="structure"></a>
+<a name="structure"></a>
 <h3>structure</h3>
 <ul>
   <br>
-  <a id="structure-define"></a>
+  <a name="structuredefine"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; structure &lt;struct_type&gt; &lt;dev1&gt; &lt;dev2&gt; ...</code>
@@ -651,15 +611,13 @@ structure_Attr($@)
   </ul>
 
   <br>
-  <a id="structure-set"></a>
+  <a name="structureset"></a>
   <b>Set</b>
   <ul>
-    <a id="structure-set-saveStructState"></a>
     <li>saveStructState &lt;readingName&gt;<br>
       The state reading of all members is stored comma separated in the
       specified readingName.
       </li><br>
-    <a id="structure-set-restoreStructState"></a>
     <li>restoreStructState &lt;readingName&gt;<br>
       The state of all members will be restored from readingName by calling
       "set memberName storedStateValue".
@@ -678,17 +636,17 @@ structure_Attr($@)
   </ul>
   <br>
 
-  <a id="structure-get"></a>
+  <a name="structureget"></a>
   <b>Get</b>
   <ul>
     get is not supported through a structure device.
   </ul>
   <br>
 
-  <a id="structure-attr"></a>
+  <a name="structureattr"></a>
   <b>Attributes</b>
   <ul>
-    <a id="structure-attr-async_delay"></a>
+    <a name="async_delay"></a>
     <li>async_delay<br>
         If this attribute is defined, unfiltered set commands will not be
         executed in the clients immediately. Instead, they are added to a queue
@@ -702,13 +660,7 @@ structure_Attr($@)
     <li><a href="#disable">disable</a></li>
     <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 
-    <a id="structure-attr-considerDisabledMembers"></a>
-    <li>considerDisabledMembers<br>
-        if set, consider disabled members when computing the overall state of
-        the structure. If not set or set to 0, disabled members are ignored.
-        </li>
-
-    <a id="structure-attr-clientstate_behavior"></a>
+    <a name="clientstate_behavior"></a>
     <li>clientstate_behavior<br>
         The backward propagated status change from the devices to this structure
         works in two different ways.
@@ -726,13 +678,12 @@ structure_Attr($@)
           clientstate_priority. Needed e.g. for HomeMatic devices.
           </li>
         <li>last<br>
-          The structure state corresponds to the state of the device last
-          changed.
+          The structure state corresponds to the state of the device last changed.
           </li>
         </ul>
         </li>
 
-    <a id="structure-attr-clientstate_priority"></a>
+    <a name="clientstate_priority"></a>
     <li>clientstate_priority<br>
         If clientstate_behavior is set to relative, then you have to set the
         attribute "clientstate_priority" with all states of the defined devices
@@ -748,7 +699,6 @@ structure_Attr($@)
         In this example the status of kitchen is either on or off.  The status
         of house is either Any_on or All_off.
         </li>
-    <a id="structure-attr-struct_type_map" data-pattern=".*_map"></a>
     <li>&lt;struct_type&gt;_map<br>
         With this attribute, which has to specified for the structure-
         <b>member</b>, you can redefine the value reported by a specific
@@ -776,11 +726,9 @@ structure_Attr($@)
           <li>attr door struct_kitchen_map A:open:on A:closed:off</li>
           <li>attr door2 struct_kitchen_map A</li>
         </ul>
-        If this attribute is not set, the member devices state reading is taken,
-        or, if also absent, the STATE internal.
         </li>
 
-    <a id="structure-attr-evaluateSetResult"></a>
+    <a name="evaluateSetResult"></a>
     <li>evaluateSetResult<br>
       if a set command sets the state of the structure members to something
       different from the set command (like set statusRequest), then you have to
@@ -788,42 +736,19 @@ structure_Attr($@)
       compute the new status.
       </li>
 
-    <a id="structure-attr-filterEvents"></a>
-    <li>filterEvents<br>
-      if set, and the device triggering the event has a struct_type map, then
-      only events (i.e. reading names) contained in the structure map will
-      trigger the structure. Note: only the readingName and
-      readingName:oldVal:newVal entries of the struct_type map are considered.
-      </li>
-
-    <a id="structure-attr-propagateAttr"></a>
-    <li>propagateAttr &lt;regexp&gt;<br>
-      if the regexp matches the name of the attribute, then this attribute will
-      be propagated to all the members. The default is .* (each attribute) for
-      featurelevel <= 5.9, else ^$ (no attribute).
-      Note: the following attibutes were never propagated for featurelevel<=5.9
-      <ul>
-        alias async_delay clientstate_behavior clientstate_priority
-        devStateIcon disable disabledForIntervals group icon room propagateAttr
-        setStateIndirectly stateFormat webCmd userattr
-      </ul>
-      </li>
-
-    <a id="structure-attr-setStateIndirectly"></a>
     <li>setStateIndirectly<br>
       If true (1), set the state only when member devices report a state
       change, else the state is first set to the set command argument. Default
       is 0.
       </li>
 
-    <a id="structure-attr-setStructType"></a>
     <li>setStructType<br>
       If true (1), then the &lt;struct-type&gt; will be set as an attribute for
       each member device to the name of the structure.  True is the default for
       featurelevel <= 5.8.
       </li>
 
-    <a id="structure-attr-structexclude"></a>
+    <a name="structexclude"></a>
     <li>structexclude<br>
         Note: this is an attribute for the member device, not for the struct
         itself.<br>
@@ -849,11 +774,11 @@ structure_Attr($@)
 =end html
 =begin html_DE
 
-<a id="structure"></a>
+<a name="structure"></a>
 <h3>structure</h3>
 <ul>
   <br>
-  <a id="structure-define"></a>
+  <a name="structuredefine"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; structure &lt;struct_type&gt; &lt;dev1&gt;
@@ -888,15 +813,13 @@ structure_Attr($@)
   </ul>
 
   <br>
-  <a id="structure-set"></a>
+  <a name="structureset"></a>
   <b>Set</b>
   <ul>
-    <a id="structure-set-saveStructState"></a>
     <li>saveStructState &lt;readingName&gt;<br>
       Der Status (genauer: state Reading) aller Mitglieder wird im angegebenen
       Reading Komma separiert gespeichert.
       </li><br>
-    <a id="structure-set-restoreStructState"></a>
     <li>restoreStructState &lt;readingName&gt;<br>
       Der Status der Mitglieder wird aus dem angegebenen Reading gelesen, und
       via "set Mitgliedsname StatusWert" gesetzt.
@@ -914,17 +837,17 @@ structure_Attr($@)
     umgekehrten Reihenfolge ausgef&uuml;hrt.
   </ul>
   <br>
-  <a id="structure-get"></a>
+  <a name="structureget"></a>
   <b>Get</b>
   <ul>
     Get wird im Structur-Device nicht unterst&uuml;tzt.
   </ul>
   <br>
 
-  <a id="structure-attr"></a>
+  <a name="structureattr"></a>
   <b>Attribute</b>
   <ul>
-    <a id="structure-attr-async_delay"></a>
+    <a name="async_delay"></a>
     <li>async_delay<br>
       Wenn dieses Attribut gesetzt ist, werden ungefilterte set Kommandos nicht
       sofort an die Clients weitergereicht. Stattdessen werden sie einer
@@ -942,13 +865,7 @@ structure_Attr($@)
     <li><a href="#disable">disable</a></li>
     <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 
-    <a name="structure-attr-considerDisabledMembers"></a>
-    <li>considerDisabledMembers<br>
-        wenn gesetzt (auf 1), werden "disabled" Mitglieder bei der Berechnung
-        der Struktur-Status ber&uuml;cksichtigt, sonst werden diese ignoriert.
-        </li>
-
-    <a id="structure-attr-clientstate_behavior"></a>
+    <a name="clientstate_behavior"></a>
     <li>clientstate_behavior<br>
       Der Status einer Struktur h&auml;ngt von den Status der zugef&uuml;gten
       Devices ab.  Dabei wird das propagieren der Status der Devices in zwei
@@ -976,7 +893,7 @@ structure_Attr($@)
       </ul>
       </li>
 
-    <a id="structure-attr-clientstate_priority"></a>
+    <a name="clientstate_priority"></a>
     <li>clientstate_priority<br>
       Wird die Struktur auf ein relatives Verhalten eingestellt, so wird die
       Priorit&auml;t der Devicestatus &uuml;ber das Attribut
@@ -1002,7 +919,6 @@ structure_Attr($@)
       stehen. 
       </li>
 
-    <a id="structure-attr-struct_type_map" data-pattern=".*_map"></a>
     <li>&lt;struct_type&gt;_map<br>
       Mit diesem Attribut, das dem Struktur-<b>Mitglied</b> zugewiesen werden
       muss, koennen die Werte, die die einzelnen Struktur- Mitglieder melden,
@@ -1032,11 +948,9 @@ structure_Attr($@)
         <li>attr tuer struct_kitchen_map A:open:on A:closed:off</li>
         <li>attr tuer2 struct_kitchen_map A</li>
       </ul>
-      Ist das Attribut nicht gesetzt, wertet structure den state des Devices
-      aus, bzw. falls dieser nicht existiert, dessen STATE.
       </li>
 
-    <a id="structure-attr-evaluateSetResult"></a>
+    <a name="evaluateSetResult"></a>
     <li>evaluateSetResult<br>
       Falls ein set Befehl den Status der Struktur-Mitglieder auf was
       unterschiedliches setzt (wie z.Bsp. beim set statusRequest), dann muss
@@ -1044,45 +958,18 @@ structure_Attr($@)
       neuen Status auswerten soll.
       </li>
 
-    <a id="structure-attr-filterEvents"></a>
-    <li>filterEvents<br>
-      falls gesetzt, und das Event ausl&ouml;sende Ger&auml;t &uuml;ber ein
-      struct_type map verf&uuml;gt, dann werden nur solche Events die
-      Strukturberechnung ausl&ouml;sen, die in diesem map enthalten sind.<br>
-      Achtung: in struct_type map werden nur die readingName und
-      readingName:oldVal:newVal Eintr&auml;ge ber&uuml;cksichtigt.
-      </li>
-
-    <a id="structure-attr-propagateAttr"></a>
-    <li>propagateAttr &lt;regexp&gt;<br>
-      Falls der Regexp auf den Namen des Attributes zutrifft, dann wird dieses
-      Attribut an allen Mitglieder weitergegeben. F&uuml;r featurelevel <= 5.9
-      ist die Voreinstellung .* (d.h. alle Attribute), sonst ^$ (d.h. keine
-      Attribute).
-      <br>Achtung: folgende Attribute wurden fuer featurelevel<=5.9 nicht
-      weitervererbt:
-      <ul>
-        alias async_delay clientstate_behavior clientstate_priority
-        devStateIcon disable disabledForIntervals group icon room propagateAttr
-        setStateIndirectly stateFormat webCmd userattr
-      </ul>
-      </li>
-
-    <a id="structure-attr-setStateIndirectly"></a>
     <li>setStateIndirectly<br>
       Falls wahr (1), dann wird der Status der Struktur nur aus dem
       Statusmeldungen der Mitglied-Ger&auml;te bestimmt, sonst wird zuerst der
       Status auf dem set Argument gesetzt. Die Voreinstellung ist 0.
       </li>
 
-    <a id="structure-attr-setStructType"></a>
     <li>setStructType<br>
       Falls wahr (1), &lt;struct-type&gt; wird als Attribute f&uuml;r jedes
       Mitglied-Ger&auml;t auf dem Namen der Struktur gesetzt.
       Wahr ist die Voreinstellung f&uuml;r featurelevel <= 5.8.
       </li>
 
-    <a id="structure-attr-structexclude"></a>
     <li>structexclude<br>
       Bei gesetztem Attribut wird set, attr/deleteattr ignoriert.  Dies
       trifft ebenfalls auf die Weitergabe des Devicestatus an die Struktur zu.

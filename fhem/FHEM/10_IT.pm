@@ -6,7 +6,7 @@
 # 
 # Published under GNU GPL License
 #
-# $Id: 10_IT.pm 18090 2018-12-30 07:24:59Z bjoernh $
+# $Id: 10_IT.pm 20839 2019-12-28 09:41:47Z bjoernh $
 #
 ######################################################
 package main;
@@ -20,7 +20,7 @@ use SetExtensions;
 my %codes = (
   "XMIToff" => "off",
   "XMITon"  => "on", # Set to previous dim value (before switching it off)
-  "00" => "off",
+  "00" => "dim00%", # alt off
   "01" => "dim06%",
   "02" => "dim12%",
   "03" => "dim18%",
@@ -71,6 +71,7 @@ my %models = (
     itswitch    => 'simple',
     itdimmer    => 'dimmer',
     ev1527      => 'ev1527',
+    itswitch_CHN => 'itswitch_CHN',
 );
 
 my %bintotristate=(
@@ -184,10 +185,9 @@ IT_Set($@)
   return "Dummydevice $hash->{NAME}: will not set data" if(IsDummy($hash->{NAME}));
 
   my $list = "";
-  $list .= "off:noArg on:noArg " if( AttrVal($name, "model", "") ne "itremote" );
-  
-  if ($hash->{userV1setCodes}) {
-     if ($hash->{READINGS}{protocol}{VAL} eq "EV1527" || $hash->{READINGS}{protocol}{VAL} eq "V1") {
+  if( AttrVal($name, "model", "") ne "itremote" && AttrVal($name, "model", "") ne "itswitch_CHN") {
+    $list .= "off:noArg on:noArg ";
+    if ($hash->{userV1setCodes} && ($hash->{READINGS}{protocol}{VAL} eq "EV1527" || $hash->{READINGS}{protocol}{VAL} eq "V1")) {
         foreach my $setCode (keys %{$hash->{userV1setCodes}}) {
            $list .= "$setCode:noArg ";
         }
@@ -724,13 +724,17 @@ IT_Set($@)
 	} else {
 		if ($hash->{READINGS}{protocol}{VAL} eq "V3") {
 			$protocolId = 'P17#';
+		} elsif ($hash->{READINGS}{protocol}{VAL} eq "HE800") {	# HomeEasy HE800
+			$protocolId = 'P35#';
+		} elsif ($hash->{READINGS}{protocol}{VAL} eq "HE_EU") {	# HomeEasy HE_EU
+			$protocolId = 'P65#';
 		} else {
 			$protocolId = 'P3#';  # IT V1
 		}
 	}
 	if ($hash->{READINGS}{protocol}{VAL} ne "EV1527" && $hash->{READINGS}{protocol}{VAL} ne "V1" && $hash->{READINGS}{protocol}{VAL} ne 'SBC_FreeTec') {  # bei ITv1, SBC_FreeTec und EV1527 wird das "is" am Anfang nicht entfernt
-		$message = substr($message,2);
-		if (substr($message,0,1) eq "h") {    # h entfernen falls am am Anfang
+		$message =~ s/^is//;
+		if ($message =~ m/^[he]/) {    # h oder e entfernen, falls am Anfang
 			$message = substr($message,1);
 		}
 	}
@@ -866,7 +870,7 @@ IT_Define($$)
     #Log3 $hash,2,"ITdefine 1527: $name a3=" . $a[3];
     $housecode = $a[2];
     if (substr($housecode,0,4) eq '1527') {
-      my $evcode;
+      my $evcode = "";
       my $bincode = sprintf("%020b",hex(substr($housecode,5)));
       for (my $n=0; $n<20; $n=$n+2) {
         $evcode = $evcode . $bintotristate{substr($bincode,$n,2)};
@@ -1197,7 +1201,7 @@ IT_Parse($$)
     $groupBit=substr($msgcode,4,1);
     $unitCode=substr($msgcode,5,1);
     $housecode=substr($msgcode,0,4)."_".$unitCode;
-
+    $transmittercode = "$housecode $groupBit $onoffcode";
   } else {
     Log3 $hash,4,"$ioname IT: Wrong IT message received: $msgcode";
     return undef;
@@ -1244,7 +1248,7 @@ IT_Parse($$)
       return "UNDEFINED IT_HE800_$housecode IT " . "HE800 $transmittercode $unitCode" if(!$def);
     } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo
       Log3 $hash,2,"$ioname IT: $housecode not defined (Flamingo)";
-      return "UNDEFINED IT_FLAMINGO_$housecode IT " . "Flamingo $transmittercode $unitCode" if(!$def);
+      return "UNDEFINED IT_FLAMINGO_$housecode IT " . "FLAMINGO $transmittercode  $unitCode" if(!$def);
     } else {
       my $hexCode = sprintf("%x", oct("0b".$housecode));
       Log3 $hash,2,"$ioname IT: IT_V3_$hexCode ($housecode) not defined (Address: ".substr($msgcode,0,26)." Group: $groupBit Unit: $unitCode Switch code: $onoffcode)";
@@ -1265,6 +1269,19 @@ IT_Parse($$)
       $def->{$name}->{READINGS}{protocol}{VAL}  = 'EV1527';
       Log3 $hash,4,"$ioname IT EV1527: " . $def->{$name}{NAME} . ', on code=' . $def->{$name}->{$it_c2b{"on"}} . ", Switch code=$onoffcode";
     }
+    $newstate = "";
+    if ($def->{$name}{userV1setCodes} && ($def->{$name}->{READINGS}{protocol}{VAL} eq "EV1527" || $def->{$name}->{READINGS}{protocol}{VAL} eq "V1")) {
+       foreach my $usercode (keys %{$def->{$name}{userV1setCodes}}) {
+          if ($def->{$name}{userV1setCodes}{$usercode} eq $onoffcode) {
+             $newstate = $usercode;
+             last;
+          }
+      }
+      if ($newstate eq "") {
+         Log3 $def->{$name}{NAME},3,"$ioname IT: Code $onoffcode not found in userV1setCodes, try XMIT";
+      }
+    }
+    if ($newstate eq "") {
     if ($def->{$name}->{READINGS}{protocol}{VAL}  eq 'HE800') {
 
       my %he800MapingTable = (
@@ -1357,6 +1374,7 @@ IT_Parse($$)
       Log3 $def->{$name}{NAME},3,"$ioname IT: Code $onoffcode not supported by $def->{$name}{NAME}.";
       next;
     }
+    }
     Log3 $def->{$name}{NAME},3,"$ioname IT: $def->{$name}{NAME} ".$def->{$name}->{STATE}."->".$newstate;
     push(@list,$def->{$name}{NAME});
     readingsSingleUpdate($def->{$name},"state",$newstate,1);
@@ -1373,9 +1391,16 @@ sub IT_Attr(@)
 	
 	#Log3 $hash, 4, "$name IT_Attr: Calling Getting Attr sub with args: $cmd $aName = $aVal";
 		
-	if( $aName eq 'model' && $aVal eq 'ev1527') {
+	if( $aName eq 'model') {
+		if ($aVal eq 'ev1527') {
 		#Log3 $hash, 4, "$name IT_Attr: ev1527";
 		$hash->{READINGS}{protocol}{VAL}  = 'EV1527';
+		} elsif ($aVal eq 'itswitch_CHN') {
+			$hash->{userV1setCodes} = undef;
+			$hash->{userV1setCodes}{open} = "1010";
+			$hash->{userV1setCodes}{closed} = "1110";
+			$hash->{userV1setCodes}{tamper} = "0111";
+		}
 	} elsif ( $aName eq 'userV1setCodes') {
 		my @array = split(" ",$aVal);
 		$hash->{userV1setCodes} = undef;

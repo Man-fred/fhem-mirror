@@ -23,10 +23,6 @@ PasswordCheck_Initialize($)
 }
 
 ###################################
-#pin:pinManfred.state { use Digest::SHA qw(sha256_base64);; 
-#if (sha256_base64(ReadingsVal("pinManfred","state","ftfzft")) eq ReadingsVal("pinManfred","hashpin","frkzcc")) 
-#{return "on"} else {return "off"} },
-#hashpin { use Digest::SHA qw(sha256_base64);; sha256_base64(AttrVal("pinManfred","pin","2345"));;},
 
 sub PasswordCheck_Set($@)
 {
@@ -41,23 +37,18 @@ sub PasswordCheck_Set($@)
   }
   if($cmd eq "state") {
     $cmd = shift @args;
-	# $cmd = @args[0];
   }
-  if($cmd eq "on" && ReadingsVal($name, "state", "off") eq "on") {
-    Log3 $name, 1, "PasswordCheck set $name $cmd";
-	return undef;
-  } 
   if($cmd ne "off") {
-	  if (length($cmd) < 16){
+	if (length($cmd) < 16){
       $cmd = sha256_base64($cmd);
-		}
-		@_[2] = $cmd;
-		@_[3] = "";
-		my $key;
-		#-             while ( my ($key, $value) = each($pstack{$pstackcount}) ) {
-		#+             while ( my ($key, $value) = each(%{$pstack{$pstackcount}}) ) {
-	  while (($key) = each(%{$attr{$name}})){
+	}
+	@_[2] = $cmd;
+	@_[3] = "";
+	foreach my $key (keys %{$attr{$name}}) {
+		    #Log3 $name, 1, "PasswordCheck check $key";
 		if ($key =~ 'password_') {
+		    #Log3 $name, 1, "PasswordCheck set $name $cmd ".$attr{$name}{$key};
+
 		  if ( $attr{$name}{$key} eq $cmd ) {
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash,"pass",substr($key,9));
@@ -100,15 +91,17 @@ sub PasswordCheck_Attr($$$$)
   	# $cmd  - Vorgangsart - kann die Werte "del" (löschen) oder "set" (setzen) annehmen
 	# $name - Gerätename
 	# $attrName/$attrValue sind Attribut-Name und Attribut-Wert
-    
+    Log3 $name, 1, "PasswordCheck attr $name $cmd $attrName $attrValue";
 	if ($cmd eq "set") {
 		if ($attrName =~ /password_.*/) {
-			if (length($attrValue) < 10) {
-				$_[3] = sha256_base64($attrValue);
+			if (length($attrValue) < 16) {
+				$attrValue = sha256_base64($attrValue);
+				$_[3] = $attrValue;
 			}
 			addToDevAttrList($name, $attrName);
 		}
 	}
+    Log3 $name, 1, "PasswordCheck attr $name $cmd $attrName $_[3]";
 	return undef;
 }
 1;
@@ -145,7 +138,7 @@ sub PasswordCheck_Attr($$$$)
   <b>Set</b>
   <ul>
     <code>set &lt;name&gt; &lt;value&gt</code><br>
-    Set any value.
+    If value is a correct password the state change to on, otherwise it change to off.
   </ul>
   <br>
 
@@ -186,20 +179,20 @@ sub PasswordCheck_Attr($$$$)
 <h3>PasswordCheck</h3>
 <ul>
 
-  Definiert eine Pseudovariable, der mit <a href="#set">set</a> jeder beliebige
-  Wert zugewiesen werden kann.  Sinnvoll zum Programmieren.
+  Definiert ein Gerät, dass Passworte empfängt und mit gespeicherten Hashwerten vergleicht.
   <br><br>
 
   <a name="PasswordCheckdefine"></a>
   <b>Define</b>
   <ul>
-    <code>define &lt;name&gt; dummy</code>
+    <code>define &lt;name&gt; PasswordCheck</code>
     <br><br>
 
     Beispiel:
     <ul>
-      <code>define myvar dummy</code><br>
-      <code>set myvar 7</code><br>
+      <code>define myPasswords PasswordCheck</code><br>
+	  <code>attr myPasswords length 4</code><br>
+      <code>attr myPasswords password_Joe 4596</code><br>
     </ul>
   </ul>
   <br>
@@ -229,10 +222,8 @@ sub PasswordCheck_Attr($$$$)
 	  Beispiel: attr Passwort submit button,auto </li>
 
     <li>password_*<br>
-      Falls gesetzt, und setList enth&auml;lt on und off, dann die <a
-      href="#setExtensions">set extensions</a> Befehle sind auch aktiv.  In
-      diesem Fall werden nur die Befehle aus setList und die set exensions
-      akzeptiert.</li>
+      Es können beliebig viele Passwörter gespeichert werden. Abgelegt wird nicht das Passwort selbst sondern
+      ein SHA256 - Hashwert.</li>
 
     <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul>

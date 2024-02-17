@@ -5,7 +5,7 @@
 # 
 # Published under GNU GPL License
 ######################################################
-# $Id$
+# $Id: 10_CUL_IR.pm 3580 2013-08-02 16:17:38Z betateilchen $
 package main;
 
 use strict;
@@ -31,7 +31,7 @@ CUL_IR_Initialize($)
 {
   my ($hash) = @_;
 
-  $hash->{Match}     = "^I............";
+  $hash->{Match}     = "^IR...........";
   $hash->{DefFn}     = "CUL_IR_Define";
   $hash->{UndefFn}   = "CUL_IR_Undef";  
   $hash->{ParseFn}   = "CUL_IR_Parse";

@@ -2,7 +2,7 @@
 #
 #  HMCCUConf.pm
 #
-#  $Id$
+#  $Id: HMCCUConf.pm 28381 2024-01-14 16:23:51Z zap $
 #
 #  Version 5.0
 #
@@ -46,8 +46,7 @@ $HMCCU_CONFIG_VERSION = '5.0';
 ######################################################################
 # Channel roles with state and control datapoints
 #   F: 1=Channel/HMCCUCHN, 2=Device/HMCCUDEV, 3=Both
-#   S: State datapoint, C: Control datapoint,
-#   V: Control values, #=Enum or const:value[,...]
+#   S: State datapoint, C: Control datapoint, V: Control values
 #   P: Priority (used by HMCCUDEV if more than 1 channel role fits)
 #      1=lowest priority
 ######################################################################
@@ -328,7 +327,7 @@ $HMCCU_CONFIG_VERSION = '5.0';
 # Set/Get commands related to channel role
 #   Role => { Command-Definition, ... }
 # Command-Defintion:
-#   '[Mode ]Command[:InterfaceExpr]' => '[CombDatapoint ][No:]Datapoint-Def[:Function] [...]'
+#   [Mode ]Command[:InterfaceExpr] => [No:]Datapoint-Def[:Function] [...]'
 # Mode:
 #   Either 'set' or 'get'. Default is 'set'.
 # Command:
@@ -336,9 +335,6 @@ $HMCCU_CONFIG_VERSION = '5.0';
 # InterfaceExpr:
 #   Command is only available, if interface of device is matching the regular
 #   expression.
-# CombDatapoint:
-#   Either 'COMBINED_PARAMETER' or 'SUBMIT'
-#   Datapoint names are combined datapoint shortcuts.
 # No:
 #   Execution order of subcommands. By default subcommands are executed from left to
 #   right.
@@ -379,7 +375,7 @@ $HMCCU_CONFIG_VERSION = '5.0';
 %HMCCU_ROLECMDS = (
 	'ACOUSTIC_SIGNAL_TRANSMITTER' => {
 		'level' => 'V:LEVEL:?level',
-		'on' => 'V:LEVEL:100',
+		'on' => 'V:LEVEL:1',
 		'off' => 'V:LEVEL:0'
 	},
 	'ALARM_SWITCH_VIRTUAL_RECEIVER' => {
@@ -392,7 +388,7 @@ $HMCCU_CONFIG_VERSION = '5.0';
 	},
 	'BLIND' => {
 		'pct' => 'V:LEVEL:?level',
-		'open' => 'V:LEVEL:100',
+		'open' => 'V:LEVEL:1',
 		'close' => 'V:LEVEL:0',
 		'up' => 'V:LEVEL:?delta=+20',
 		'down' => 'V:LEVEL:?delta=-20',
@@ -401,7 +397,7 @@ $HMCCU_CONFIG_VERSION = '5.0';
 	},
 	'BLIND_VIRTUAL_RECEIVER' => {
 		'pct' => 'V:LEVEL:?level',
-		'open' => 'V:LEVEL:100',
+		'open' => 'V:LEVEL:1',
 		'close' => 'V:LEVEL:0',
 		'oldLevel' => 'V:LEVEL:1.005',
 		'up' => 'V:LEVEL:?delta=+20',
@@ -429,27 +425,27 @@ $HMCCU_CONFIG_VERSION = '5.0';
 	'DIMMER' => {
 		'pct' => '3:V:LEVEL:?level 1:V:ON_TIME:?time=0.0 2:V:RAMP_TIME:?ramp=0.5',
 		'level' => 'V:LEVEL:?level',
-		'on' => 'V:LEVEL:100',
+		'on' => 'V:LEVEL:1',
 		'off' => 'V:LEVEL:0',
-		'on-for-timer' => 'V:ON_TIME:?duration V:LEVEL:100',
-		'on-till' => 'V:ON_TIME:?time V:LEVEL:100',
+		'on-for-timer' => 'V:ON_TIME:?duration V:LEVEL:1',
+		'on-till' => 'V:ON_TIME:?time V:LEVEL:1',
 		'up' => 'V:LEVEL:?delta=+10',
 		'down' => 'V:LEVEL:?delta=-10',
 		'stop' => 'V:RAMP_STOP:1',
-		'toggle' => 'V:LEVEL:0,100'
+		'toggle' => 'V:LEVEL:0,1'
 	},
 	'DIMMER_VIRTUAL_RECEIVER' => {
 		'pct' => '5:V:LEVEL:?level 1:V:DURATION_UNIT:0 2:V:ON_TIME,DURATION_VALUE:?time=0.0 3:V:RAMP_TIME_UNIT:0 4:V:RAMP_TIME,RAMP_TIME_VALUE:?ramp=0.5',
 		'level' => 'V:LEVEL:?level',
-		'on' => 'V:LEVEL:100',
+		'on' => 'V:LEVEL:1',
 		'off' => 'V:LEVEL:0',
 		'oldLevel' => 'V:LEVEL:1.005',
-		'on-for-timer' => '1:V:DURATION_UNIT:0 2:V:ON_TIME,DURATION_VALUE:?duration 3:V:LEVEL:100',
-		'on-till' => '1:V:DURATION_UNIT:0 2:V:ON_TIME,DURATION_VALUE:?time 3:V:LEVEL:100',
+		'on-for-timer' => '1:V:DURATION_UNIT:0 2:V:ON_TIME,DURATION_VALUE:?duration 3:V:LEVEL:1',
+		'on-till' => '1:V:DURATION_UNIT:0 2:V:ON_TIME,DURATION_VALUE:?time 3:V:LEVEL:1',
 		'up' => 'V:LEVEL:?delta=+10',
 		'down' => 'V:LEVEL:?delta=-10',
 		'color' => 'V:COLOR:#color',
-		'toggle' => 'V:LEVEL:0,100'
+		'toggle' => 'V:LEVEL:0,1'
 	},
 	'DIMMER_WEEK_PROFILE' => {
 		'progMode' => 'V:WEEK_PROGRAM_TARGET_CHANNEL_LOCK:#progMode'
@@ -476,13 +472,13 @@ $HMCCU_CONFIG_VERSION = '5.0';
 	},
 	'JALOUSIE' => {
 		'pct' => 'V:LEVEL:?level',
-		'open' => 'V:LEVEL:100',
+		'open' => 'V:LEVEL:1',
 		'close' => 'V:LEVEL:0',
 		'up' => 'V:LEVEL:?delta=+20',
 		'down' => 'V:LEVEL:?delta=-20',
 		'stop' => 'V:STOP:1',
 		'pctSlats' => 'V:LEVEL_SLATS:?level',
-		'openSlats' => 'V:LEVEL_SLATS:100',
+		'openSlats' => 'V:LEVEL_SLATS:1',
 		'closeSlats' => 'V:LEVEL_SLATS:0',
 	},
 	'KEY' => {
@@ -517,12 +513,9 @@ $HMCCU_CONFIG_VERSION = '5.0';
 		'color' => 'V:COLOR:?color V:ACT_HSV_COLOR_VALUE:?hsvColor',
 		'brightness' => 'V:ACT_BRIGHTNESS:?brightness'
 	},
-	'SHUTTER_TRANSMITTER' => {
-		'calibrate' => 'V:SELF_CALIBRATION:#Mode'
-	},
 	'SHUTTER_VIRTUAL_RECEIVER' => {
 		'pct' => 'V:LEVEL:?level',
-		'open' => 'V:LEVEL:100',
+		'open' => 'V:LEVEL:1',
 		'oldLevel' => 'V:LEVEL:1.005',
 		'close' => 'V:LEVEL:0',
 		'up' => 'V:LEVEL:?delta=+20',
@@ -550,13 +543,9 @@ $HMCCU_CONFIG_VERSION = '5.0';
 		'sensor-on-till' => 'V:ON_TIME:?time V:STATE:1'
 	},
 	'SWITCH_VIRTUAL_RECEIVER' => {
-		'COMBINED_PARAMETER' => {
-			'OT' => 'ON_TIME',
-			'S'  => 'STATE'
-		},
 		'on' => 'V:STATE:1',
 		'off' => 'V:STATE:0',
-		'on-for-timer' => 'COMBINED_PARAMETER V:OT:?duration V:S:1',
+		'on-for-timer' => 'V:ON_TIME:?duration V:STATE:1',
 		'on-till' => 'V:ON_TIME:?time V:STATE:1',
 		'toggle' => 'V:STATE:0,1'
 	},
@@ -571,22 +560,15 @@ $HMCCU_CONFIG_VERSION = '5.0';
 		'get week-program' => 'D:WEEK_PROGRAM_POINTER:#program:HMCCU_DisplayWeekProgram'
 	},
 	'UNIVERSAL_LIGHT_RECEIVER' => {
-		'COMBINED_PARAMETER' => {
-			'L' => 'LEVEL',
-			'OT'  => 'ON_TIME',
-			'H' => 'HUE',
-			'SAT' => 'SATURATION'
-		},
 		'pct' => '5:V:LEVEL:?level 1:V:DURATION_UNIT:0 2:V:DURATION_VALUE:?time=0.0 3:V:RAMP_TIME_UNIT:0 4:V:RAMP_TIME_VALUE:?ramp=0.5',
 		'level' => 'V:LEVEL:?level',
-		'on' => 'V:LEVEL:100',
+		'on' => 'V:LEVEL:1',
 		'off' => 'V:LEVEL:0',
-		'on-for-timer' => '1:V:DURATION_UNIT:0 2:V:DURATION_VALUE:?duration 3:V:LEVEL:100',
-		'on-till' => '1:V:DURATION_UNIT:0 2:V:DURATION_VALUE:?time 3:V:LEVEL:100',
+		'on-for-timer' => '1:V:DURATION_UNIT:0 2:V:DURATION_VALUE:?duration 3:V:LEVEL:1',
+		'on-till' => '1:V:DURATION_UNIT:0 2:V:DURATION_VALUE:?time 3:V:LEVEL:1',
 		'up' => 'V:LEVEL:?delta=+10',
 		'down' => 'V:LEVEL:?delta=-10',
-		'toggle' => 'V:LEVEL:0,100',
-		'color' => 'COMBINED_PARAMETER V:L:?level V:H:?hue V:SAT:?saturation'
+		'toggle' => 'V:LEVEL:0,1'
 	},
 	'VIRTUAL_KEY' => {
 		'on' => 'V:PRESS_SHORT:1',
