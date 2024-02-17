@@ -1,0 +1,5 @@
+
+/* next lines are for remotecontrol */
+.rc_body {width:100%; max-width:320px;}
+.rc_row     { clear:both;}
+.rc_button     { float:left;}

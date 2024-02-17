@@ -1,0 +1,27 @@
+# This template file can be used for layout creation
+# needed by 02_RSS.pm and 55_InfoPanel.pm
+#
+# Use "save as" once to create a new file with your desired name
+#
+defmod %name% dummy
+attr %name% group %typ%
+attr %name% readingList Tuev Wartung WartungKm WartungInterval WartungKmInterval Kauf Typ
+attr %name% room intern->Fahrzeuge
+attr %name% setList Tuev Wartung WartungKm WartungInterval WartungKmInterval  Kauf Typ:Auto,Motorrad
+attr %name% userattr template
+attr %name% template (V2) "template ./FHEM/tFahrzeug.layout name=%name% typ=%typ%"
+
+attr %name% stateFormat {\
+	if(ReadingsVal("$name","TuevNeu", 99999999) < ReadingsVal("$name","WartungNeu",99999999) )\
+	{return "Tüv ".ReadingsVal("$name","TuevNeu", 99999999)} else \
+	{return "Wartung ".ReadingsVal("$name","WartungNeu", 99999999).(ReadingsVal("$name","WartungKmNeu", -1) > 0 ? " oder ".\
+	 ReadingsVal("$name","WartungKmNeu", 99999999)." km" : "")}\
+}
+attr %name% userReadings Tuev:Kauf.* {ReadingsVal("$name","Kauf","")},\
+	Wartung:Kauf.* {ReadingsVal("$name","Kauf","")},\
+	TuevNeu:Tuev.* {if(ReadingsVal("$name","Typ","") eq "Auto" && ReadingsVal("$name","Kauf","") == ReadingsVal("$name","Tuev","")) \
+		{ReadingsVal("$name","Tuev",99969999)+30000} else {ReadingsVal("$name","Tuev",99979999)+20000}},\
+	WartungNeu:Wartung:.* {ReadingsVal("$name","Wartung",0)+ReadingsVal("$name","WartungInterval",0)},\
+	WartungKmNeu:WartungKm:.*  {ReadingsVal("$name","WartungKm",0) > (ReadingsVal("$name","WartungKmInterval",0)/2) ? ReadingsVal("$name","WartungKm",0)+ReadingsVal("$name","WartungKmInterval",0) : ReadingsVal("$name","WartungKmInterval",0)}
+
+set %name% Typ %typ%
