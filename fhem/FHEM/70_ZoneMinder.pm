@@ -25,7 +25,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,91847.0.html
 #
-# $Id$
+# $Id: 70_ZoneMinder.pm 24925 2021-09-06 09:52:53Z delmar $
 #
 ##############################################################################
 
@@ -262,6 +262,7 @@ sub ZoneMinder_API_Login_Callback {
   } elsif($data ne "") {
     if ( $data =~ m/Invalid username or password/ ) { #failed login
       $hash->{APILoginError} = "Invalid username or password.";
+      $apiState = 'login failed';
     } elsif ( $data =~ m/"name":"User not found"/ ) { #1.30.x response when trying to login with 1.32.x approach
       $hash->{APILoginError} = "User not found.";
       $apiState = 'login failed';
@@ -273,6 +274,7 @@ sub ZoneMinder_API_Login_Callback {
       ZoneMinder_GetCookies($hash, $param->{httpheader});
 
       my $apiVersion = AttrVal($name, 'apiVersion', 'pre132');
+      $apiState = 'opened';
 
       my $isFirst = !$hash->{helper}{apiInitialized};
       if ($isFirst) {
@@ -286,7 +288,6 @@ sub ZoneMinder_API_Login_Callback {
           ZoneMinder_SimpleGet($hash, "$zmApiUrl/host/getVersion.json", \&ZoneMinder_API_ReadHostInfo_Callback);
         }
 
-        $apiState = 'opened';
         ZoneMinder_SimpleGet($hash, "$zmApiUrl/monitors.json", \&ZoneMinder_API_UpdateMonitors_Callback);
       }
 
