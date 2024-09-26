@@ -1,6 +1,6 @@
 ##############################################
 #$Id$
-my $Signalbot_VERSION="3.16";
+my $Signalbot_VERSION="3.20";
 # Simple Interface to Signal CLI running as Dbus service
 # Author: Adimarantis
 # License: GPL
@@ -38,68 +38,69 @@ use vars qw($FW_wname);
 
 #maybe really get introspective here instead of handwritten list
  my %signatures = (
-	"setContactBlocked" 	=> "sb",
-	"setGroupBlocked" 		=> "ayb",
-	"updateGroup" 			=> "aysass",
-	"updateProfile" 		=> "ssssb",
-	"quitGroup" 			=> "ay",
-	"joinGroup"				=> "s",
+	"setContactBlocked" 	=> "sb", # 
+	"setGroupBlocked" 		=> "ayb", # https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__block
+	"updateGroup" 			=> "aysass", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/put_v1_groups__number___groupid_
+	"updateProfile" 		=> "ssssb", #https://bbernhard.github.io/signal-cli-rest-api/#/Profiles/put_v1_profiles__number_
+	"quitGroup" 			=> "ay", #obselete - use new API
+	"joinGroup"				=> "s", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__join
 	"sendGroupMessage"		=> "sasay",
 	"sendNoteToSelfMessage" => "sas",
-	"sendMessage" 			=> "sasas",
+	"sendMessage" 			=> "sasas", #https://bbernhard.github.io/signal-cli-rest-api/#/Messages/post_v2_send
 	"getContactName" 		=> "s",
 	"setContactName" 		=> "ss",
-	"getGroupIds" 			=> "",
+	"getGroupIds" 			=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/get_v1_groups__number_
 	"getGroupName" 			=> "ay",
-	"getGroupMembers" 		=> "ay",
-	"listNumbers" 			=> "",
+	"getGroupMembers" 		=> "ay",#https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__members
+	"listNumbers" 			=> "", #??? https://bbernhard.github.io/signal-cli-rest-api/#/Accounts/get_v1_accounts
 	"getContactNumber" 		=> "s",
 	"isContactBlocked" 		=> "s",
 	"isGroupBlocked" 		=> "ay",
 	"isMember"				=> "ay",
-	"createGroup"			=> "sass",
+	"createGroup"			=> "sass", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number_
 	"getSelfNumber"			=> "", #V0.9.1
 	"deleteContact"			=> "s", #V0.10.0
 	"deleteRecipient"		=> "s", #V0.10.0
 	"setPin"				=> "s", #V0.10.0
 	"removePin"				=> "", #V0.10.0
-	"getGroup"				=> "ay", #V0.10.0
+	"getGroup"				=> "ay", #V0.10.0 #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/get_v1_groups__number___groupid_
 	"getIdentity"			=> "s", #V0.12.0
 	"addDevice"				=> "s",
 	"listDevices"			=> "",
-	"listIdentities"		=> "", #V0.12.0
-	"unregister"			=> "",
+	"listIdentities"		=> "", #V0.12.0 #https://bbernhard.github.io/signal-cli-rest-api/#/Identities/get_v1_identities__number_
+	"unregister"			=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Devices/post_v1_unregister__number_
 	"sendEndSessionMessage" => "as",		#unused
 	"sendRemoteDeleteMessage" => "xas",		#unused
 	"sendGroupRemoteDeletemessage" => "xay",#unused
 	"sendMessageReaction" => "sbsxas",		#unused
 	"sendGroupMessageReaction" => "sbsxay",	#unused
+	"submitRateLimitChallenge" => "ss",
 );
 	
  my %groupsignatures = (
 	#methods in the "Groups" object from V0.10
-	"deleteGroup"			=> "",
-	"addMembers"			=> "as",
-	"removeMembers"			=> "as",
-	"quitGroup"				=> "",
-	"addAdmins"				=> "as",
-	"removeAdmins"			=> "as",
+	"deleteGroup"			=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/delete_v1_groups__number___groupid_
+	"addMembers"			=> "as", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__members
+	"removeMembers"			=> "as", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/delete_v1_groups__number___groupid__members
+	"quitGroup"				=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__quit
+	"addAdmins"				=> "as", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/post_v1_groups__number___groupid__admins
+	"removeAdmins"			=> "as", #https://bbernhard.github.io/signal-cli-rest-api/#/Groups/delete_v1_groups__number___groupid__admins
 );
 
 my %identitysignatures = (
 	#methods in the "Identities" object from V0.11.12
-	"trust"					=> "",
+	"trust"					=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Identities/put_v1_identities__number__trust__numberToTrust_
 	"trustVerified"			=> "s",	
 );
 
 #dbus interfaces that only exist in registration mode
 my %regsig = (
-	"listAccounts"			=> "",
-	"link"					=> "s",
-	"registerWithCaptcha"	=> "sbs",
+	"listAccounts"			=> "", #https://bbernhard.github.io/signal-cli-rest-api/#/Accounts/get_v1_accounts
+	"link"					=> "s", #https://bbernhard.github.io/signal-cli-rest-api/#/Devices/get_v1_qrcodelink
+	"registerWithCaptcha"	=> "sbs", #Redundant to register
 	"verifyWithPin"			=> "sss", #not used
-	"register"				=> "sb",
-	"verify"				=> "ss",
+	"register"				=> "sb", #https://bbernhard.github.io/signal-cli-rest-api/#/Devices/post_v1_register__number_
+	"verify"				=> "ss", #https://bbernhard.github.io/signal-cli-rest-api/#/Devices/post_v1_register__number__verify__token_
 	"version" 				=> "",
 );
 
@@ -134,6 +135,7 @@ sub Signalbot_Initialize($) {
 												"authTimeout ".
 												"authDev ".
 												"authTrusted:yes,no ".
+												"sendTimeout ".
 												"cmdKeyword ".
 												"cmdFavorite ".
 												"favorites:textField-long ".
@@ -265,7 +267,7 @@ sub Signalbot_Set($@) {					#
 		$acname="FHEM" if (!defined $acname);
 		my $qrcode=Signalbot_CallS($hash,"link",$acname);
 		if (defined $qrcode) {
-			my $qr_url = "https://chart.googleapis.com/chart?cht=qr&chs=200x200"."&chl=";
+			my $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=200x200"."&data=";
 			$qr_url .= uri_escape($qrcode);
 			$hash->{helper}{qr}=$qr_url;
 			$hash->{helper}{uri}=$qrcode;
@@ -296,30 +298,24 @@ sub Signalbot_Set($@) {					#
 			return undef;
 		}
 		return "To unregister provide current account for safety reasons";
+	} elsif ( $cmd eq "rateLimit") {
+		my $challenge= shift @args;
+		my $captcha= shift @args;
+		if (defined $challenge and defined $captcha) {
+			my $ret=Signalbot_CallS($hash,"submitRateLimitChallenge",$challenge,$captcha);
+			$hash->{STATE} = $ret if defined $ret;
+			return $ret;
+			}
 	} elsif ( $cmd eq "register") {
 		my $account= shift @args;
 		return "Number needs to start with '+' followed by digits" if !defined Signalbot_checkNumber($account);
 		delete $hash->{helper}{captcha};
-		my $ret=Signalbot_Registration($hash,$account);
-		if (!defined $ret) {
-			my $err=ReadingsVal($name,"lastError","");
-			$hash->{helper}{verification}=undef;
-			$hash->{helper}{qr}=undef;
-			$err="Captcha";
-			if ($err =~ /Captcha/) {
-				$hash->{helper}{register}=$account;
-				Signalbot_createRegfiles($hash);
-				return;
-			} else {
-				$hash->{helper}{register}=undef;
-			}
-		} 			
-		$hash->{helper}{verification}=$account;
-		$hash->{helper}{register}=undef;
-		if (defined $ret && $ret==-1) {
-			#Special case: registration succeeded without captcha as it just was reactivated - no verification
-			$hash->{helper}{verification}=undef;
-			$ret=Signalbot_setAccount($hash,$account);
+		$hash->{helper}{register}=$account;
+		$hash->{helper}{method}=0;
+		Signalbot_createRegfiles($hash);
+		my $method=AttrVal($name,"registerMethod","SMS");
+		if ($method eq "Voice") {
+			$hash->{helper}{method}=1;
 		}
 		return;
 		
@@ -327,23 +323,11 @@ sub Signalbot_Set($@) {					#
 		my $captcha=shift @args;
 		if ($captcha =~ /signalcaptcha:\/\//) {
 			$hash->{helper}{captcha}=$captcha =~ s/signalcaptcha:\/\///rg;;
-			my $account=$hash->{helper}{register};
 			if (defined $account) {
-				#register already done before - try again right away
-				my $ret=Signalbot_Registration($hash,$account);
-				if (defined $ret) {
-					$hash->{helper}{verification}=$account;
-					$hash->{helper}{register}=undef;
-					#Switch back to device overview - experimental hint from rudolphkoenig https://forum.fhem.de/index.php/topic,122771.msg1173835.html#new
-					my $web=$hash->{CL}{SNAME};
-					my $peer=$hash->{CL}{PEER};
-					DoTrigger($web,"JS#$peer:location.href=".'"'."?detail=$name".'"');
-					return undef;
-				} else {
-					my $err=ReadingsVal($name,"lastError","");
-					return "Error with captcha:$err";
-				}
+				my $ret=Signalbot_setCaptcha($hash);
+				return $ret;
 			}
+			return;
 		}
 		return "Incorrect captcha - e.g. needs to start with signalcaptcha://";
 	} elsif ( $cmd eq "verify" ) {
@@ -1559,6 +1543,7 @@ sub Signalbot_CallDbus($@) {
 			#Handle Error here and mark Serial for mainloop to ignore
 			my $b=$msg->get_body()->[0];
 			$hash->{helper}{lasterr}="Error in $function:".$b;
+			Log3 $hash->{NAME}, 5, $hash->{NAME}.": Error message: ".$hash->{helper}{lasterr};				
 			readingsSingleUpdate($hash, 'lastError', $hash->{helper}{lasterr},1);
 			return;
 		}
@@ -1581,6 +1566,7 @@ sub Signalbot_CallDbus($@) {
 				#Error Case
 				$hash->{helper}{lasterr}="Error in $function:".$b;
 				readingsSingleUpdate($hash, 'lastError', $hash->{helper}{lasterr},1);
+				Log3 $hash->{NAME}, 5, $hash->{NAME}.": Error message: ".$hash->{helper}{lasterr};
 				return undef;
 			}
 			if ($got_response==1) {
@@ -1894,8 +1880,21 @@ sub Signalbot_sendMessage($@) {
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "sentMsg", $mes);
 	readingsBulkUpdate($hash, 'sentMsgTimestamp', "pending");
+	InternalTimer(gettimeofday()+AttrVal($hash->{NAME},"sendTimeout",60)+5, "Signalbot_checkPending", $hash, 0);
 	readingsEndUpdate($hash, 1);
 	Signalbot_CallA($hash,"sendMessage",$mes,\@attach,\@recipient); 
+}
+
+sub Signalbot_checkPending($@) {
+	my ($hash) = @_;
+	my $age=ReadingsAge($hash->{NAME},"sentMsgTimestamp",-1);
+	if (ReadingsVal($hash->{NAME},"sentMsgTimestamp","pending") eq "pending") {
+		if ($age>ReadingsVal($hash->{NAME},"sendTimeout",60)) {
+			Log3 $hash->{NAME}, 1, $hash->{NAME}.": Timeout in sendMessage - check your syslog for signal-cli issues";
+			readingsSingleUpdate($hash, "lastError", "Timeout in sendMessage",0);
+		}
+	}
+	return;
 }
 
 #get the identifies (list of hex codes) for a group based on the name
@@ -1933,6 +1932,7 @@ sub Signalbot_sendGroupMessage($@) {
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "sentMsg", $mes);
 	readingsBulkUpdate($hash, 'sentMsgTimestamp', "pending");
+	InternalTimer(gettimeofday()+AttrVal($hash->{NAME},"sendTimeout",60)+5, "Signalbot_checkPending", $hash, 0);
 	readingsEndUpdate($hash, 1);
 
 	Signalbot_CallA($hash,"sendGroupMessage",$mes,\@attach,\@arr); 
@@ -2063,19 +2063,59 @@ sub Signalbot_setAccount($$) {
 	return "Unknown account $account, please register or use listAccounts to view existing accounts";
 }
 
+sub Signalbot_setCaptcha {
+	my ($hash) = @_;
+	my $name=$hash->{NAME};
+	my $account=$hash->{helper}{register};
+	my $method=$hash->{helper}{method};
+	#Use number from verification mode as "register" is already empty when in stage 2 of VOICE
+	$account=$hash->{helper}{verification} if $method==2;
+	my $ret=Signalbot_Registration($hash,$account);
+	if (defined $ret) {
+		$hash->{helper}{register}=undef;
+		$hash->{helper}{verification}=$account;
+		#Switch back to device overview - experimental hint from rudolphkoenig https://forum.fhem.de/index.php/topic,122771.msg1173835.html#new
+		#my $web=$hash->{CL}{SNAME};
+		#my $peer=$hash->{CL}{PEER};
+		#DoTrigger($web,"JS#$peer:location.href=".'"'."?detail=$name".'"');
+		if ($method == 1) {
+			$hash->{helper}{method} = 2;
+			Log3 $hash->{NAME}, 5, $hash->{NAME}." Triggering timer to try VOICE registration in 60s";
+			#Requested Voice, but ran SMS first, so now trigger second attempt with timer
+			InternalTimer(gettimeofday()+60, "Signalbot_setCaptcha", $hash, 0);
+		} else {
+			$hash->{helper}{method} = 0;
+		}
+		return undef;
+	} else {
+		my $err=ReadingsVal($name,"lastError","");
+		return "Error with captcha:$err";
+	}
+	return $ret;
+}
 
 sub Signalbot_Registration($$) {
 	my ($hash,$account) = @_;
 	my $name=$hash->{NAME};
 	my $method=AttrVal($name,"registerMethod","SMS");
 	$method=$method eq "SMS"?0:1;
+	if ($method == 1 and $hash->{helper}{method} == 1) {
+		#If trying to register with Voice, first fallback to SMS
+		$method=0;
+	}
 	my $captcha=$hash->{helper}{captcha};
 	my $ret;
 	if (!defined $captcha) {
 		#try without captcha (but never works nowadays)
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Register $account";
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Method $method";
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Without Captcha";
 		$ret=Signalbot_CallS($hash,"register",$account,$method);
 		return -1 if (defined $ret)
 	} else {
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Register $account";
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Method $method";
+		Log3 $hash->{NAME}, 4, $hash->{NAME}." Captcha $captcha";
 		$ret=Signalbot_CallS($hash,"registerWithCaptcha",$account,$method,$captcha);
 	}
 	return $ret;
@@ -2154,13 +2194,17 @@ sub Signalbot_Notify($$) {
 ################################### 
 sub Signalbot_Define($$) {			#
 	my ($hash, $def) = @_;
-	Log3 $hash->{NAME}, 2, $hash->{NAME}." Define: $def";
+	my $name=$hash->{NAME};
+	Log3 $name, 2, $name." Define: $def";
 	
 	$hash->{NOTIFYDEV} = "global";
 		if ($init_done) {
-			Log3 $hash->{NAME}, 2, "Define init_done: $def";
+			Log3 $name, 2, "Define init_done: $def";
 			my $ret=Signalbot_Init( $hash, $def );
 			return $ret if $ret;
+	}
+	if( !AttrVal($name, 'icon', undef )) {
+		CommandAttr(undef, "$name icon signal_messenger");
 	}
 	return undef;
 }
@@ -2242,6 +2286,7 @@ sub Signalbot_Detail {
 	return $ret if ($hash->{helper}{version}<1100);
 	
 	my $current=ReadingsVal($name,"account","none");
+	my $method=AttrVal($name,"registerMethod","SMS");
 	my $account=$hash->{helper}{register};
 	my $verification=$hash->{helper}{verification};
 	my $accounts=$hash->{helper}{accounts};
@@ -2260,6 +2305,12 @@ sub Signalbot_Detail {
 
 	if(defined $account) {
 		$ret .= "<b>Your registration for $account requires a Captcha to succeed.</b><br><br>";
+		if ($method eq "Voice") {
+			$ret .= "<br> <b>Note:</b> you chose to register with 'Voice'. Due to security measures in Signal, it is required to register with 'SMS' first.<br>";
+			$ret .= "Signalbot will help with that process. It will first register with 'SMS' , wait for 60s and re-register with 'Voice'<br><br>";
+		} else {
+			$ret .="<br> Note: you chose to register with 'SMS'. Make sure your device supports receiving text messages before proceeding.<br><br>";
+		}
 		if ($FW_userAgent =~ /Mobile/) {
 			$ret .= "You seem to access FHEM from a mobile device. If the Signal Messenger is installed on this device, the Captcha will be catched by Signal and you will not be able to properly register FHEM. Recommendation is to do this from Windows where this can mostly be automated<br><br>";
 		}
@@ -2281,9 +2332,14 @@ sub Signalbot_Detail {
 	}
 
 	if (defined $verification) {
-		$ret .= "<b>Your registration for $verification requires a verification code to complete.</b><br><br>";
-		$ret .= "You should have received a SMS or Voice call providing you the verification code.<br>";
-		$ret .= "use <b>set verify</b> with that code to complete the process.<br>";
+		if ($method eq "Voice") {
+			$ret .= "<b>Signalbot is going through the procedure to first try SMS, wait for 60s and then try Voice.</b><br>";
+			$ret .= "Please Wait about 60s for a call on $verification and ";
+		} else {
+			$ret .= "<b>Your registration for $verification requires a verification code to complete.</b><br><br>";
+			$ret .= "You should have received a SMS providing you the verification code.<br>Then ";
+		}	
+		$ret .= "use <b>set verify</b> with that code to complete the process.<br><br>";
 	}
 
 	my $qr_url = $hash->{helper}{qr};

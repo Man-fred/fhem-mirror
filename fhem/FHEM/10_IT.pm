@@ -1,12 +1,14 @@
 ######################################################
 # InterTechno Switch Manager as FHM-Module
 #
-# (c) Olaf Droegehorn / DHS-Computertechnik GmbH
-# (c) Björn Hempel
+# Copyright (C)
+# Olaf Droegehorn / DHS-Computertechnik GmbH
+# Björn Hempel
+# 2023- Ralf9
 # 
 # Published under GNU GPL License
 #
-# $Id: 10_IT.pm 20839 2019-12-28 09:41:47Z bjoernh $
+# $Id$
 #
 ######################################################
 package main;
@@ -45,7 +47,7 @@ my %codes = (
 my %codes_he800 = (
   "XMIToff" => "off",
   "XMITon"  => "on", # Set to previous dim value (before switching it off)
-  "00" => "off",
+  "00" => "dim00%",
   #"01" => "last-dim-on",
   "02" => "dim12%",
   "03" => "dim25%",
@@ -118,12 +120,12 @@ IT_Initialize($)
 
   #$hash->{Match}     = "^i......";
   $hash->{Match}     = "^i.*";
-  $hash->{SetFn}     = "IT_Set";
+  $hash->{SetFn}     = \&IT_Set;
   #$hash->{StateFn}   = "IT_SetState";
-  $hash->{DefFn}     = "IT_Define";
-  $hash->{UndefFn}   = "IT_Undef";
-  $hash->{ParseFn}   = "IT_Parse";
-  $hash->{AttrFn}    = "IT_Attr";
+  $hash->{DefFn}     = \&IT_Define;
+  $hash->{UndefFn}   = \&IT_Undef;
+  $hash->{ParseFn}   = \&IT_Parse;
+  $hash->{AttrFn}    = \&IT_Attr;
   $hash->{AttrList}  = "IODev ITfrequency ITrepetition ITclock switch_rfmode:1,0 do_not_notify:1,0 ignore:0,1 protocol:V1,V3,HE_EU,SBC_FreeTec,HE800 SIGNALduinoProtocolId userV1setCodes unit group dummy:1,0 " .
                        "$readingFnAttributes " .
                        "model:".join(",", sort keys %models);
@@ -159,7 +161,7 @@ IT_Do_On_Till($@)
   my $hms_now = sprintf("%02d:%02d:%02d", $lt[2], $lt[1], $lt[0]);
   if($hms_now ge $hms_till) {
     Log 4, "on-till: won't switch as now ($hms_now) is later than $hms_till";
-    return "";
+    return '';
   }
 
   my @b = ("on");
@@ -188,10 +190,10 @@ IT_Set($@)
   if( AttrVal($name, "model", "") ne "itremote" && AttrVal($name, "model", "") ne "itswitch_CHN") {
     $list .= "off:noArg on:noArg ";
     if ($hash->{userV1setCodes} && ($hash->{READINGS}{protocol}{VAL} eq "EV1527" || $hash->{READINGS}{protocol}{VAL} eq "V1")) {
-        foreach my $setCode (keys %{$hash->{userV1setCodes}}) {
-           $list .= "$setCode:noArg ";
-        }
-     }
+      foreach my $setCode (keys %{$hash->{userV1setCodes}}) {
+        $list .= "$setCode:noArg ";
+      }
+    }
   }
 
   my $c = $it_c2b{$a[0]};
@@ -243,6 +245,7 @@ IT_Set($@)
     }
     $list = (join(" ", sort keys %it_c2b_he800) . " dim:slider,0,12.5,100")
         if( AttrVal($name, "model", "") eq "itdimmer" );
+  #MAN-FRED
   } elsif ($hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
     $c = $it_c2b_he800{$a[0]};
     if($na > 1 && $a[0] eq "dim") {  
@@ -253,6 +256,7 @@ IT_Set($@)
     }
     $list = (join(" ", sort keys %it_c2b_he800) . " dim:slider,0,12.5,100")
         if( AttrVal($name, "model", "") eq "itdimmer" );
+  #MAN-FRED
   } else {
     $list .= "dimup:noArg dimdown:noArg on-till" if( AttrVal($name, "model", "") eq "itdimmer" );
   }
@@ -268,6 +272,19 @@ IT_Set($@)
 
 
   my $io = $hash->{IODev};
+  return 'no IODev available, adapt attribute IODevList' if (!defined($io));
+  
+  my $ioNotSIGNALduino = ($io->{TYPE} !~ m/^SIGNALduino/);
+  my $ioTsculfw = 0;
+  if ($io->{TYPE} eq 'TSCUL') {
+    if ($io->{helper}{SVTS}) {
+      $ioTsculfw = 1;
+    }
+    else {
+      Log3 $hash, 2, 'IT set ERROR: TSCUL has not required firmware';
+    }
+  }
+  
   my $v = $name ." ". join(" ", @a);
   ## Log that we are going to switch InterTechno
   Log3 $hash, 3, "$io->{NAME} IT_set: $v";
@@ -284,7 +301,9 @@ IT_Set($@)
     my $lh = $modules{IT}{defptr}{$code}{$n};
     
     #$lh->{STATE} = $cmd;
+  #MAN-FRED
     if ($hash->{READINGS}{protocol}{VAL} eq "HE800" || $hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
+  #MAN-FRED
         my $count = $hash->{"count"};
         $count = $count + 1;
         if ($count > 3) {
@@ -347,45 +366,56 @@ IT_Set($@)
 
 
   Log3 $hash, 5, "$io->{NAME} IT_set: Type=" . $io->{TYPE} . ' Protocol=' . $hash->{READINGS}{protocol}{VAL};
-
-  if ($io->{TYPE} ne "SIGNALduino") {
+  my $oldIOMode;
+  if ($ioNotSIGNALduino) {
 	# das IODev ist kein SIGNALduino
 
+	return "IODev $io->{NAME} does not support IT" if ($ioTsculfw && defined($io->{CMDS}) && $io->{CMDS} !~ m/i/); # TSCUL muss das i Kommando kennen
+
 	## Do we need to change RFMode to SlowRF??
-	if(defined($attr{$name}) && defined($attr{$name}{"switch_rfmode"})) {
-		if ($attr{$name}{"switch_rfmode"} eq "1") {				# do we need to change RFMode of IODev
-			my $ret = CallFn($io->{NAME}, "AttrFn", "set", ($io->{NAME}, "rfmode", "SlowRF"));
-		}
-	}
+    if (AttrVal($name, 'switch_rfmode', '0')) {
+        $oldIOMode = AttrVal($io->{NAME}, 'rfmode', 'SlowRF');
+        CallFn($io->{NAME}, "AttrFn", "set", ($io->{NAME}, "rfmode", "SlowRF"));
+    }
 	## Do we need to change ITClock ??	}
-	if(defined($attr{$name}) && defined($attr{$name}{"ITclock"})) {
-		#$message = "isc".$attr{$name}{"ITclock"};
-		#CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", $message));
-		$message = $attr{$name}{"ITclock"};
-		CallFn($io->{NAME}, "SetFn", $io, ($hash->{NAME}, "ITClock", $message));
+	if (defined($message = AttrVal($name, 'ITclock', undef))) {
+		CallFn($io->{NAME}, "SetFn", $io, ($io->{NAME}, "ITClock", $message));
 		Log3 $hash, 3, "IT set ITclock: $message for $io->{NAME}";
 	}
 
 	## Do we need to change ITrepetition ??	
-	if(defined($attr{$name}) && defined($attr{$name}{"ITrepetition"})) {
-		$message = "isr".$attr{$name}{"ITrepetition"};
-		CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", $message));
-		Log3 $hash,4, "IT set ITrepetition: $message for $io->{NAME}";
-	}
+    my $itrep;
+    if($itrep = AttrVal($name, 'ITrepetition', 0)) {
+      $itrep = 254 if ($itrep > 254);
+      $message = 'isr'.$itrep;
+      if ($ioTsculfw) { # tsculfw
+        CallFn($io->{NAME}, 'SetFn', $io, ($io->{NAME}, 'raw', $message)); # if not set before send the tsculfw default is 3 and reverts to it after send
+      }
+      else { # culfw, a-culfw
+        CallFn($io->{NAME}, 'GetFn', $io, (' ', 'raw', $message));
+      }
+      Log3 $hash,4, "IT set ITrepetition: $message for $io->{NAME}";
+    }
 
-	## Do we need to change ITfrequency ??	
-	if(defined($attr{$name}) && defined($attr{$name}{"ITfrequency"})) {
-		my $f = $attr{$name}{"ITfrequency"}/26*65536;
-		my $f2 = sprintf("%02x", $f / 65536);
-		my $f1 = sprintf("%02x", int($f % 65536) / 256);
-		my $f0 = sprintf("%02x", $f % 256);
-
-		my $arg = sprintf("%.3f", (hex($f2)*65536+hex($f1)*256+hex($f0))/65536*26);
-		Log3 $hash, 3, "Setting ITfrequency (0D,0E,0F) to $f2 $f1 $f0 = $arg MHz";
-		CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", "if$f2$f1$f0"));
-	}
+    ## Do we need to change ITfrequency ??	
+    my $f;
+    if (defined($f = AttrVal($name, 'ITfrequency', undef))) {
+      $f = $f/26*65536;
+      my $f2 = sprintf("%02x", $f / 65536);
+      my $f1 = sprintf("%02x", int($f % 65536) / 256);
+      my $f0 = sprintf("%02x", $f % 256);
+      $message = "if$f2$f1$f0";
+      my $arg = sprintf("%.3f", (hex($f2)*65536+hex($f1)*256+hex($f0))/65536*26);
+      Log3 $hash, 3, "Setting ITfrequency (0D,0E,0F) to $f2 $f1 $f0 = $arg MHz";
+      if ($ioTsculfw) { # tsculfw
+        CallFn($io->{NAME}, 'SetFn', $io, ($io->{NAME}, 'raw', $message));
+      }
+      else {
+        CallFn($io->{NAME}, 'GetFn', $io, (' ', 'raw', $message));
+      }
+    }
   }
-	
+
   if ($hash->{READINGS}{protocol}{VAL} eq "V3") {
     if( AttrVal($name, "model", "") eq "itdimmer" ) {
       my @itvalues = split(' ', $v);
@@ -443,6 +473,7 @@ IT_Set($@)
     my $msg;
 
     my %he800MapingTable = (
+        0 => 0,
        12 => 2,
        25 => 3,
        37 => 4,
@@ -462,8 +493,11 @@ IT_Set($@)
       $rollingCode = 0;
     }
     my $oldMode = 0;
+    my $sendVal;
     if ($cVal eq "on") {
-      my $sendVal = $hash->{READINGS}{"on_" . $rollingCode}{VAL};
+      if (exists($hash->{READINGS}{"on_" . $rollingCode})) {
+        $sendVal = $hash->{READINGS}{"on_" . $rollingCode}{VAL};
+      }
       if (defined $sendVal && $sendVal ne "" && $sendVal ne "0") {
         $message = "ish".uc($sendVal);
         $oldMode = 1;
@@ -473,7 +507,9 @@ IT_Set($@)
         $mode = 1;
       }
     } elsif ($cVal eq "off") {
-      my $sendVal = $hash->{READINGS}{"off_" . $rollingCode}{VAL};
+      if (exists($hash->{READINGS}{"off_" . $rollingCode})) {
+        $sendVal = $hash->{READINGS}{"off_" . $rollingCode}{VAL};
+      }
       if (defined $sendVal && $sendVal ne "" && $sendVal ne "0") {
         $message = "ish".uc($sendVal);
         $oldMode = 1;
@@ -543,8 +579,8 @@ IT_Set($@)
         #XOR encryption 2 rounds
         for (my $r=0; $r<=1; $r++){           # 2 encryption rounds
             $mn[0] = $key[ $mn[0]-$r+1];       # encrypt first nibble
-            my $i = 0;
-            for ($i=1; $i<=5 ; $i++){      # encrypt 4 nibbles
+            #my $i = 0;
+            for (my $i=1; $i<=5 ; $i++){      # encrypt 4 nibbles
                 $mn[$i] = $key[($mn[$i] ^ $mn[$i-1])-$r+1];   # crypted with predecessor & key
             }
         }
@@ -567,6 +603,7 @@ IT_Set($@)
         Log3 $hash,4, "msg $msg - bin1 $bin1";
         $message = "ish".uc($bin);
     }
+  #MAN-FRED
   } elsif ($hash->{READINGS}{protocol}{VAL} eq "FLAMINGO") {
     my $cVal;
     my $mode;
@@ -643,9 +680,10 @@ IT_Set($@)
 	my $bin = $transmitterID . "0".$receiverID.$sendVal."0".$rollingCode;
 	Log3 $hash,4, "msg $v - bin $bin";
 	$message = "isf".uc($bin);
+  #MAN-FRED
   } else {
-    my $onoffcode;
-    if (defined($c)) {
+    my $onoffcode = '';
+    if (defined($c) && defined($hash->{$c})) {
        $onoffcode = $hash->{$c};
     } else {
        if ($hash->{userV1setCodes}) {
@@ -655,48 +693,52 @@ IT_Set($@)
     if (length($onoffcode) == 4 && $hash->{READINGS}{protocol}{VAL} ne 'SBC_FreeTec') {   # EV1527
       $onoffcode = $bintotristate{substr($onoffcode,0,2)} . $bintotristate{substr($onoffcode,2,2)};
     }
-    $message = "is".uc($hash->{XMIT}.$onoffcode);
+    $message = 'is'.uc($hash->{XMIT}.$onoffcode);
   }
 
   
-  if ($io->{TYPE} ne "SIGNALduino") {
-	# das IODev ist kein SIGNALduino
-	## Send Message to IODev and wait for correct answer
-	my $msg = CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", $message));
-	Log3 $hash,5,"IT_Set: GetFn(raw): message = $message Antwort = $msg";
-	if ($msg =~ m/raw => $message/) {
-		Log 4, "ITSet: Answer from $io->{NAME}: $msg";
-	} else {
-		Log 2, "IT IODev device didn't answer is command correctly: $msg";
-	}
-	## Do we need to change ITrepetition back??	
-        if(defined($attr{$name}) && defined($attr{$name}{"ITrepetition"})) {
-        	$message = "isr".$it_defrepetition;
-        	CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", $message));
-		Log3 $hash, 3, "IT set ITrepetition back: $message for $io->{NAME}";
-	}
+  if ($ioNotSIGNALduino) {
+    if    ($ioTsculfw) { # tsculfw
+      ## Send Message to IODev
+      CallFn($io->{NAME}, 'SetFn', $io, (' ', 'raw', $message));  # tsculfw VTS0.32+ resets frequency, offset, ITrepetition and ITclock back to firmware default values after send
+    }
+    else { # culfw, a-culfw
+      ## Send Message to IODev and wait for correct answer
+      my $msg = CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", $message));
+      Log3 $hash,5,"IT_Set: GetFn(raw): message = $message Antwort = $msg";
+      if ($msg =~ m/raw => $message/) {
+        Log 4, "ITSet: Answer from $io->{NAME}: $msg";
+      } else {
+        Log 2, "IT IODev device didn't answer is command correctly: $msg";
+      }
 
-        ## Do we need to change ITfrequency back??	
-        if(defined($attr{$name}) && defined($attr{$name}{"ITfrequency"})) {
-        	Log3 $hash,4 ,"Setting ITfrequency back to 433.92 MHz";
-        	CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", "if0"));
-        }
-	
-	## Do we need to change ITClock back??	
-	if(defined($attr{$name}) && defined($attr{$name}{"ITclock"})) 
-        {
-        	Log3 $hash, 3, "Setting ITClock back to 420";
-        	#CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", "sic250"));
-        	CallFn($io->{NAME}, "SetFn", $io, ($hash->{NAME}, "ITClock", "420"));
-        }
-	
-	## Do we need to change RFMode back to HomeMatic??
-	if(defined($attr{$name}) && defined($attr{$name}{"switch_rfmode"})) {
-		if ($attr{$name}{"switch_rfmode"} eq "1") {			# do we need to change RFMode of IODev
-			my $ret = CallFn($io->{NAME}, "AttrFn", "set", ($io->{NAME}, "rfmode", "HomeMatic"));
-	 	}
-	}
-	
+      ## Do we need to change ITrepetition back??	
+      if (defined(AttrVal($name, 'ITrepetition', undef))) {
+        $message = 'isr'.$it_defrepetition;
+        CallFn($io->{NAME}, 'GetFn', $io, (' ', 'raw', $message));
+        Log3 $hash, 3, "IT set ITrepetition back: $message for $io->{NAME}";
+      }
+
+      ## Do we need to change ITfrequency back??	
+      if (defined(AttrVal($name, 'ITfrequency', undef))) {
+        Log3 $hash,4 ,'Setting ITfrequency back to 433.92 MHz';
+        CallFn($io->{NAME}, 'GetFn', $io, (' ', 'raw', 'if0'));
+      }
+
+      ## Do we need to change ITClock back??	
+      if (defined(AttrVal($name, 'ITclock', undef)))  {
+        Log3 $hash, 3, 'Setting ITClock back to 420';
+        #CallFn($io->{NAME}, "GetFn", $io, (" ", "raw", "sic250"));
+        CallFn($io->{NAME}, 'SetFn', $io, ($hash->{NAME}, 'ITClock', '420'));
+      }
+    }
+    
+    ## Do we need to change RFMode back to previous mode??
+    if (AttrVal($name, 'switch_rfmode', '0')) { # do we need to change RFMode of IODev?
+      CallFn($io->{NAME}, 'AttrFn', 'set', ($hash->{NAME}, 'rfmode', $oldIOMode));
+    }
+
+  
   } else {  	# SIGNALduino
 	
 	my $SignalRepeats = AttrVal($name,'ITrepetition', '6');
@@ -798,6 +840,19 @@ IT_Define($$)
   my $groupBit;
   my $name = $a[0];
 
+  if ($hash->{OLDDEF}) {
+    Log3 $hash,4,"ITdefine: delete OLDDEF $hash->{CODE}{1}";
+    delete($hash->{CODE}{1});
+    my @b = split(/[ \t]+/, $hash->{OLDDEF}, 2);
+    delete($modules{IT}{defptr}{lc($b[0])}{$name});
+    delete($hash->{READINGS}{protocol});
+    delete($hash->{READINGS}{mode});
+    delete($hash->{READINGS}{unit});
+    delete($hash->{READINGS}{group});
+    for my $c (keys(%it_c2b)) {
+      delete($hash->{$c});
+    }
+  }
    
   if ($a[3] eq "HE800") {
     # OLD, do not use anymore
@@ -815,15 +870,6 @@ IT_Define($$)
     $oncode = "N/A";
     $offcode = "N/A";
     $unitCode="N/A";
-    #return "FALSE";
-  } elsif ($a[2] eq "FLAMINGO") {
-    $housecode = $a[3]."_".$a[4];
-    $hash->{READINGS}{protocol}{VAL}  = 'FLAMINGO';
-    $hash->{"count"}  = '0';
-    $oncode = "1";
-    $offcode = "0";
-    $unitCode= $a[4];
-    $hash->{READINGS}{unit}{VAL} = $unitCode;
     #return "FALSE";
   } elsif (length($a[2]) == 26) {
     # Is Protocol V3
@@ -988,19 +1034,51 @@ IT_Parse($$)
   my $newstate;
   my @list;
   $modules{IT}{defptr}{ioname} = $ioname;
-    Log3 $hash,0,"$ioname IT: new message \"$msg\"!";
   if ((substr($msg, 0, 1)) ne 'i') {
-    Log3 $hash,0,"$ioname IT: message not supported by IT \"$msg\"!";
-    return undef;
+    Log3 $hash,4,"$ioname IT: message not supported by IT \"$msg\"!";
+    return '';
   }
-  if (length($msg) != 7 && length($msg) != 12  && length($msg) != 14 && length($msg) != 17 && length($msg) != 19 && length($msg) != 20) {
-    Log3 $hash,0,"$ioname IT: message \"$msg\" (" . length($msg) . ") too short!";
-    return undef;
-  }
-  Log3 $hash,0,"$ioname IT: message \"$msg\" (" . length($msg) . ")";
+  
   my $bin = undef;
-  my $isDimMode = 0;
-  if (length($msg) == 17) { # IT V3
+  my $ishe = (substr($msg, 1, 1) eq 'h');
+  if ($ishe) {
+    if (length($msg) == 9 || length($msg) == 17) {  # from sduino
+      $msg .= '0';
+    }
+    Log3 $hash,4,"$ioname IT: HE message \"$msg\" (" . length($msg) . ")";
+    if (length($msg) == 18 || length($msg) == 20) { # HomeEasy EU
+      #Log3 $ioname,3,"HEX Part1: " . substr($msg,2,8);
+      my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
+      while (length($bin1) < 32) {
+        # suffix 0
+        $bin1 = '0'.$bin1;   
+      }
+      #Log3 $ioname,3,"HEX Part2: " . substr($msg,2+8,7);
+      my $bin2=sprintf("%024b",hex(substr($msg,2+8,7)));
+      while (length($bin2) < 28) {
+        # suffix 0
+        $bin2 = '0'.$bin2;   
+      }
+      $bin = $bin1 . $bin2;
+    }
+    elsif (length($msg) == 10 || length($msg) == 12) { # HomeEasy HE800
+      $bin=sprintf("%024b",hex(substr($msg,2,8)));
+      #my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
+      #while (length($bin1) < 32) {
+      #  # suffix 0
+      #  $bin1 = '0'.$bin1;   
+      #}
+      #$bin = $bin1;
+    }
+    else {
+      Log3 $ioname,3,"$ioname IT: HE message  \"$msg\" (" . length($msg) . ") wrong length!";
+      return '';
+    }
+  }
+  else { # IT V1 / V3
+    Log3 $hash,4,"$ioname IT: message \"$msg\" (" . length($msg) . ")";
+    #my $isDimMode = 0;
+    if (length($msg) == 17) { # IT V3
         my $bin1=sprintf("%024b",hex(substr($msg,1,length($msg)-1-8)));
         while (length($bin1) < 32) {
           # suffix 0
@@ -1013,7 +1091,8 @@ IT_Parse($$)
         }
         $bin = $bin1 . $bin2;
         Log3 $hash,4,"$ioname ITv3: bin message \"$bin\" (" . length($bin) . ")";
-  } elsif (length($msg) == 19 ) { # IT V3 Dimm
+    }
+    elsif (length($msg) == 19 ) { # IT V3 Dimm
         my $bin1=sprintf("%024b",hex(substr($msg,1,length($msg)-1-8-8)));
         while (length($bin1) < 32) {
           # suffix 0
@@ -1031,42 +1110,24 @@ IT_Parse($$)
         }
         $bin = substr($bin1 . $bin2 . $bin3,24,length($bin1 . $bin2 . $bin3)-1);
         Log3 $hash,4,"$ioname ITv3dimm: bin message \"$bin\" (" . length($bin) . ")";
-  } elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU
-        #Log3 undef,3,"HEX Part1: " . substr($msg,2,8);
-        my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
-        while (length($bin1) < 32) {
-          # suffix 0
-          $bin1 = '0'.$bin1;   
-        }
-        #Log3 undef,3,"HEX Part2: " . substr($msg,2+8,7);
-        my $bin2=sprintf("%024b",hex(substr($msg,2+8,7)));
-        #$bin2 = substr($bin2,4);
-        while (length($bin2) < 28) {
-          # suffix 0
-          $bin2 = '0'.$bin2;   
-        }
-        $bin = $bin1 . $bin2;# . $bin3;
-  } elsif (length($msg) == 12 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy HE800
-        my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
-        while (length($bin1) < 32) {
-          # suffix 0
-          $bin1 = '0'.$bin1;   
-        }
-        $bin = $bin1;# . $bin3;
-  } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo u.a., simple rolling code 
+    }
+    elsif (length($msg) == 7) { # IT
+      $bin=sprintf("%024b",hex(substr($msg,1,length($msg)-1)));
+    }
+  #MAN-FRED
+    elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo u.a., simple rolling code 
         my $bin1=sprintf("%024b",hex(substr($msg,2,8)));
         while (length($bin1) < 32) {
           # suffix 0
           $bin1 = '0'.$bin1;   
         }
         $bin = substr($msg,2,10);
-  } else { # IT
-	    if (length($msg) > 10) {
-			Log3 $hash,4,"$ioname IT: Wrong IT message received: $msg";
-			return undef;
-		} else {
-			$bin=sprintf("%024b",hex(substr($msg,1,length($msg)-1)));
-		}
+    }
+  #MAN-FRED
+    else {
+      Log3 $ioname,3,"$ioname IT: message  \"$msg\" (" . length($msg) . ") wrong length!";
+      return '';
+    }
   }
 
   if ((length($bin) % 2) != 0) {
@@ -1075,12 +1136,14 @@ IT_Parse($$)
   }
   my $binorg = $bin;
   my $msgcode="";
-  if (length($msg) == 12 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy HE800;
-    $msgcode=substr($bin, 0, 28);
-  } elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU;
-    $msgcode=substr($bin, 0, 57);
-  } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo;
-    $msgcode=substr($bin, 0, 10);
+  if ($ishe) { # HomeEasy
+    if (length($msg) >= 18) {  # HomeEasy EU
+      $msgcode=substr($bin, 0, 57);
+    }
+    else { # HomeEasy HE800;
+      #$msgcode=substr($bin, 0, 28);
+      $msgcode=$bin;
+    }
   } else {
     while (length($bin)>=2) {
       if (length($msg) == 7) {
@@ -1098,8 +1161,8 @@ IT_Parse($$)
           #Log3 $hash,4,"$ioname IT:unknown tristate in \"$bin\"";
           #return "unknown tristate in \"$bin\""
         }
-      } elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU
-        $msgcode=$msgcode.$bintotristateHE{substr($bin,0,2)};
+      #} elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU, but this is never reached, see $ishe above!
+      #  $msgcode=$msgcode.$bintotristateHE{substr($bin,0,2)};
       } else {
         $msgcode=$msgcode.$bintotristateV3{substr($bin,0,2)};
       }
@@ -1136,12 +1199,12 @@ IT_Parse($$)
     if (length($msg) == 19) {
       $dimCode=substr($msgcode,32,4);
     }
-  } elsif (length($msg) == 20 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy EU
+  } elsif ($ishe && length($msg) >= 18) { # HomeEasy EU
     $onoffcode=substr($msgcode,46,2);
     $groupBit=substr($msgcode,48,2);
     $unitCode=substr($msgcode,50,7);
     $housecode=substr($msgcode,0,46).$unitCode;
-  } elsif (length($msg) == 12 && (substr($msg, 1, 1)) eq 'h') { # HomeEasy HE800
+  } elsif ($ishe && length($msg) <= 12) { # HomeEasy HE800
     #$housecode=substr($msgcode,0,6).substr($msgcode,26,2);
     #$onoffcode=0;
 
@@ -1196,15 +1259,17 @@ IT_Parse($$)
     Log3 $hash,4,"OFF/ON/DIM    : " . $mode ; # 0=OFF 1=ON, 2=10%dim..9=80%dim (no 90%dim!)
     Log3 $hash,4,"Rolling-Code  : " . $rollingCode ; # rolling-code 0-3 (differentiate new message from repeated message)
     Log3 $hash,4,"Transmitter-ID: " . $transmitterID ; # unique transmitter-ID    [0]1..65535    (0 valid?, 65535 or lower limit?)
+  #MAN-FRED
   } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo
     $onoffcode=substr($msgcode,7,1);
     $groupBit=substr($msgcode,4,1);
     $unitCode=substr($msgcode,5,1);
     $housecode=substr($msgcode,0,4)."_".$unitCode;
     $transmittercode = "$housecode $groupBit $onoffcode";
+  #MAN-FRED
   } else {
     Log3 $hash,4,"$ioname IT: Wrong IT message received: $msgcode";
-    return undef;
+    return '';
   }
   
   if(!defined($modules{IT}{defptr}{lc("$housecode")})) {
@@ -1217,7 +1282,7 @@ IT_Parse($$)
       if (!defined($isEV1527)) { # itv1
         if ($onoffcode eq "F0") { # on code IT
           Log3 $hash,3,"$ioname IT: For autocreate please use the on button.";
-          return undef;
+          return '';
         } 
         $tmpOffCode = "F0";
         $tmpOnCode = "0F";
@@ -1234,7 +1299,7 @@ IT_Parse($$)
         $tmpOnCode = '0100';
       }
       return "UNDEFINED IT_$housecode IT $housecode $tmpOnCode $tmpOffCode" if(!$def);
-    } elsif (length($msg) == 20) { # HE_EU
+    } elsif ($ishe && length($msg) >= 18) { # HE_EU
       my $isGroupCode = '0';
       if (($onoffcode == '01' && $groupBit == '01') || ($onoffcode == '00' && $groupBit == '11')) {
         # Group Code found
@@ -1243,12 +1308,14 @@ IT_Parse($$)
       Log3 $hash,2,"$ioname IT: $housecode not defined (Address: ".substr($msgcode,0,46)." Unit: $unitCode Switch code: $onoffcode GroupCode: $isGroupCode)";
       #return "$housecode not defined (Address: ".substr($msgcode,0,26)." Group: $groupBit Unit: $unitCode Switch code: $onoffcode)!";
       return "UNDEFINED IT_$housecode IT " . substr($msgcode,0,46) . " $isGroupCode $unitCode" if(!$def);
-    } elsif (length($msg) == 12 && (substr($msg, 1, 1)) eq 'h') { # HE800
+    } elsif ($ishe && length($msg) <= 12) { # HE800
       Log3 $hash,2,"$ioname IT: $housecode not defined (HE800)";
       return "UNDEFINED IT_HE800_$housecode IT " . "HE800 $transmittercode $unitCode" if(!$def);
+  #MAN-FRED
     } elsif (length($msg) == 14 && (substr($msg, 1, 1)) eq 'f') { # Flamingo
       Log3 $hash,2,"$ioname IT: $housecode not defined (Flamingo)";
       return "UNDEFINED IT_FLAMINGO_$housecode IT " . "FLAMINGO $transmittercode  $unitCode" if(!$def);
+  #MAN-FRED
     } else {
       my $hexCode = sprintf("%x", oct("0b".$housecode));
       Log3 $hash,2,"$ioname IT: IT_V3_$hexCode ($housecode) not defined (Address: ".substr($msgcode,0,26)." Group: $groupBit Unit: $unitCode Switch code: $onoffcode)";
@@ -1282,9 +1349,10 @@ IT_Parse($$)
       }
     }
     if ($newstate eq "") {
-    if ($def->{$name}->{READINGS}{protocol}{VAL}  eq 'HE800') {
+     if ($def->{$name}->{READINGS}{protocol}{VAL}  eq 'HE800') {
 
       my %he800MapingTable = (
+       0 => 0,
        2 => 12,
        3 => 25,
        4 => 37,
@@ -1327,10 +1395,13 @@ IT_Parse($$)
         #    $newstate="on";
         #} els
         if ($binVal == 0) {
-            $newstate="off";
-        } 
+            $newstate='off';
+        }
+        elsif ($binVal == 100) {
+            $newstate='on';
+        }
       }
-    } elsif ($def->{$name}->{$it_c2b{"on"}} eq lc($onoffcode)) {
+     } elsif ($def->{$name}->{$it_c2b{"on"}} eq lc($onoffcode)) {
       $newstate="on";
       if( AttrVal($name, "model", "") eq "itdimmer" ) {
         my $lastDimVal = $def->{$name}->{READINGS}{lastDimValue}{VAL};
@@ -1342,22 +1413,22 @@ IT_Parse($$)
             readingsSingleUpdate($def->{$name},"dim",100,1);
         }
       }
-    } elsif ($def->{$name}->{$it_c2b{"off"}} eq lc($onoffcode)) {
+     } elsif ($def->{$name}->{$it_c2b{"off"}} eq lc($onoffcode)) {
       $newstate="off";
       if( AttrVal($name, "model", "") eq "itdimmer" ) {
         readingsSingleUpdate($def->{$name},"dim",0,1);
       }
-    } elsif ($def->{$name}->{$it_c2b{"dimup"}} eq lc($onoffcode)) {
+     } elsif ($def->{$name}->{$it_c2b{"dimup"}} eq lc($onoffcode)) {
       $newstate="dimup";
       if( AttrVal($name, "model", "") eq "itdimmer" ) {
         readingsSingleUpdate($def->{$name},"dim","dimup",1);
       }
-    } elsif ($def->{$name}->{$it_c2b{"dimdown"}} eq lc($onoffcode)) {
+     } elsif ($def->{$name}->{$it_c2b{"dimdown"}} eq lc($onoffcode)) {
       $newstate="dimdown";
       if( AttrVal($name, "model", "") eq "itdimmer" ) {
         readingsSingleUpdate($def->{$name},"dim","dimdown",1);
       }
-    } elsif ('d' eq lc($onoffcode)) {
+     } elsif ('d' eq lc($onoffcode)) {
       # dim
       my $binVal = ((bin2dec($dimCode)+1)*100)/16;
       $binVal =  int($binVal);
@@ -1369,11 +1440,11 @@ IT_Parse($$)
         $newstate="on";
       } elsif ($binVal == 0) {
         $newstate="off";
-      } 
-    } else {
+      }
+     } else {
       Log3 $def->{$name}{NAME},3,"$ioname IT: Code $onoffcode not supported by $def->{$name}{NAME}.";
       next;
-    }
+     }
     }
     Log3 $def->{$name}{NAME},3,"$ioname IT: $def->{$name}{NAME} ".$def->{$name}->{STATE}."->".$newstate;
     push(@list,$def->{$name}{NAME});
@@ -1393,8 +1464,8 @@ sub IT_Attr(@)
 		
 	if( $aName eq 'model') {
 		if ($aVal eq 'ev1527') {
-		#Log3 $hash, 4, "$name IT_Attr: ev1527";
-		$hash->{READINGS}{protocol}{VAL}  = 'EV1527';
+			#Log3 $hash, 4, "$name IT_Attr: ev1527";
+			$hash->{READINGS}{protocol}{VAL}  = 'EV1527';
 		} elsif ($aVal eq 'itswitch_CHN') {
 			$hash->{userV1setCodes} = undef;
 			$hash->{userV1setCodes}{open} = "1010";

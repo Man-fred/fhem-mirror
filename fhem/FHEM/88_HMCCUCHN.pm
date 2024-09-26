@@ -2,11 +2,11 @@
 #
 #  88_HMCCUCHN.pm
 #
-#  $Id: 88_HMCCUCHN.pm 28381 2024-01-14 16:23:51Z zap $
+#  $Id$
 #
 #  Version 5.0
 #
-#  (c) 2022 zap (zap01 <at> t-online <dot> de)
+#  (c) 2024 zap (zap01 <at> t-online <dot> de)
 #
 ######################################################################
 #  Client device for Homematic channels.
@@ -30,7 +30,7 @@ sub HMCCUCHN_Set ($@);
 sub HMCCUCHN_Get ($@);
 sub HMCCUCHN_Attr ($@);
 
-my $HMCCUCHN_VERSION = '5.0 240121821';
+my $HMCCUCHN_VERSION = '5.0 2024-04';
 
 ######################################################################
 # Initialize module
@@ -51,7 +51,7 @@ sub HMCCUCHN_Initialize ($)
 	$hash->{parseParams} = 1;
 
 	$hash->{AttrList} = 'IODev ccucalculate '.
-		'ccuflags:multiple-strict,hideStdReadings,replaceStdReadings,noBoundsChecking,ackState,logCommand,noAutoSubstitute,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings,showServiceReadings '.
+		'ccuflags:multiple-strict,hideStdReadings,replaceStdReadings,noBoundsChecking,ackState,logCommand,noAutoSubstitute,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings '.
 		'ccureadingfilter:textField-long statedatapoint controldatapoint '.
 		'ccureadingformat:name,namelc,address,addresslc,datapoint,datapointlc '.
 		'ccureadingname:textField-long ccuSetOnChange ccuReadingPrefix '.
@@ -212,7 +212,7 @@ sub HMCCUCHN_InitDevice ($$)
 			$rc = -2;
 		}
 
-		HMCCU_GetUpdate ($devHash, $da);
+		HMCCU_ExecuteGetExtValuesCommand ($devHash, $da);
 	}
 
 	return $rc;
@@ -352,9 +352,6 @@ sub HMCCUCHN_Set ($@)
 	elsif ($lcopt eq 'datapoint') {
 		return HMCCU_ExecuteSetDatapointCommand ($hash, $a, $h);
 	}
-#	elsif ($lcopt eq 'toggle') {
-#		return HMCCU_ExecuteToggleCommand ($hash);
-#	}
 	elsif (exists($hash->{hmccu}{roleCmds}{set}{$opt})) {
 		return HMCCU_ExecuteRoleCommand ($ioHash, $hash, 'set', $opt, $a, $h);
 	}
@@ -421,7 +418,7 @@ sub HMCCUCHN_Get ($@)
 	my $ccuflags = AttrVal ($name, 'ccuflags', 'null');
 
 	# Build set command syntax
-	my $syntax = 'update config paramsetDesc:noArg deviceInfo:noArg values extValues';
+	my $syntax = 'update config paramsetDesc:noArg deviceInfo:noArg values extValues metaData';
 	
 	# Command datapoint depends on readable datapoints
 	my ($add, $chn) = split(":", $hash->{ccuaddr});
@@ -455,12 +452,17 @@ sub HMCCUCHN_Get ($@)
 	}
 	elsif ($lcopt eq 'extvalues') {
 		my $filter = shift @$a;
-		my $rc = HMCCU_GetUpdate ($hash, $ccuaddr, $filter);
+		my $rc = HMCCU_ExecuteGetExtValuesCommand ($hash, $ccuaddr, $filter);
 		return $rc < 0 ? HMCCU_SetError ($hash, $rc) : 'OK';
 	}
 	elsif ($lcopt eq 'paramsetdesc') {
 		my $result = HMCCU_ParamsetDescToStr ($ioHash, $hash);
 		return defined($result) ? $result : HMCCU_SetError ($hash, "Can't get device model");
+	}
+	elsif ($lcopt eq 'metadata') {
+		my $filter = shift @$a;
+		my ($rc, $result) = HMCCU_ExecuteGetMetaDataCommand ($ioHash, $hash, $filter);
+		return $rc < 0 ? HMCCU_SetError ($hash, $rc, $result) : $result;
 	}
 	elsif (exists($hash->{hmccu}{roleCmds}{get}{$opt})) {
 		return HMCCU_ExecuteRoleCommand ($ioHash, $hash, 'get', $opt, $a, $h);
@@ -525,6 +527,15 @@ sub HMCCUCHN_Get ($@)
    <ul>
       <li><b>set &lt;name&gt; armState {DISARMED|EXTSENS_ARMED|ALLSENS_ARMED|ALARM_BLOCKED}</b><br/>
 	     [alarm siren] Set arm state.
+	  </li><br/>
+	  <li><b>set &lt;name&gt; auto</b><br/>
+         [thermostat] Turn auto mode on.
+	  </li><br/>
+	  <li><b>set &lt;name&gt; boost {on|off}</b><br/>
+         [thermostat] Turn boost mode on or off
+	  </li><br/>
+	  <li><b>set &lt;name&gt; calibrate {START|STOP}</b><br/>
+		 [blind] Run calibration.
 	  </li><br/>
       <li><b>set &lt;name&gt; clear [&lt;reading-exp&gt;|reset]</b><br/>
          Delete readings matching specified reading name expression. Default expression is '.*'.
@@ -593,15 +604,17 @@ sub HMCCUCHN_Get ($@)
       	[dimmer, blind] Decrement value of datapoint LEVEL. This command is only available
       	if channel contains a datapoint LEVEL. Default for <i>value</i> is 20.
       </li><br/>
+	  <li><b>set &lt;name&gt; manu [&lt;temperature&gt;]</b><br/>
+	    [thermostat] Set manual mode. Default temperature is 20.
+	  </li><br/>
 	  <li><b>set &lt;name&gt; off</b><br/>
-	  	Turn device off.
+	  	[switch,thermostat,dimmer] Turn device off.
 	  </li><br/>
 	  <li><b>set &lt;name&gt; oldLevel</b><br/>
-	    [dimmer, blind] Set level to previous value. The command is only available if channel
-		contains a datapoint LEVEL with a maximum value of 1.01.
+	    [dimmer, blind, jalousie, shutter] Set level to previous value.
 	  </li><br/>
 	  <li><b>set &lt;name&gt; on</b><br/>
-	  	Turn device on.
+	  	[switch,thermostat,dimmer] Turn device on.
 	  </li><br/>
       <li><b>set &lt;name&gt; on-for-timer &lt;ontime&gt;</b><br/>
          [switch] Switch device on for specified number of seconds. This command is only available if
@@ -617,6 +630,9 @@ sub HMCCUCHN_Get ($@)
       </li><br/>
 	  <li><b>set &lt;name&gt; open</b><br/>
 		[blind,door] Set level of a shutter or blind to 100%.
+	  </li><br/>
+	  <li><b>set &lt;name&gt; party &lt;temperature&gt; &lt;start-time&gt; &lt;end-time&gt;</b><br/>
+         [thermostat] Turn party mode on. Timestamps must be in format "YYYY_MM_DD HH:MM".
 	  </li><br/>
       <li><b>set &lt;name&gt; pct &lt;value&gt; [&lt;ontime&gt; [&lt;ramptime&gt;]]</b><br/>
          [dimmer,blind] Set datapoint LEVEL of a channel to the specified <i>value</i>. Optionally a <i>ontime</i>
@@ -646,14 +662,7 @@ sub HMCCUCHN_Get ($@)
       	channel contains a datapoint STOP.
       </li><br/>
       <li><b>set &lt;name&gt; toggle</b><br/>
-		Toggle state datapoint between values defined by attribute 'statevals' or by channel role. This command is
-		only available if state values can be detected or are defined by using attribute
-		'statevals'. Toggling supports more than two state values.<br/><br/>
-		Example: Toggle blind actor between states 'open', 'half' and 'close'<br/>
-		<code>
-		attr myswitch statevals open:100,half:50,close:0<br/>
-		set myswitch toggle
-		</code>
+		[switch,dimmer,blind] Toggle state between values on/off or open/close.
       </li><br/>
       <li><b>set &lt;name&gt; up [&lt;value&gt;]</b><br/>
       	[blind,dimmer] Increment value of datapoint LEVEL. This command is only available
@@ -687,7 +696,6 @@ sub HMCCUCHN_Get ($@)
 			<li>showMasterReadings: Store configuration readings of parameter set 'MASTER' of current channel.</li>
 			<li>showDeviceReadings: Store configuration readings of device and value readings of channel 0.</li>
 			<li>showLinkReadings: Store readings of links.</li>
-			<li>showServiceReadings: Store readings of parameter set 'SERVICE'</li>
 		</ul>
 		If non of the flags is set, only readings belonging to parameter set VALUES (datapoints)
 		are stored.
@@ -719,6 +727,11 @@ sub HMCCUCHN_Get ($@)
 		to the device.
 		If <i>filter-expr</i> is specified, only datapoints matching the expression are stored as readings.
 	  </li><br/>
+	  <li><b>get &lt;name&gt; metaData [&lt;filter-expr&gt;]</b><br/>
+	  	Read meta data for device or channel. If <i>filter-expr</i> is specified only meta data IDs matching
+		the specified regular expression are stored as readings.<br/>
+		Example: get myDev metaData energy.*
+	  </li><br/>
       <li><b>get &lt;name&gt; paramsetDesc</b><br/>
 		Display description of parameter sets of channel and device. The output of this command
 		is helpful to gather information about new / not yet supported devices. Please add this
@@ -734,7 +747,7 @@ sub HMCCUCHN_Get ($@)
 		update system variables bound to the device. These variables can be read by using command 'get extValues'.
 		If <i>filter-expr</i> is specified, only parameters matching the expression are stored as readings.
       </li><br/>
-      <li><b>get &lt;name&gt; weekProgram [&lt;program-number&gt;|<u>all</u>]</b><br/>
+      <li><b>get &lt;name&gt; week-program [&lt;program-number&gt;|<u>all</u>]</b><br/>
       	Display week programs. This command is only available if a device supports week programs.
       </li>
    </ul>
@@ -776,7 +789,6 @@ sub HMCCUCHN_Get ($@)
       	showDeviceReadings: Show readings of device and channel 0.<br/>
       	showLinkReadings: Show link readings.<br/>
       	showMasterReadings: Show configuration readings.<br/>
-		showServiceReadings: Show service readings (HmIP only)<br/>
       	trace: Write log file information for operations related to this device.
       </li><br/>
       <a name="ccuget"></a>
@@ -855,7 +867,6 @@ sub HMCCUCHN_Get ($@)
 			MASTER (configuration parameters): 'R-'<br/>
 			LINK (links parameters): 'L-'<br/>
 			PEER (peering parameters): 'P-'<br/>
-			SERVICE (service parameters): S-<br/>
 		To hide prefix do not specify <i>prefix</i>.
       </li><br/>
       <a name="ccuscaleval"></a>

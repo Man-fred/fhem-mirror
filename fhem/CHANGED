@@ -1,5 +1,183 @@
 # Add changes at the top of the list. Keep it in ASCII, and 80-char wide.
-# Do not insert empty lines here, update check depends on it.
+# Do not insert empty lines here, update check depends on it
+ - bufgix:  72_FRITZBOX: Blockade des Intervall-Timers durch 
+                         nonBlocking set/get Befehle
+ - feature: 72_FRITZBOX:
+            attr <device> enableLogReadings <liste>, Achtung das
+                 standardmäßige Abholen wurde deaktiviert
+            set <device> wlanGuestParams <param:value> [<param:value> ...]
+ - bugfix:  76_SolarForecast: calculation of consumption forecast
+ - bugfix:  36_Shelly: removed irrelevant log-entries for dimmer
+ - bugfix:  36_Shelly: removed package command: use Sub::Util
+ - bugfix:  36_Shelly: added package command: use Sub::Util
+ - bugfix:  38_netatmo: changed token refresh to internal reading
+ - feature: 70_PylonLowVoltage: new attr waitTimeBetweenRS485Cmd
+ - feature: 70_PylonLowVoltage: implement pylon groups
+ - bugfix:  36_Shelly.pm: reading 'ble' (bluetooth) fixed
+ - change:  70_PylonLowVoltage: internal code changes
+ - feature: 70_PylonLowVoltage: extend battery addresses up to 16
+ - change:  76_SolarForecast: attr ctrlWeatherDevX to setupWeatherDevX, 
+ - bufgix:  76_SMAInverter: fix PW Lengs Bug
+ - bugfix:  10_KNX: prevent set/get-cmd during fhem start
+                    add sub dpts for dpt14, enfoce gadname rules 
+ - bugfix:  00_KNXIO: fix error msg when mode S fails to open
+ - feature: 76_SolarForecast: new attribute flowGraphicShift, 
+                              Forum:https://forum.fhem.de/index.php?msg=1318597
+ - change:  93_DbRep: message data ignored change loglevel to 2, Forum:#138986
+ - bufgix:  76_SMAInverter: fix IDC2 bug 3MPP
+ - bufgix:  76_SMAInverter: fix IDC3 bug
+ - redesign:36_Shelly.pm: Überarbeitung der HTTP-Kommunikation
+             zahlreiche Änderungen und Ergänzungen
+             siehe Forum ../Sonstige Systeme/Support-Thread Modul 36_Shelly.pm
+ - feature: 31_HUEDevice.pm: added addlight and removelight command for groups
+ - bufgix:  72_FRITZBOX: Fehler behoben bei FritzOS >= 6.69 und < 7.00
+ - feature: 76_SolarForecast: improve manual setting of pvCorrectionFactor_XX
+ - feature: 98_RandomTimer:   add recomputeTimes setter
+ - change:  38_netatmo: new token refresh handling and fallback reading
+ - bugfix:  76_SolarForecast: fix Warnings
+ - change:  76_SolarForecast: set moduleAzimuth to attr setupStringAzimuth
+                              set moduleDeclination to setupStringDeclination
+                              set moduleRoofTops to attr setupRoofTops 
+                              !NOTE! save FHEM config after restart
+ - feature: 76_SolarForecast: new consumer key exconfc
+ - change:  76_SolarForecast: set modulePeakString to attr setupStringPeak
+                              !NOTE! save FHEM config after restart
+ - change:  76_SolarForecast: set currentRadiationAPI to attr setupRadiationAPI
+                              !NOTE! save FHEM config after restart
+ - feature: 74_AutomowerConnect: new events for errors related to the APIs
+ - bugfix:  76_SolarForecast: Illegal division by zero
+ - bufgix:  32_withings: improved token refresh timing
+ - change:  38_netatmo: improved disconnect handling on auth failure
+ - change:  76_SolarForecast: set inverterStrings to attr setupInverterStrings
+                              !NOTE! save FHEM config after restart
+ - bufgix:  72_FRITZBOX: Ändern OffSet DECT Heizkörper Termostate Sommerzeit
+ - change:  76_SolarForecast: set currentInverterDev to attr setupInverterDev
+                              !NOTE! save FHEM config after restart
+ - bugfix:  73_PRESENCE2: entfernt BlockingCall loglevel = GetVerbose($name)
+ - bugfix:  73_PRESENCE:  entfernt BlockingCall loglevel = GetVerbose($name)
+ - bugfix:  98_CDCOpenData:  entfernt BlockingCall loglevel = GetVerbose($name)
+ - bufgix:  72_FRITZBOX:   entfernt BlockingCall loglevel = GetVerbose($name)
+ - change:  76_SolarForecast: set currentBatteryDev to attr setupBatteryDev
+                              !NOTE! save FHEM config after restart,
+                              minor other changes
+ - change:  76_SolarForecast: change set currentMeterDev to attr setupMeterDev
+ - feature: 76_SolarForecast: ctrlStatisticReadings: new runTimeAvgDayConsumer
+ - change:  76_SolarForecast: ctrlDebug consumerSwitching splitted into 
+                              separated consumers, minor bug fix
+ - feature: 74_AutomowerConnect: new design attribute hideSchedulerButton
+ - change:  76_SolarForecast: VictronVRM - API request start time adopted
+ - change:  73_GardenaSmartBridge: fix: api call,rate limit
+ - change:  49_SSCAM: NOTE! set enable/disable renamed to enableCam/disableCam
+                      switch commandref to ID tags
+ - change:  74_AutomowerConnect: minor changes
+ - feature: 76_SolarForecast: currentMeterDev: contotal and feedtotal can be 
+                              reset at day begin (day meter)
+ - feature: 76_SolarForecast: graphicBeamXContent: gridfeedin available, 
+                              beamGraphic: Mouse-Over shows beamcontent text
+ - feature: 74_AutomowerConnect.pm: Common.pm, automoverconnect.js
+            include rev. 28836,39,44 from contrib/, hull.js loaded if
+            needed for calculation only
+ - feature: 76_SolarForecast: graphicBeamXContent: keys energycosts, feedincome 
+ - change:  49_SSCam(STRM): optimize memory consumption
+ - change:  93_DbRep: SQLITE: change PRAGMA temp_store=MEMORY to FILE
+ - bugfix:  93_DbRep: reduceLog: fix bug if EXCL/INCL-devices end with a digit
+ - feature: 76_SolarForecast: add secondary level of the bar chart
+ - change:  76_SolarForecast: attr ctrlInterval: immediate impact when set
+ - bugfix:  74_GardenaSmartDevice: fix patch code scheduling by hhhdg
+ - feature: 74_AutomowerConnect.pm: new mower schedule editor
+ - bugfix:  76_SolarForecast: possible Illegal division by zero if Attr
+                              ctrlGenPVdeviation is set to continuously
+ - feature: 74_AutomowerConnect.pm: new attribute mowerPanel
+ - bugfix:  76_SolarForecast: possible Illegal division by zero if Battery SOC
+                              management is activated 
+ - change:  76_SolarForecast: minor change calculation Today PV deviation
+ - change:  49_SSCam: change internal logic for sending data and their Saving
+ - change: 10_SOMFY.pm: Signalduino modif and doc cleanup - msg1298875
+ - feature: 74_AutomowerConnect.pm: reduce spikes in border region after a hull
+              polygon is set to attribut.
+ - feature: 14_CUL_TCM97001.pm: NX7674, Kuehl- & Gefrierschrank-Thermometer
+                (Rosenstein & Söhne), zugefügt
+                Bei einem modify der DEF wird nun die alte DEF gelöscht
+ - change:  14_CUL_TCM97001.pm: commandref
+ - bugfix:  14_CUL_TCM97001.pm: Kanal beim Auriol_IAN
+ - bugfix:  10_IT: Attribut ITfrequency
+ - feature: 74_AutomowerConnect.pm: use widgetList for stayOutZones
+            and workAreas setter, update commandref, some default values
+            changed regarding design attributes
+ - bugfix: 72_FRITZBOX: commandRef
+               perl Warnung beim Fhem Start
+ - feature: 72_FRITZBOX: Info statische/dynamische IP Adresse Lan Device
+ - feature: 76_SolarForecast: possible export pvHistory to CSV, 
+                              making attr affectMaxDayVariance obsolete 
+ - feature: 72_FRITZBOX: attr <name> lanDeviceReading <mac|ip>
+               Legt fest, ob der Reading Name aus der IP-Adresse mit Präfix
+               ip_ oder der MAC-Adresse mit Präfix mac_ für Netzwerk Geräte
+               gebildet werden soll. Standard ist mac.
+ - feature: 74_AutomowerConnect.pm: calculation of mowing area hull polygon,
+               some more info in InternalData and StatisticsData,
+               downloading of third party library for hull calculation
+ - feature: 76_SolarForecast: options for conprice, feedprice and more
+ - change:  49_SSCam: check SSChatBot/TelegramBot is disabled before send data
+ - feature: 70_PylonLowVoltage: add specific Alarm readings, support of US5000
+ - bugfix:  73_PRESENCE2: BlockingCall loglevel = GetVerbose($name)
+ - bugfix:  73_PRESENCE:  BlockingCall loglevel = GetVerbose($name)
+ - bugfix:  98_CDCOpenData:  BlockingCall loglevel = GetVerbose($name)
+ - bufgix:  72_FRITZBOX:   BlockingCall loglevel = GetVerbose($name)
+ - bugfix:  50_SSChatbot: 'disabled' is not working when receiving data
+ - bugfix:  76_SolarForecast: ctrlWeatherDev1 Drop-Down if no DWD Device exists
+ - feature: 76_SolarForecast: integrate OpenMeteoDWDEnsemble-API
+ - change:  70_PylonLowVoltage: avoid possible Illegal division by zero
+ - feature: 76_SolarForecast: integrate the Open-Meteo API
+ - change:  50_Signalbot: Improved registration procedure for Voice
+ - feature: 93_DbRep: multicmd: add attr seqDoubletsVariance
+ - feature: 93_DbRep: multicmd: add nextHop Keyword
+ - bugfix:  73_PRESENCE2: Fehlerbereinigungen
+                          Hochlaufen bei Neustart von Fhem korrigiert
+                          Lokale Bluetooth Erkennung korrigiert
+ - feature: 73_PRESENCE2: Neues Attribut bluetoothHciDevice, hcitoolParam
+ - change:  70_PylonLowVoltage: edit commandref
+ - feature: 93_DbLog: support of MariaDB driver and more, see Forum:#137480
+ - feature: 93_DbRep: sqlCmdBlocking can use sql Keywords §timestamp_end§ etc.
+ - change:  93_DbRep: prevent some attr eval as long as init_done is not set
+ - feature: 76_SolarForecast: currentMeterDev: opt. keys conprice, feedprice
+ - change:  93_DbRep: executeBefore/AfterProc output: set verbose level to 3
+ - change:  76_SolarForecast: minor code changes ones more
+ - bufgix:  72_FRITZBOX: Fehlerbehandlung verbessert
+ - change:  72_FRITZBOX: commandRef ergänzt
+ - change:  76_SolarForecast: minor code changes
+ - feature: 93_DbRep: prepare client - server communication compression support
+ - feature: 76_SMAInverter: add GridConection reading (SI only)
+ - bugfix:  88_HMCCU: Fixed syntax errors in HMCCUConf.pm
+ - change:  93_DbLog: META.json data corrected
+ - change:  93_DbRep: Ready for support of MariaDB Perl driver
+ - change:  98_Installer: change Maintainer, change app version check
+ - change:  93_DbRep: attribute allowDeletion deleted, multiCmd: use of
+                      executeBeforeProc, executeAfterProc possible,
+                      prepare support of MariaDB,
+                      NOTE: if allowDeletion is set in your devices, messages
+                      like '...The attribute 'allowDeletion' is obsolete and 
+                      will be deleted soon...'. This is _NOT_ an error. 
+                      Please save config when FHEM restart is finished.
+ - feature: 76_SolarForecast: plantConfigCheck: check DWD Attr forecastRefresh,
+                              check weather/Rad1h data according MOSMIX variant
+ - bugfix:  73_PRESENCE2: Fehlerbereinigungen Attribut intervalPresent
+ - bugfix:  73_PRESENCE2: Fehlerbereinigungen logging
+ - change:  73_DoorBird:      META.json data completed in accordance to Spec
+ - bugfix:  93_DbRep: execute next nextMultiCmd even if time check got failed
+ - bugfix:  73_DoorBird:      META.json data corrected
+ - feature: 76_SolarForecast: save/restore relevant readings AND attributes
+                              with plantConfig, visual LED display whether the 
+                              weather data is current (age < 2h)
+ - bugfix:  73_PRESENCE2: Fehlerbereinigungen
+ - bugfix:  98_CDCOpenData: Fehler bei verbose 5 und golbal logdir
+ - bufgix:  72_FRITZBOX:  Fehler bei verbose 5 und golbal logdir
+ - changed: 73_DoorBird:      New Encryption following DoorBird API & logo
+ - feature: 76_SolarForecast: take into account the position of the sun in
+                              addition to cloud cover when determining the 
+                              correction factor
+ - change:  76_SolarForecast: check age of Rad1h data, use RR1c instead of R101
+ - feature: 70_PylonLowVoltage: print out faulty response with verbose 5
+ - bugfix:  88_HMCCU: fixed device detection bug
  - feature: 93_DbRep: sqlCmd executing ckey:latest possible
  - new:     73_PRESENCE2: cover version von 73_PRESENCE.pm
  - change:  76_SolarForecast: fillup AI data with sun azimuth / altitude

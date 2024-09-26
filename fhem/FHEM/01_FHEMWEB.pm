@@ -7,7 +7,6 @@ use warnings;
 use TcpServerUtils;
 use HttpUtils;
 use Blocking;
-use Time::HiRes qw(gettimeofday);
 
 #########################
 # Forward declaration
@@ -48,10 +47,10 @@ sub FW_showRoom();
 sub FW_style($$);
 sub FW_submit($$@);
 sub FW_textfield($$$);
-sub FW_textfieldv($$$$);
+sub FW_textfieldv($$$$;$);
 sub FW_updateHashes();
 sub FW_visibleDevices(;$);
-sub FW_widgetOverride($$);
+sub FW_widgetOverride($$;$);
 sub FW_Read($$);
 
 use vars qw($FW_dir);     # base directory for web server
@@ -125,6 +124,7 @@ my $FW_encoding="UTF-8";
 my $FW_styleStamp=time();
 my %FW_svgData;
 my $FW_encodedByPlugin; # unicodeEncoding: data is encoded by plugin
+my $FW_needIsDay;
 
 
 #####################################
@@ -157,15 +157,13 @@ FHEMWEB_Initialize($)
     csrfTokenHTTPHeader:0,1
     alarmTimeout
     allowedHttpMethods
-    allowedCommands
     allowfrom
-    basicAuth
-    basicAuthMsg
     closeConn:1,0
     column
     confirmDelete:0,1
     confirmJSError:0,1
     defaultRoom
+    detailLinks
     deviceOverview:always,iconOnly,onClick,never
     editConfig:1,0
     editFileList:textField-long
@@ -799,6 +797,7 @@ FW_closeConn($)
                      $FW_userAgent =~ m/(iPhone|iPad|iPod)/);
     if(!$FW_httpheader{Connection} || $cc) {
       TcpServer_Close($hash, 1, !$hash->{inform});
+      delete $FW_svgData{$hash->{NAME}};
     }
   }
 
@@ -918,16 +917,12 @@ FW_answerCall($)
   } else {
     my $redirectTo = AttrVal($FW_wname, "redirectTo","");
     if($redirectTo) {
-      Log3 $FW_wname, 1, "$FW_wname: redirecting $arg to $FW_ME/$redirectTo$arg";
+      Log3 $FW_wname, 1,"$FW_wname: redirecting $arg to $FW_ME/$redirectTo$arg";
       return FW_answerCall("$FW_ME/$redirectTo$arg") 
     }
 
     Log3 $FW_wname, 4, "$FW_wname: redirecting $arg to $FW_ME";
-    TcpServer_WriteBlocking($me,
-             "HTTP/1.1 302 Found\r\n".
-             "Content-Length: 0\r\n".
-             $FW_headerlines.
-             "Location: $FW_ME\r\n\r\n");
+    FW_redirect($FW_ME);
     FW_closeConn($FW_chash);
     return -1;
   }
@@ -1052,11 +1047,7 @@ FW_answerCall($)
        if($FW_detail) { $tgt .= "?detail=$FW_detail&fw_id=$FW_id" }
     elsif($FW_room)   { $tgt .= "?room=".urlEncode($FW_room)."&fw_id=$FW_id" }
     else              { $tgt .= "?fw_id=$FW_id" }
-    TcpServer_WriteBlocking($me,
-             "HTTP/1.1 302 Found\r\n".
-             "Content-Length: 0\r\n". $FW_headerlines.
-             "Location: $tgt\r\n".
-             "\r\n");
+    FW_redirect($tgt);
     return -1;
   }
 
@@ -1169,7 +1160,7 @@ FW_answerCall($)
   my $gen = 'generated="'.(time()-1).'"';
   my $lp = 'longpoll="'.AttrVal($FW_wname,"longpoll",
                  $FW_use{sha} && $FW_userAgent=~m/Chrome/ ? "websocket": 1).'"';
-  $FW_id = $FW_chash->{NR} if( !$FW_id );
+  $FW_id = gettimeofday() if( !$FW_id ); #132013
 
   my $dataAttr = FW_dataAttr();
   FW_pO "</head>\n<body name='$t' fw_id='$FW_id' $gen $lp $csrf $dataAttr>";
@@ -1238,6 +1229,18 @@ FW_answerCall($)
 }
 
 sub
+FW_redirect($)
+{
+  my ($tgt) = @_;
+
+  TcpServer_WriteBlocking($defs{$FW_cname},
+           "HTTP/1.1 302 Found\r\n".
+           "Content-Length: 0\r\n".
+           $FW_headerlines.
+           "Location: $tgt\r\n\r\n");
+}
+
+sub
 FW_dataAttr()
 {
   sub
@@ -1251,11 +1254,13 @@ FW_dataAttr()
   }
 
   return
+    ($FW_needIsDay ? 'data-isDay="'.(isday()?1:0).'"' : '') .
     addParam($FW_wname, "jsLog", 0).
     addParam($FW_wname, "confirmDelete", 1).
     addParam($FW_wname, "confirmJSError", 1).
     addParam($FW_wname, "addHtmlTitle", 1).
     addParam($FW_wname, "styleData", "").
+    addParam($FW_wname, "hiddenroom", "").
     addParam("global",  "language", "EN").
     "data-availableJs='$FW_fhemwebjs' ".
     "data-webName='$FW_wname' ";
@@ -1511,8 +1516,7 @@ FW_detailSelect(@)
   $ret .= FW_hidden("detail", $d);
   $ret .= FW_hidden("dev.$cmd$d", $d.($param ? " $param":""));
   $ret .= FW_submit("cmd.$cmd$d", $cmd, $cmd.($psc?" psc":""));
-  $ret .= "<div class=\"$cmd downText\">&nbsp;$d&nbsp;".
-                ($param ? "&nbsp;$param":"")."</div>";
+  $ret .= "<div class=\"$cmd downText\"> $d ".($param ? "$param":"")."</div>";
   $ret .= FW_select("sel_$cmd$d","arg.$cmd$d",\@al,$selEl,$cmd,undef,$typeHash);
   $ret .= FW_textfield("val.$cmd$d", 30, $cmd);
   $ret .= "</form></div>";
@@ -1590,9 +1594,9 @@ FW_doDetail($)
 
 
   FW_pO FW_detailSelect($d, "set",
-                        FW_widgetOverride($d, getAllSets($d, $FW_chash)));
+                      FW_widgetOverride($d, getAllSets($d, $FW_chash), "set"));
   FW_pO FW_detailSelect($d, "get",
-                        FW_widgetOverride($d, getAllGets($d, $FW_chash)));
+                      FW_widgetOverride($d, getAllGets($d, $FW_chash), "get"));
 
   FW_makeTable("Internals", $d, $h);
   FW_makeTable("Readings", $d, $h->{READINGS});
@@ -1606,9 +1610,17 @@ FW_doDetail($)
   $attrList =~ s/\broom\b/room:$roomList/;
   $attrList =~ s/\bgroup\b/group:$groupList/;
 
-  $attrList = FW_widgetOverride($d, $attrList);
-  $attrList =~ s/\\/\\\\/g;
-  $attrList =~ s/'/\\'/g;
+  $attrList = FW_widgetOverride($d, $attrList, "attr");
+  if($attrList =~ m/[\\']/) {
+    $attrList =~ s/([\\'])/\\$1/g;
+    foreach my $k (keys %attrTypeHash) { # Forum #134526
+      if($k =~ m/[\\']/) {
+        my $nk = $k;
+        $nk =~ s/([\\'])/\\$1/g;
+        $attrTypeHash{$nk} = $attrTypeHash{$k};
+      }
+    }
+  }
   FW_pO FW_detailSelect($d, "attr", $attrList, undef, \%attrTypeHash);
 
   FW_makeTable("Attributes", $d, $attr{$d}, "deleteattr");
@@ -1618,18 +1630,39 @@ FW_doDetail($)
 
   my ($link, $txt, $td, $class, $doRet,$nonl) = @_;
 
-  FW_pH "cmd=style iconFor $d", "Select icon",         undef, "detLink iconFor";
-  FW_pH "cmd=style showDSI $d", "Extend devStateIcon", undef, "detLink showDSI";
-  FW_pH "cmd=rawDef $d", "Raw definition", undef, "detLink rawDef";
-  FW_pH "cmd=delete $d", "Delete this device ($d)",    undef, "detLink delDev"
-         if($d ne "global");
-  my $sfx = AttrVal("global", "language", "EN");
-  $sfx = ($sfx eq "EN" ? "" : "_$sfx");
-  FW_pH "$FW_ME/docs/commandref${sfx}.html#${t}", "Device specific help",
-         undef, "detLink devSpecHelp";
+  FW_pO "<div id='detLink'>";
+  my @detCmd = (
+    'devSpecHelp',   "Help for $t",
+    'forumCopy',     'Copy for forum.fhem.de',
+    'rawDef',        'Raw definition',
+    'style iconFor', 'Select icon',
+    'style showDSI', 'Extend devStateIcon',
+    'delete',        "Delete $d"
+  );
+  my $lNum = AttrVal($FW_wname, "detailLinks", 2);
+  if($lNum =~ m/^(\d),(.+)$/) {
+    $lNum = $1;
+    my %dc = @detCmd;
+    @detCmd = map { ($_, $dc{$_}) if($dc{$_}) } split(",", $2);
+  }
+  my $li = 0;
+  while($li < $lNum && $li < @detCmd / 2) {
+    FW_pH "cmd=$detCmd[2*$li] $d", $detCmd[2*$li+1], undef, "detLink"
+      if(!$FW_hiddenroom{$detCmd[2*$li]});
+    $li++;
+  }
+  if($li < @detCmd/2) {
+    FW_pO   "<select id='moreCmds'>";
+    FW_pO     "<option >...</option>";
+    while($li < @detCmd / 2) {
+      FW_pO "<option data-cmd='$detCmd[2*$li] $d'>$detCmd[2*$li+1]</option>"
+        if(!$FW_hiddenroom{$detCmd[2*$li]});
+      $li++;
+    }
+    FW_pO   "</select>"
+  }
   FW_pO "<br><br>";
   FW_pO "</div>";
-
 }
 
 ##############################
@@ -1806,7 +1839,9 @@ FW_roomOverview($)
     foreach(my $idx = 0; $idx < @list1; $idx++) {
       next if(!$list1[$idx]);
       my $sel = ($list1[$idx] eq $FW_room ? " selected=\"selected\""  : "");
-      FW_pO "<option value='$list2[$idx]'$sel>$list1[$idx]</option>";
+      my $v = $list2[$idx];
+      $v .= $FW_CSRF if($v =~ m/cmd=/);
+      FW_pO "<option value='$v'$sel>$list1[$idx]</option>";
     }
     FW_pO "</select></td>";
     FW_pO "</tr>";
@@ -1919,7 +1954,7 @@ FW_makeDeviceLine($$$$$)
     my $cl2 = $cmdlist; $cl2 =~ s/ [^:]*//g; $cl2 =~ s/:/ /g;  # Forum #74053
     $allSets = "$allSets $cl2";
   }
-  $allSets = FW_widgetOverride($d, $allSets);
+  $allSets = FW_widgetOverride($d, $allSets, "set");
 
   my $colSpan = ($usuallyAtEnd->{$d} ? ' colspan="2"' : '');
   FW_pO "<td informId=\"$d\"$colSpan>$txt</td>";
@@ -2014,7 +2049,7 @@ sub
 FW_showRoom()
 {
   my $roomRe = $FW_room;
-  $roomRe =~ s/([[\]().+*?])/\\$1/g;
+  $roomRe =~ s/([[\\\]().+*?])/\\$1/g;
   return 0 if(!$FW_room ||
               AttrVal($FW_wname,"forbiddenroom","") =~ m/\b$roomRe\b/);
 
@@ -2382,11 +2417,12 @@ FW_select($$$$$@)
 
 ##################
 sub
-FW_textfieldv($$$$)
+FW_textfieldv($$$$;$)
 {
-  my ($n, $z, $class, $value) = @_;
+  my ($n, $z, $class, $value, $place) = @_;
   my $v;
-  $v=" value='$value'" if(defined($value));
+  $v.=" value='$value'" if(defined($value));
+  $v.=" placeholder='$place'" if(defined($place));
   return if($FW_hiddenroom{input});
   my $s = "<input type='text' name='$n' class='$class' size='$z'$v ".
             "autocorrect='off' autocapitalize='off'/>";
@@ -2628,7 +2664,7 @@ FW_style($$)
 
   } elsif($a[1] eq "setIF") {
     FW_fC("attr $a[2] icon $a[3]");
-    FW_doDetail($a[2]);
+    FW_redirect("$FW_ME?detail=$a[2]");
 
   } elsif($a[1] eq "showDSI") {
     FW_iconTable("devStateIcon", "",
@@ -2638,7 +2674,7 @@ FW_style($$)
     my $dsi = AttrVal($a[2], "devStateIcon", "");
     $dsi .= " " if($dsi);
     FW_fC("attr $a[2] devStateIcon $dsi$FW_data:$a[3]");
-    FW_doDetail($a[2]);
+    FW_redirect("$FW_ME?detail=$a[2]");
 
   } elsif($a[1] eq "eventMonitor") {
     FW_pO "<script type=\"text/javascript\" src=\"$FW_ME/pgm2/console.js\">".
@@ -2869,19 +2905,6 @@ FW_Attr(@)
     }
   }
 
-  if(($attrName eq "allowedCommands" ||
-      $attrName eq "basicAuth" ||
-      $attrName eq "basicAuthMsg")
-      && $type eq "set") {
-    my $aName = "allowed_$devName";
-    my $exists = ($defs{$aName} ? 1 : 0);
-    AnalyzeCommand(undef, "defmod $aName allowed");
-    AnalyzeCommand(undef, "attr $aName validFor $devName");
-    AnalyzeCommand(undef, "attr $aName $attrName ".join(" ",@param));
-    return "$devName: ".($exists ? "modifying":"creating").
-                " device $aName for attribute $attrName";
-  }
-
   if($attrName eq "iconPath" && $type eq "set") {
     foreach my $pe (split(":", $param[0])) {
       $pe =~ s+\.\.++g;
@@ -2929,6 +2952,10 @@ FW_Attr(@)
         if(!$FW_use{sha});
   }
 
+  if($attrName eq "styleData" && $type eq "set") {
+     $FW_needIsDay = ($param[0] =~ m/dayNightActive.*true/);
+  }
+
   return $retMsg;
 }
 
@@ -2971,14 +2998,14 @@ FW_readIconsFrom($$)
       }
     }
   }
-  $FW_icons{$dir}{""} = 1; # Do not check empty directories again.
+  $FW_icons{$dir}{""} = undef; # Do not check empty directories again.
 }
 
 sub
 FW_readIcons($)
 {
   my ($dir)= @_;
-  return if($FW_icons{$dir});
+  return if(exists($FW_icons{$dir}));
   FW_readIconsFrom($dir, "");
 }
 
@@ -3037,6 +3064,16 @@ FW_dev2image($;$)
     Log3 $FW_wname, 1, "devStateIcon $name: $@" if($@);
     return ($html, $link, 1) if(defined($html) && $html =~ m/^<.*>$/s);
     $devStateIcon = $html;
+    if($devStateIcon) { # 132483
+      foreach my $l (split(" ", $devStateIcon)) {
+        my ($re, $iconName, $link) = split(":", $l, 3);
+        eval { "Hallo" =~ m/^$re$/ };    
+        if($@) {
+          Log 1, "ERROR: $name devStateIcon evaluated to $devStateIcon => $@";
+          return "ERROR, check the log";
+        }
+      }
+    }
   }
 
   if(defined($devStateIcon)) {
@@ -3298,6 +3335,7 @@ FW_directNotify($@) # Notify without the event overhead (Forum #31293)
     shift;
   }
   my $dev = $_[0];
+  $dev =~ s/-.*//;      # 131373
   foreach my $ntfy (values(%defs)) {
     next if(!$ntfy->{TYPE} ||
             $ntfy->{TYPE} ne "FHEMWEB" ||
@@ -3327,7 +3365,7 @@ FW_devState($$@)
 
   my $cmdList = AttrVal($d, "webCmd", $defs{$d}{webCmd});
   $cmdList = "" if(!defined($cmdList));
-  my $allSets = FW_widgetOverride($d, getAllSets($d, $FW_chash));
+  my $allSets = FW_widgetOverride($d, getAllSets($d, $FW_chash), "set");
   my $state = $defs{$d}{STATE};
   $state = "" if(!defined($state));
 
@@ -3359,7 +3397,7 @@ FW_devState($$@)
       $txt = $state;
       my ($icon, $isHtml);
       ($icon, $link, $isHtml) = FW_dev2image($d,$state);
-      $txt = ($isHtml ? $icon : FW_makeImage($icon, $state)) if($icon);
+      $txt = ($isHtml ? $icon : FW_makeImage($icon, $state)) if(defined($icon));
 
       my $cmdlist = (defined($link) ? $link : "");
       my $h = "";
@@ -3473,7 +3511,10 @@ sub
 FW_Set($@)
 {
   my ($hash, @a) = @_;
-  my %cmd = ("rereadicons" => ":noArg", "clearSvgCache" => ":noArg");
+  my %cmd = ("clearSvgCache" => ":noArg",
+             "reopen" => ":noArg",
+             "rereadicons" => ":noArg");
+
   if(AttrVal($hash->{NAME}, "rescueDialog", "")) {
     $cmd{"rescueStart"} = "";
     $cmd{"rescueTerminate"} = ":noArg";
@@ -3500,6 +3541,16 @@ FW_Set($@)
     } else {
       return "Can't open $cDir: $!";
     }
+  }
+
+  if($a[1] eq "reopen") {
+    TcpServer_Close($hash);
+    delete($hash->{stacktrace});
+    my ($port, $global) = split("[ \t]+", $hash->{DEF});
+    my $ret = TcpServer_Open($hash, $port, $global);
+    return $ret if($ret);
+    TcpServer_SetSSL($hash) if(AttrVal($hash->{NAME}, "SSL", 0));
+    return undef;
   }
 
   if($a[1] eq "rescueStart") {
@@ -3573,22 +3624,22 @@ FW_widgetFallbackFn()
   # noArg is needed for fhem.cfg.demo / Cinema
   return "" if(!$values || $values eq "noArg");
 
-  my($reading) = split( ' ', $cmd, 2 );
+  my($source) = split(' ', $cmd, 2); # cmd part only, #136049
   my $current;
   if($cmd eq "desired-temp" || $cmd eq "desiredTemperature") {
     $current = ReadingsVal($d, $cmd, 20);
     $current =~ s/ .*//;        # Cut off Celsius
     $current = sprintf("%2.1f", int(2*$current)/2) if($current =~ m/[0-9.-]/);
   } else {
-    $current = ReadingsVal($d, $reading, undef);
+    $current = ReadingsVal($d, $source, undef);
     if( !defined($current) ) {
-      $reading = 'state';
+      $source = 'state';
       $current = Value($d);
     }
     $current =~ s/$cmd //;
     $current = ReplaceEventMap($d, $current, 1);
   }
-  return "<td><div class='fhemWidget' cmd='$cmd' reading='$reading' ".
+  return "<td><div class='fhemWidget' cmd='$cmd' reading='$source' ".
                 "dev='$d' arg='$values' current='$current'></div></td>";
 }
 # Widgets END
@@ -3623,9 +3674,9 @@ FW_ActivateInform($;$)
 }
 
 sub
-FW_widgetOverride($$)
+FW_widgetOverride($$;$)
 {
-  my ($d, $str) = @_;
+  my ($d, $str, $type) = @_;
 
   return $str if(!$str);
 
@@ -3637,6 +3688,10 @@ FW_widgetOverride($$)
   push @list, split(" ", $fa) if($fa);
   push @list, split(" ", $da) if($da);
   foreach my $na (@list) {
+    if($type && $na =~ m/^([^:]*)@(set|get|attr):(.*)/) {
+      next if($2 ne $type);
+      $na = "$1:$3";
+    }
     my ($n,$a) = split(":", $na, 2);
     $str =~ s/\b($n)\b(:[^ ]*)?/$1:$a/g;
   }
@@ -3715,13 +3770,20 @@ FW_log($$)
   <a id="FHEMWEB-set"></a>
   <b>Set</b>
   <ul>
+    <a id="FHEMWEB-set-rereadicons"></a>
     <li>rereadicons<br>
       reads the names of the icons from the icon path.  Use after adding or
       deleting icons.
       </li>
+    <a id="FHEMWEB-set-clearSvgCache"></a>
     <li>clearSvgCache<br>
       delete all files found in the www/SVGcache directory, which is used to
       cache SVG data, if the SVGcache attribute is set.
+      </li>
+    <a id="FHEMWEB-set-reopen"></a>
+    <li>reopen<br>
+      reopen the server port. This is an alternative to restart FHEM when
+      the SSL certificate is replaced.
       </li>
   </ul>
   <br>
@@ -3739,7 +3801,7 @@ FW_log($$)
         </li>
     <li>pathlist<br>
         return FHEMWEB specific directories, where files for given types are
-        located
+        located</li>
     <br><br>
 
   </ul>
@@ -3753,10 +3815,6 @@ FW_log($$)
       widgets. This might be necessary for some screenreaders. Default is 1.
       </li><br>
 
-
-
-    <li><a href="#addStateEvent">addStateEvent</a></li><br>
-
     <li>alias_&lt;RoomName&gt;<br>
         If you define a userattr alias_&lt;RoomName&gt; and set this attribute
         for a device assgined to &lt;RoomName&gt;, then this value will be used
@@ -3766,14 +3824,19 @@ FW_log($$)
         alias_.* attributes.
         </li><br>
 
-    <li><a href="#allowfrom">allowfrom</a></li>
-    </li><br>
-
-    <li>allowedCommands, basicAuth, basicAuthMsg<br>
-        Please create these attributes for the corresponding <a
-        href="#allowed">allowed</a> device, they are deprecated for the FHEMWEB
-        instance from now on.
-    </li><br>
+    <a id="FHEMWEB-attr-allowfrom"></a>
+    <li>allowfrom<br>
+        Regexp of allowed ip-addresses or hostnames. If set, only connections
+        from these addresses are allowed.<br>
+        NOTE: if this attribute is not defined and there is no valid allowed
+        device defined for the telnet/FHEMWEB instance and the client tries to
+        connect from a non-local net, then the connection is refused. Following
+        is considered a local net:<br>
+        <ul>
+          IPV4: 127/8, 10/8, 192.168/16, 172.16/10, 169.254/16<br>
+          IPV6: ::1, fe80/10<br>
+        </ul>
+        </li><br>
 
     <a id="FHEMWEB-attr-allowedHttpMethods"></a>
     <li>allowedHttpMethods<br>
@@ -3790,7 +3853,6 @@ FW_log($$)
       If set, a TCP Connection will only serve one HTTP request. Seems to
       solve problems on iOS9 for WebApp startup.
       </li><br>
-
 
     <a id="FHEMWEB-attr-column"></a>
     <li>column<br>
@@ -3875,6 +3937,17 @@ FW_log($$)
         show the specified room if no room selected, e.g. on execution of some
         commands.  If set hides the <a href="#motd">motd</a>. Example:<br>
         attr WEB defaultRoom Zentrale
+        </li>
+        <br>
+
+    <a id="FHEMWEB-attr-detailLinks"></a>
+    <li>detailLinks<br>
+        number of links to show on the bottom of the device detail page.
+        The rest of the commands is shown in a dropdown menu. Default is 2.<br>
+        This can optionally followed by a comma separated list of ids to order
+        or filter the desired links, the ids being one of devSpecHelp,
+        forumCopy, rawDef, style iconFor, style showDSI, delete. Example:<br>
+        attr WEB detailLinks 2,devSpecHelp,forumCopy
         </li>
         <br>
 
@@ -4021,7 +4094,7 @@ FW_log($$)
 
     <a id="FHEMWEB-attr-hiddengroupRegexp"></a>
     <li>hiddengroupRegexp<br>
-        One regexp for the same purpose as hiddengroup.
+        One <a href="#regexp">regexp</a> for the same purpose as hiddengroup.
         </li>
         <br>
 
@@ -4032,13 +4105,15 @@ FW_log($$)
         to the detailed views or save button are hidden (although each aspect
         still can be addressed through URL manipulation).<br>
         The list can also contain values from the additional "Howto/Wiki/FAQ"
-        block.
+        block, and from the bottom of the detail page: devSpecHelp, forumCopy,
+        rawDef, style iconFor, style showDSI, delete.
         </li>
         <br>
 
     <a id="FHEMWEB-attr-hiddenroomRegexp"></a>
     <li>hiddenroomRegexp<br>
-        One regexp for the same purpose as hiddenroom. Example:
+        One <a href="#regexp">regexp</a> for the same purpose as hiddenroom.
+        Example:
         <ul>
           attr WEB hiddenroomRegexp .*config
         </ul>
@@ -4108,6 +4183,12 @@ FW_log($$)
          attr WEB JavaScripts codemirror/fhem_codemirror.js<br>
          attr WEB codemirrorParam { "theme":"blackboard", "lineNumbers":true }
        </code></ul>
+       -fhemweb.js and/or -f18.js will prevent the loading of the corresponding
+       file, this, in combination with the addition of an old version of the
+       file may be a solution for old tablets with an outdated browser.
+       <ul>
+         attr WEB_iOS6 JavaScripts -fhemweb.js -f18.js pgm2/iOS6_fhemweb.js pgm2/iOS6_f18.js
+       </ul>
        </li><br>
 
     <a id="FHEMWEB-attr-logDevice"></a>
@@ -4149,8 +4230,8 @@ FW_log($$)
         only the deviceName or have the form deviceName.event or deviceName.*.
         This is always the case when using the <a href="#plotEditor">Plot
         editor</a>. The SVG will be reloaded for <b>any</b> event triggered by
-        this deviceName. Default is off. Note: the plotEmbed attribute must be
-        set.
+        this deviceName. Default is off.<br>
+        Note: this feature needs the plotEmbed attribute set to 1.
         </li>
         <br>
 
@@ -4486,6 +4567,8 @@ FW_log($$)
     <li>widgetOverride<br>
         Space separated list of name:modifier pairs, to override the widget
         for a set/get/attribute specified by the module author.
+        To specify the widget for a specific type, use the name@type:modifier
+        syntax, where type is one of set, get and attr.
         Following is the list of known modifiers:
         <ul>
         <!-- INSERT_DOC_FROM: www/pgm2/fhemweb.*.js -->
@@ -4524,14 +4607,21 @@ FW_log($$)
   <a id="FHEMWEB-set"></a>
   <b>Set</b>
   <ul>
+    <a id="FHEMWEB-set-rereadicons"></a>
     <li>rereadicons<br>
       Damit wird die Liste der Icons neu eingelesen, f&uuml;r den Fall, dass
       Sie Icons l&ouml;schen oder hinzuf&uuml;gen.
       </li>
+    <a id="FHEMWEB-set-clearSvgCache"></a>
     <li>clearSvgCache<br>
       Im Verzeichnis www/SVGcache werden SVG Daten zwischengespeichert, wenn
       das Attribut SVGcache gesetzt ist.  Mit diesem Befehl leeren Sie diesen
       Zwischenspeicher.
+      </li>
+    <a id="FHEMWEB-set-reopen"></a>
+    <li>reopen<br>
+      Schlie&szlig;t und &ouml;ffnet der Serverport. Das kann eine Alternative
+      zu FHEM-Neustart sein, wenn das SSL-Zertifikat sich ge&auml;ndert hat.
       </li>
   </ul>
   <br>
@@ -4564,8 +4654,6 @@ FW_log($$)
       manchen Screenreadern erforderlich. Die Voreinstellung ist 1.
       </li><br>
 
-    <li><a href="#addStateEvent">addStateEvent</a></li><br>
-
     <li>alias_&lt;RoomName&gt;<br>
         Falls man das Attribut alias_&lt;RoomName&gt; definiert, und dieses
         Attribut f&uuml;r ein Ger&auml;t setzt, dann wird dieser Wert bei
@@ -4576,14 +4664,20 @@ FW_log($$)
         funktionieren.
         </li><br>
 
-    <li><a href="#allowfrom">allowfrom</a>
+    <a id="FHEMWEB-attr-allowfrom"></a>
+    <li>allowfrom<br>
+        Regexp der erlaubten IP-Adressen oder Hostnamen. Wenn dieses Attribut
+        gesetzt wurde, werden ausschlie&szlig;lich Verbindungen von diesen
+        Adressen akzeptiert.<br>
+        Achtung: falls allowfrom nicht gesetzt ist, und keine g&uuml;tige
+        allowed Instanz definiert ist, und die Gegenstelle eine nicht lokale
+        Adresse hat, dann wird die Verbindung abgewiesen. Folgende Adressen
+        werden als local betrachtet:
+        <ul>
+          IPV4: 127/8, 10/8, 192.168/16, 172.16/10, 169.254/16<br>
+          IPV6: ::1, fe80/10<br>
+        </ul>
         </li><br>
-
-    <li>allowedCommands, basicAuth, basicAuthMsg<br>
-        Diese Attribute m&uuml;ssen ab sofort bei dem passenden <a
-        href="#allowed">allowed</a> Ger&auml;t angelegt werden, und sind
-        f&uuml;r eine FHEMWEB Instanz unerw&uuml;nscht.
-    </li><br>
 
     <a id="FHEMWEB-attr-allowedHttpMethods"></a>
     <li>allowedHttpMethods</br>
@@ -4595,7 +4689,6 @@ FW_log($$)
       aktivieren, die Voreinstellung ist GET|POST. OPTIONS ist immer
       aktiviert.
       </li><br>
-
 
      <a id="FHEMWEB-attr-closeConn"></a>
      <li>closeConn<br>
@@ -4637,7 +4730,7 @@ FW_log($$)
 
     <a id="FHEMWEB-attr-confirmDelete"></a>
     <li>confirmDelete<br>
-        L&ouml;schaktionen weden mit einem Dialog best&auml;tigt.
+        L&ouml;schaktionen werden mit einem Dialog best&auml;tigt.
         Falls dieses Attribut auf 0 gesetzt ist, entf&auml;llt das.
         </li>
         <br>
@@ -4696,6 +4789,18 @@ FW_log($$)
         attr WEB defaultRoom Zentrale
         </li><br>
 
+    <a id="FHEMWEB-attr-detailLinks"></a>
+    <li>detailLinks<br>
+        Anzahl der Links, die auf der Detailseite unten angezeigt werden. Die
+        weiteren Befehle werden in einem Auswahlmen&uuml; angezeigt.
+        Voreinstellung ist 2.<br>
+        Das kann optional mit der Liste der anzuzeigenden IDs erweitert werden,
+        um die Links zu sortieren oder zu filtern. Die m&ouml;glichen IDs sind
+        devSpecHelp, forumCopy, rawDef, style iconFor, style showDSI, delete.
+        Beispiel:<br> attr WEB detailLinks 2,devSpecHelp,forumCopy
+        </li>
+        <br>
+
     <a id="FHEMWEB-attr-devStateIcon"></a>
     <li>devStateIcon<br>
         Erste Variante:<br>
@@ -4731,7 +4836,7 @@ FW_log($$)
         </ul>
         Zweite Variante:<br>
         <ul>
-        Perl regexp eingeschlossen in {}. Wenn der Code undef
+        Perl Ausdruck eingeschlossen in {}. Wenn der Code undef
         zur&uuml;ckliefert, wird das Standard Icon verwendet; wird ein String
         in <> zur&uuml;ck geliefert, wird dieser als HTML String interpretiert.
         Andernfalls wird der String als devStateIcon gem&auml;&szlig; der
@@ -4841,7 +4946,8 @@ FW_log($$)
 
     <a id="FHEMWEB-attr-hiddengroupRegexp"></a>
     <li>hiddengroupRegexp<br>
-        Ein regul&auml;rer Ausdruck, um Gruppen zu verstecken.
+        Ein <a href="#regexp">regul&auml;rer Ausdruck</a>, um Gruppen zu
+        verstecken.
         </li>
         <br>
 
@@ -4852,11 +4958,14 @@ FW_log($$)
        Fall werden diverse Eingabefelder ausgeblendent. Durch direktes Aufrufen
        der URL sind diese R&auml;ume weiterhin erreichbar!<br>
        Ebenso k&ouml;nnen Eintr&auml;ge in den Logfile/Commandref/etc Block
-       versteckt werden.  </li><br>
+       versteckt werden, oder die Links unten auf der Detailseite: devSpecHelp,
+       forumCopy, rawDef, style iconFor, style showDSI, delete.
+       </li><br>
 
     <a id="FHEMWEB-attr-hiddenroomRegexp"></a>
     <li>hiddenroomRegexp<br>
-        Ein regul&auml;rer Ausdruck, um R&auml;ume zu verstecken. Beispiel:
+        Ein <a href="#regexp">regul&auml;rer Ausdruck</a>, um R&auml;ume zu
+        verstecken. Beispiel:
         <ul>
           attr WEB hiddenroomRegexp .*config
         </ul>
@@ -4893,7 +5002,7 @@ FW_log($$)
         server-key.pem
         </ul>
         Diese Befehle werden beim Setzen des Attributes automatisch
-        ausgef&uuml;rht, falls kein Zertifikat gefunden wurde. Deswegen, falls
+        ausgef&uuml;hrt, falls kein Zertifikat gefunden wurde. Deswegen, falls
         n&ouml;tig, sslCertPrefix vorher setzen.
       <br>
     </li>
@@ -4929,6 +5038,13 @@ FW_log($$)
          attr WEB JavaScripts codemirror/fhem_codemirror.js<br>
          attr WEB codemirrorParam { "theme":"blackboard", "lineNumbers":true }
        </code></ul>
+       -fhemweb.js und/oder -f18.js verhindert das Laden diese Dateien, was, in
+       Kombination mit einer alter Version der Datei, eine Abhilfe bei alten
+       Tablets mit nicht mehr aktulisierbaren Browser sein kann:
+       <ul>
+         attr WEB_iOS6 JavaScripts -fhemweb.js -f18.js pgm2/iOS6_fhemweb.js pgm2/iOS6_f18.js
+       </ul>
+
        </li><br>
 
     <a id="FHEMWEB-attr-logDevice"></a>
@@ -4973,8 +5089,9 @@ FW_log($$)
         bzw. deviceName.*. Wenn man den <a href="#plotEditor">Plot Editor</a>
         benutzt, ist das &uuml;brigens immer der Fall. Die SVG Datei wird bei
         <b>jedem</b> ausl&ouml;senden Event dieses Ger&auml;tes neu geladen.
-        Die Voreinstellung ist aus. Achtung: das plotEmbed Attribute muss
-        gesetzt sein.
+        Die Voreinstellung ist aus.<br>
+        Achtung: fuer dieses Feature muss das plotEmbed Attribute auf 1 gesetzt
+        sein.
         </li><br>
 
     <a id="FHEMWEB-attr-mainInputLength"></a>
@@ -5308,10 +5425,11 @@ FW_log($$)
 
     <a id="FHEMWEB-attr-widgetOverride"></a>
     <li>widgetOverride<br>
-        Leerzeichen separierte Liste von Name/Modifier Paaren, mit dem man den
+        Leerzeichen separierte Liste von Name:Modifier Paaren, mit dem man den
         vom Modulautor f&uuml;r einen bestimmten Parameter (Set/Get/Attribut)
-        vorgesehene Widgets &auml;ndern kann.  Folgendes ist die Liste der
-        bekannten Modifier:
+        vorgesehenes Widget &auml;ndern kann.  Die Syntax f&uuml;r eine
+        Typspezifische &Auml;nderung ist Name@Typ:Modifier, wobei Typ set, get
+        oder attr sein kann. Folgendes ist die Liste der bekannten Modifier:
         <ul>
         <!-- INSERT_DOC_FROM: www/pgm2/fhemweb.*.js -->
         </ul></li>

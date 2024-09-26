@@ -2,11 +2,11 @@
 #
 #  88_HMCCUDEV.pm
 #
-#  $Id: 88_HMCCUDEV.pm 28381 2024-01-14 16:23:51Z zap $
+#  $Id$
 #
 #  Version 5.0
 #
-#  (c) 2022 zap (zap01 <at> t-online <dot> de)
+#  (c) 2024 zap (zap01 <at> t-online <dot> de)
 #
 ######################################################################
 #  Client device for Homematic devices.
@@ -31,7 +31,7 @@ sub HMCCUDEV_Set ($@);
 sub HMCCUDEV_Get ($@);
 sub HMCCUDEV_Attr ($@);
 
-my $HMCCUDEV_VERSION = '5.0 240121821';
+my $HMCCUDEV_VERSION = '5.0 2024-04';
 
 ######################################################################
 # Initialize module
@@ -52,7 +52,7 @@ sub HMCCUDEV_Initialize ($)
 	$hash->{parseParams} = 1;
 
 	$hash->{AttrList} = 'IODev ccuaggregate:textField-long ccucalculate:textField-long '. 
-		'ccuflags:multiple-strict,ackState,hideStdReadings,replaceStdReadings,noAutoSubstitute,noBoundsChecking,logCommand,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings,showServiceReadings '.
+		'ccuflags:multiple-strict,ackState,hideStdReadings,replaceStdReadings,noAutoSubstitute,noBoundsChecking,logCommand,noReadings,trace,simulate,showMasterReadings,showLinkReadings,showDeviceReadings '.
 		'ccureadingfilter:textField-long '.
 		'ccureadingformat:name,namelc,address,addresslc,datapoint,datapointlc '.
 		'ccureadingname:textField-long ccuSetOnChange ccuReadingPrefix devStateFlags '.
@@ -97,17 +97,9 @@ sub HMCCUDEV_Define ($@)
 	my ($devname, $devtype, $devspec) = splice (@$a, 0, 3);
 	my $ioHash = undef;
 
-	# Handle some legacy options
-	return 'Virtual devices are no longer supported. Use FHEM built in features like readingsgroup or structure'
-		if ($devspec eq 'virtual');
-	HMCCU_Log ($hash, 2, "Found old device definition syntax using group or groupexp. Group options will be ignored in future versions.")
-		if (exists($h->{group}) || exists($h->{groupexp}));
-
 	# Store some definitions for delayed initialization
 	$hash->{readonly} = 'no';
 	$hash->{hmccu}{devspec}     = $devspec;
-	$hash->{hmccu}{groupexp}    = $h->{groupexp} if (exists($h->{groupexp}));
-	$hash->{hmccu}{group}       = $h->{group} if (exists($h->{group}));
 	$hash->{hmccu}{nodefaults}  = $init_done ? 0 : 1;
 	$hash->{hmccu}{forcedev}    = 0;
 	$hash->{hmccu}{detect}      = 0;
@@ -259,35 +251,7 @@ sub HMCCUDEV_InitDevice ($$)
 		}
 
 		# Update readings
-		HMCCU_GetUpdate ($devHash, $da);
-	}
-
-	# Parse group options
-	if ($devHash->{ccuif} eq 'VirtualDevices') {
-		my @devlist = ();
-		if (exists ($devHash->{hmccu}{groupexp})) {
-			# Group devices specified by name expression
-			$gdcount = HMCCU_GetMatchingDevices ($ioHash, $devHash->{hmccu}{groupexp}, 'dev', \@devlist);
-			return 4 if ($gdcount == 0);
-		}
-		elsif (exists ($devHash->{hmccu}{group})) {
-			# Group devices specified by comma separated name list
-			my @gdevlist = split (',', $devHash->{hmccu}{group});
-			$devHash->{ccugroup} = '' if (scalar(@gdevlist) > 0);
-			foreach my $gd (@gdevlist) {
-				return 1 if (!HMCCU_IsValidDevice ($ioHash, $gd, 7));
-				my ($gda, $gdc) = HMCCU_GetAddress ($ioHash, $gd);
-				push @devlist, $gdc eq '' ? "$gda:$gdc" : $gda;
-				$gdcount++;
-			}
-		}
-		else {
-			# Group specified by CCU virtual group name
-			@devlist = HMCCU_GetGroupMembers ($ioHash, $gdname);
-			$gdcount = scalar (@devlist);
-		}
-		
-		$devHash->{ccugroup} = join (',', @devlist) if (scalar(@devlist) > 0);
+		HMCCU_ExecuteGetExtValuesCommand ($devHash, $da);
 	}
 
 	return $rc;
@@ -437,9 +401,6 @@ sub HMCCUDEV_Set ($@)
 	elsif ($lcopt eq 'datapoint') {
 		return HMCCU_ExecuteSetDatapointCommand ($hash, $a, $h);
 	}
-#	elsif ($lcopt eq 'toggle') {
-#		return HMCCU_ExecuteToggleCommand ($hash);
-#	}
 	elsif (exists($hash->{hmccu}{roleCmds}{set}{$opt})) {
 		return HMCCU_ExecuteRoleCommand ($ioHash, $hash, 'set', $opt, $a, $h);
 	}
@@ -505,7 +466,7 @@ sub HMCCUDEV_Get ($@)
 	my $ccuflags = AttrVal ($name, 'ccuflags', 'null');
 
 	# Build set command syntax
-	my $syntax = 'update config paramsetDesc:noArg deviceInfo:noArg values extValues';
+	my $syntax = 'update config paramsetDesc:noArg deviceInfo:noArg values extValues metaData';
 	
 	# Command datapoint depends on readable datapoints
 	my @dpRList;
@@ -541,12 +502,17 @@ sub HMCCUDEV_Get ($@)
 	}
 	elsif ($lcopt eq 'extvalues') {
 		my $filter = shift @$a;
-		my $rc = HMCCU_GetUpdate ($hash, $ccuaddr, $filter);
+		my $rc = HMCCU_ExecuteGetExtValuesCommand ($hash, $ccuaddr, $filter);
 		return $rc < 0 ? HMCCU_SetError ($hash, $rc) : 'OK';
 	}
 	elsif ($lcopt eq 'paramsetdesc') {
 		my $result = HMCCU_ParamsetDescToStr ($ioHash, $hash);
 		return defined($result) ? $result : HMCCU_SetError ($hash, "Can't get device model");
+	}
+	elsif ($lcopt eq 'metadata') {
+		my $filter = shift @$a;
+		my ($rc, $result) = HMCCU_ExecuteGetMetaDataCommand ($ioHash, $hash, $filter);
+		return $rc < 0 ? HMCCU_SetError ($hash, $rc, $result) : $result;
 	}
 	elsif (exists($hash->{hmccu}{roleCmds}{get}{$opt})) {
 		return HMCCU_ExecuteRoleCommand ($ioHash, $hash, 'get', $opt, $a, $h);
@@ -744,6 +710,9 @@ sub HMCCUDEV_Get ($@)
          </ul>
       </li><br/>
  	  <li><b>get &lt;name&gt; extValues [&lt;filter-expr&gt;]</b><br/>
+      	<a href="#HMCCUCHNget">see HMCCUCHN</a>
+	  </li><br/>
+	  <li><b>get &lt;name&gt; metaData [&lt;filter-expr&gt;]</b><br/>
       	<a href="#HMCCUCHNget">see HMCCUCHN</a>
 	  </li><br/>
 	  <li><b>get &lt;name&gt; update [{State | <u>Value</u>}]</b><br/>
