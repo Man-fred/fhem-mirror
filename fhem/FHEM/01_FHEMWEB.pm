@@ -1009,6 +1009,7 @@ FW_answerCall($)
       $FW_encodedByPlugin = 1;
       no strict "refs";
       ($FW_RETTYPE, $FW_RET) = &{$h->{FUNC}}($arg);
+      #MAN-FRED Anpassung 40x-Antwort
       if(defined($FW_RETTYPE) && $FW_RETTYPE =~ m/^4/) {
 		TcpServer_WriteBlocking($FW_chash,
 		  "HTTP/1.1 $FW_RETTYPE\r\n" .
@@ -1019,6 +1020,7 @@ FW_answerCall($)
 		#FW_closeConn($hash);
 		return -1
       }
+      #MAN-FRED
       if(defined($FW_RETTYPE) && $FW_RETTYPE =~ m,text/html,) {
         my $dataAttr = FW_dataAttr();
         $FW_RET =~ s/<body/<body $dataAttr/;

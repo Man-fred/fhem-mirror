@@ -184,8 +184,10 @@ sub HTTPSRV_CGI() {
       close(INPUTFILE);
       return("$MIMEtype; charset=utf-8", join("", @contents));
     } else {
+      #EIGENE ERGAENZUNG MAN-FRED
       #return("text/plain; charset=utf-8", "File not found: $filename");
-	  return("404 File not found", "File not found: $filename");
+      return("404 File not found", "File not found: $filename");
+      #EIGENE ERGAENZUNG MAN-FRED
     }
 
   } else {
