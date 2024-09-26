@@ -50,8 +50,10 @@ my $culNameRe = "^(CUL|TSCUL)\$";
 
 my $clientsSlowRF    = ":FS20:FHT.*:KS300:USF1000:BS:HMS:FS20V: ".
                        ":CUL_EM:CUL_WS:CUL_FHTTK:CUL_HOERMANN: ".
+#MAN-FRED
 #                       ":ESA2000:CUL_IR:CUL_TX:Revolt:IT:UNIRoll:SOMFY: ".
                        ":ESA2000:CUL_TX:Revolt:IT:UNIRoll:SOMFY: ".
+#MAN-FRED
                        ":$sccMods:CUL_RFR::CUL_TCM97001:CUL_REDIRECT:";
 my $clientsHomeMatic = ":CUL_HM:HMS:CUL_IR:$sccMods:";
 my $clientsMAX       = ":CUL_MAX:HMS:CUL_IR:$sccMods:";
@@ -72,11 +74,15 @@ my %matchListSlowRF = (
     "A:CUL_RFR"   => "^[0-9A-F]{4}U.",
     "B:CUL_HOERMANN"=> "^R..........",
     "C:ESA2000"   => "^S................................\$",
+    #MAN-FRED
     #"D:CUL_IR"    => "^(?-i)Ir...........",
+    #MAN-FRED
     "E:CUL_TX"    => "^TX[A-F0-9]{10}",
     "F:Revolt"    => "^r......................\$",
+    #MAN-FRED
     "G:IT"        => "^i.*", 
 		#"^i......+",
+    #MAN-FRED
     "H:STACKABLE_CC"=>"^\\*",
     "I:UNIRoll"   => "^[0-9A-F]{5}(B|D|E)",
     "J:SOMFY"     => "^Y[r|t|s]:?[A-F0-9]+",
@@ -84,7 +90,9 @@ my %matchListSlowRF = (
     "L:CUL_REDIRECT"  => "^o+",
     "M:TSSTACKED"=>"^\\*",
     "N:STACKABLE"=>"^\\*",
+    #MAN-FRED
     #"O:FAZ"       => "^Z[A-F0-9]+",
+    #MAN-FRED
 );
 
 my %matchListHomeMatic = (
